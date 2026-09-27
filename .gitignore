@@ -1,0 +1,9 @@
+target/
+data/
+models/*.onnx
+models/*.part
+models/.download-parts/
+models/.download-*/
+.idea/
+*.iml
+.DS_Store

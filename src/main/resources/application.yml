@@ -1,0 +1,20 @@
+server:
+  address: 127.0.0.1
+  port: ${PORT:8080}
+  tomcat:
+    threads:
+      max: 16
+spring:
+  application:
+    name: smart-closet-server
+  servlet:
+    multipart:
+      max-file-size: 15MB
+      max-request-size: 16MB
+      file-size-threshold: 0
+closet:
+  storage-dir: ${CLOSET_STORAGE_DIR:./data}
+  model-path: ${CLOSET_MODEL_PATH:./models/u2net.onnx}
+  max-pixels: 12000000
+  grabcut-max-side: 1000
+  inference-threads: 2

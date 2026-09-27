@@ -1,0 +1,102 @@
+package com.smartcloset.api;
+
+import java.awt.*;
+import java.awt.image.BufferedImage;
+import java.io.ByteArrayOutputStream;
+import java.net.URI;
+import java.net.http.*;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.*;
+import javax.imageio.ImageIO;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.web.server.LocalServerPort;
+import org.springframework.test.context.DynamicPropertyRegistry;
+import org.springframework.test.context.DynamicPropertySource;
+import tools.jackson.databind.json.JsonMapper;
+import static org.junit.jupiter.api.Assertions.*;
+
+@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
+        properties = "closet.model-path=target/absent-test-model.onnx")
+class SegmentationApiTest {
+    @TempDir static Path storage;
+    @LocalServerPort int port;
+    private final HttpClient client = HttpClient.newHttpClient();
+    private final JsonMapper json = JsonMapper.builder().build();
+    @DynamicPropertySource static void configure(DynamicPropertyRegistry registry) {
+        registry.add("closet.storage-dir", () -> storage.toString());
+    }
+
+    private HttpResponse<byte[]> get(String path) throws Exception {
+        return client.send(HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + port + path)).GET().build(), HttpResponse.BodyHandlers.ofByteArray());
+    }
+    private byte[] fixture() throws Exception {
+        BufferedImage image = new BufferedImage(160, 200, BufferedImage.TYPE_INT_RGB);
+        Graphics2D g = image.createGraphics(); g.setColor(Color.WHITE); g.fillRect(0, 0, 160, 200);
+        g.setColor(Color.BLUE); g.fillRect(40, 40, 80, 120); g.dispose();
+        ByteArrayOutputStream bytes = new ByteArrayOutputStream(); ImageIO.write(image, "png", bytes); return bytes.toByteArray();
+    }
+    private HttpResponse<byte[]> upload(byte[] bytes, String query) throws Exception {
+        ByteArrayOutputStream body = new ByteArrayOutputStream();
+        body.write("--closet-test\r\nContent-Disposition: form-data; name=\"file\"; filename=\"../../fake.jpg\"\r\nContent-Type: image/jpeg\r\n\r\n".getBytes(StandardCharsets.UTF_8));
+        body.write(bytes); body.write("\r\n--closet-test--\r\n".getBytes(StandardCharsets.UTF_8));
+        return client.send(HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + port + "/api/segmentations?" + query))
+                .header("Content-Type", "multipart/form-data; boundary=closet-test")
+                .POST(HttpRequest.BodyPublishers.ofByteArray(body.toByteArray())).build(), HttpResponse.BodyHandlers.ofByteArray());
+    }
+
+    @Test void uploadReadDownloadAndRefineOverRealHttp() throws Exception {
+        var response = upload(fixture(), "method=GRABCUT");
+        assertEquals(201, response.statusCode(), new String(response.body(), StandardCharsets.UTF_8));
+        var result = json.readTree(response.body());
+        String location = response.headers().firstValue("Location").orElseThrow();
+        assertEquals(200, get(location).statusCode());
+        assertEquals("GRABCUT", result.path("method").asText());
+        for (String field : new String[]{"originalUrl", "maskUrl", "cutoutUrl", "croppedUrl", "sourceUrl"}) {
+            var download = get(result.path(field).asText());
+            assertEquals(200, download.statusCode());
+            assertNotNull(ImageIO.read(new java.io.ByteArrayInputStream(download.body())));
+        }
+        var cutout = ImageIO.read(new java.io.ByteArrayInputStream(get(result.path("cutoutUrl").asText()).body()));
+        assertEquals(0, cutout.getRGB(0, 0) >>> 24);
+        assertEquals(255, cutout.getRGB(80, 100) >>> 24);
+        var source = get(result.path("sourceUrl").asText());
+        assertArrayEquals(fixture(), source.body());
+        var refined = client.send(HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + port + location + "/refine"))
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString("{\"method\":\"GRABCUT\",\"region\":{\"x\":20,\"y\":20,\"width\":120,\"height\":160}}"))
+                .build(), HttpResponse.BodyHandlers.ofByteArray());
+        assertEquals(201, refined.statusCode(), new String(refined.body(), StandardCharsets.UTF_8));
+        assertNotEquals(result.path("id").asText(), json.readTree(refined.body()).path("id").asText());
+        assertEquals(200, get(location).statusCode());
+        assertFalse(Files.exists(storage.resolve("fake.jpg")));
+    }
+
+    @Test void rejectsCorruptImageMissingParametersAndInvalidMethod() throws Exception {
+        assertEquals(400, upload("hello".getBytes(), "method=GRABCUT").statusCode());
+        assertEquals(400, upload(fixture(), "method=GRABCUT&x=1").statusCode());
+        assertEquals(400, upload(fixture(), "method=UNKNOWN").statusCode());
+        assertEquals(400, upload(fixture(), "method=GRABCUT&x=150&y=0&width=100&height=100").statusCode());
+    }
+
+    @Test void missingModelReturns503AndDoesNotSilentlyFallback() throws Exception {
+        var response = upload(fixture(), "method=U2NET");
+        assertEquals(503, response.statusCode());
+        assertEquals("MODEL_NOT_INSTALLED", json.readTree(response.body()).path("code").asText());
+    }
+
+    @Test void healthMethodsMissingResultAndFileAllowlist() throws Exception {
+        assertEquals(200, get("/api/health").statusCode());
+        var methods = json.readTree(get("/api/segmentation-methods").body());
+        assertFalse(methods.path("clothingClassification").asBoolean());
+        assertEquals(404, get("/api/segmentations/00000000-0000-0000-0000-000000000000").statusCode());
+        assertEquals(404, get("/api/segmentations/00000000-0000-0000-0000-000000000000/files/result.json").statusCode());
+        assertEquals(404, get("/no-such-route").statusCode());
+    }
+
+    @Test void rejectsOversizedMultipartUpload() throws Exception {
+        var response = upload(new byte[15 * 1024 * 1024 + 1], "method=GRABCUT");
+        assertEquals(413, response.statusCode(), new String(response.body(), StandardCharsets.UTF_8));
+    }
+}
