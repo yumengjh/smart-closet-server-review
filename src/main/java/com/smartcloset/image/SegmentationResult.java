@@ -10,4 +10,4 @@ public record SegmentationResult(String id, Instant createdAt, Method method, St
                                  Region foregroundBounds, long processingMillis, double foregroundRatio,
                                  List<ColorShare> dominantColors, List<String> warnings,
                                  String sourceUrl, String originalUrl, String maskUrl,
-                                 String cutoutUrl, String croppedUrl) {}
+                                 String cutoutUrl, String croppedUrl, Double rotationDegrees) {}

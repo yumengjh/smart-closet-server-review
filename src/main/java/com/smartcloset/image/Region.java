@@ -1,6 +1,6 @@
 package com.smartcloset.image;
 
-/** Pixels in the EXIF-corrected original, before any processing resize. */
+/** Pixels after EXIF and user rotation correction, before any processing resize. */
 public record Region(int x, int y, int width, int height) {
     public void validate(int imageWidth, int imageHeight) {
         if (x < 0 || y < 0 || width < 2 || height < 2

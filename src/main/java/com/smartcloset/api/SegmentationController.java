@@ -34,6 +34,7 @@ public class SegmentationController {
     @PostMapping(value = "/segmentations", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<SegmentationResult> upload(@RequestPart("file") MultipartFile file,
             @RequestParam(defaultValue = "U2NET") Method method,
+            @RequestParam(defaultValue = "0") double rotationDegrees,
             @RequestParam(required = false) Integer x, @RequestParam(required = false) Integer y,
             @RequestParam(required = false) Integer width, @RequestParam(required = false) Integer height) throws IOException {
         Region region = null;
@@ -42,14 +43,15 @@ public class SegmentationController {
                 throw ProcessingException.invalid("框选需要同时提供 x、y、width、height。");
             region = new Region(x, y, width, height);
         }
-        return created(service.upload(file, method, region));
+        return created(service.upload(file, method, region, rotationDegrees));
     }
 
-    public record RefineRequest(@NotNull Method method, @NotNull Region region) {}
+    public record RefineRequest(@NotNull Method method, Region region, Double rotationDegrees) {}
 
     @PostMapping("/segmentations/{id}/refine")
     public ResponseEntity<SegmentationResult> refine(@PathVariable UUID id, @Valid @RequestBody RefineRequest request) throws IOException {
-        return created(service.refine(id, request.method(), request.region()));
+        return created(service.refine(id, request.method(), request.region(),
+                request.rotationDegrees() == null ? 0 : request.rotationDegrees()));
     }
 
     @GetMapping("/segmentations/{id}")

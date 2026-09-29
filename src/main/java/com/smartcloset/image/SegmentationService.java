@@ -3,6 +3,8 @@ package com.smartcloset.image;
 import com.smartcloset.ClosetProperties;
 import com.smartcloset.image.SegmentationEngine.Method;
 import java.io.IOException;
+import java.io.ByteArrayOutputStream;
+import java.awt.image.BufferedImage;
 import java.nio.file.*;
 import java.time.Instant;
 import java.util.*;
@@ -28,19 +30,40 @@ public class SegmentationService {
     }
 
     public SegmentationResult upload(MultipartFile file, Method method, Region region) throws IOException {
+        return upload(file, method, region, 0);
+    }
+
+    public SegmentationResult upload(MultipartFile file, Method method, Region region, double rotationDegrees) throws IOException {
+        if (file.getSize() > 15L * 1024 * 1024) throw new ProcessingException(HttpStatus.PAYLOAD_TOO_LARGE, "IMAGE_TOO_LARGE", "图片不能超过 15 MB。");
+        return uploadBytes(file.getBytes(), method, region, rotationDegrees);
+    }
+
+    public SegmentationResult uploadBytes(byte[] bytes, Method method, Region region, double rotationDegrees) throws IOException {
         acquire();
         try {
-            if (file.getSize() > 15L * 1024 * 1024) throw new ProcessingException(HttpStatus.PAYLOAD_TOO_LARGE, "IMAGE_TOO_LARGE", "图片不能超过 15 MB。");
-            return process(file.getBytes(), method, region);
+            long started = System.nanoTime();
+            double angle = Images.rotation(rotationDegrees);
+            var decoded = Images.decode(bytes, properties.maxPixels());
+            return process(Images.rotate(decoded.image(), angle, properties.maxPixels()), method, region,
+                    decoded.orientation(), angle, started);
         } finally { capacity.release(); }
     }
 
     public SegmentationResult refine(UUID id, Method method, Region region) throws IOException {
+        return refine(id, method, region, 0);
+    }
+
+    public SegmentationResult refine(UUID id, Method method, Region region, double rotationDegrees) throws IOException {
         acquire();
         try {
+            long started = System.nanoTime();
+            double angle = Images.rotation(rotationDegrees);
             var previous = get(id);
-            String source = previous.sourceUrl().substring(previous.sourceUrl().lastIndexOf('/') + 1);
-            return process(Files.readAllBytes(file(id, source)), method, region);
+            // The saved original is already EXIF/angle-corrected. Apply only this request's extra angle.
+            var decoded = Images.decode(Files.readAllBytes(file(id, "original.png")), properties.maxPixels());
+            double total = ((previous.rotationDegrees() == null ? 0 : previous.rotationDegrees()) + angle) % 360;
+            return process(Images.rotate(decoded.image(), angle, properties.maxPixels()), method, region,
+                    previous.exifOrientation(), total, started);
         } finally { capacity.release(); }
     }
 
@@ -48,10 +71,8 @@ public class SegmentationService {
         if (!capacity.tryAcquire()) throw new ProcessingException(HttpStatus.TOO_MANY_REQUESTS, "PROCESSOR_BUSY", "正在处理另一张图片，请稍后重试。");
     }
 
-    private SegmentationResult process(byte[] bytes, Method method, Region region) throws IOException {
-        long started = System.nanoTime();
-        var decoded = Images.decode(bytes, properties.maxPixels());
-        var image = decoded.image();
+    private SegmentationResult process(BufferedImage image, Method method, Region region,
+                                       int exifOrientation, double rotationDegrees, long started) throws IOException {
         var segmented = engines.get(method).segment(image, region);
         var processed = MaskProcessor.apply(image, segmented.mask());
         List<String> warnings = new ArrayList<>(segmented.warnings());
@@ -59,20 +80,22 @@ public class SegmentationService {
         if (!warnings.contains("SUBJECT_IS_NOT_VERIFIED_AS_CLOTHING")) warnings.add("SUBJECT_IS_NOT_VERIFIED_AS_CLOTHING");
         String id = UUID.randomUUID().toString();
         String base = "/api/segmentations/" + id + "/files/";
-        String source = decoded.format().equals("jpeg") ? "source.jpg" : "source.png";
+        String source = "source.png";
         Path root = properties.storageDir().toAbsolutePath().normalize();
         Files.createDirectories(root);
         Path staging = Files.createTempDirectory(root, ".processing-");
         try {
-            Files.write(staging.resolve(source), bytes);
-            ImageIO.write(image, "png", staging.resolve("original.png").toFile());
+            // Persist the corrected photo only, with no EXIF rotation tag to apply again.
+            var corrected = new ByteArrayOutputStream(); ImageIO.write(image, "png", corrected);
+            Files.write(staging.resolve(source), corrected.toByteArray());
+            Files.write(staging.resolve("original.png"), corrected.toByteArray());
             ImageIO.write(processed.mask(), "png", staging.resolve("mask.png").toFile());
             ImageIO.write(processed.cutout(), "png", staging.resolve("cutout.png").toFile());
             ImageIO.write(processed.cropped(), "png", staging.resolve("cropped.png").toFile());
             var result = new SegmentationResult(id, Instant.now(), method, method == Method.U2NET ? "u2net" : null,
-                    image.getWidth(), image.getHeight(), decoded.orientation(), region, processed.bounds(),
+                    image.getWidth(), image.getHeight(), exifOrientation, region, processed.bounds(),
                     (System.nanoTime() - started) / 1_000_000, processed.foregroundRatio(), processed.colors(), warnings,
-                    base + source, base + "original.png", base + "mask.png", base + "cutout.png", base + "cropped.png");
+                    base + source, base + "original.png", base + "mask.png", base + "cutout.png", base + "cropped.png", rotationDegrees);
             mapper.writerWithDefaultPrettyPrinter().writeValue(staging.resolve("result.json").toFile(), result);
             Files.move(staging, root.resolve(id), StandardCopyOption.ATOMIC_MOVE);
             return result;
