@@ -85,6 +85,7 @@ class WorkflowApiTest {
         UUID id=UUID.randomUUID();var response=client.send(HttpRequest.newBuilder(URI.create("http://127.0.0.1:"+port+"/api/workflows")).header("Content-Type","multipart/form-data; boundary=test").header("Idempotency-Key",id.toString()).POST(HttpRequest.BodyPublishers.ofByteArray(bytes.toByteArray())).build(),HttpResponse.BodyHandlers.ofByteArray());
         assertEquals(202,response.statusCode(),new String(response.body()));var job=await(id);assertEquals("SUCCEEDED",job.path("status").asText(),job.toString());assertFalse(job.path("requiresReview").asBoolean());
         var input=ImageIO.read(new ByteArrayInputStream(get(job.path("inputUrl").asText()).body()));assertEquals(200,input.getWidth());assertEquals(160,input.getHeight());assertEquals(before,calls.get());
+        for(String file:new String[]{"index.html","app.js","styles.css"})assertEquals(200,get("/workflow/"+file).statusCode());
     }
     byte[] transparent(boolean suspicious)throws IOException{
         var image=new BufferedImage(160,200,BufferedImage.TYPE_INT_ARGB);var g=image.createGraphics();
