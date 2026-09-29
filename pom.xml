@@ -12,8 +12,13 @@
     <opencv.version>4.14.0-1.5.14</opencv.version>
     <javacpp.version>1.5.14</javacpp.version>
     <native.platform>linux-x86_64</native.platform>
+    <mybatis-plus.version>3.5.17</mybatis-plus.version>
   </properties>
   <dependencies>
+    <dependency><groupId>com.baomidou</groupId><artifactId>mybatis-plus-spring-boot4-starter</artifactId><version>${mybatis-plus.version}</version></dependency>
+    <dependency><groupId>com.baomidou</groupId><artifactId>mybatis-plus-jsqlparser</artifactId><version>${mybatis-plus.version}</version></dependency>
+    <dependency><groupId>com.h2database</groupId><artifactId>h2</artifactId><scope>runtime</scope></dependency>
+    <dependency><groupId>org.flywaydb</groupId><artifactId>flyway-core</artifactId></dependency>
     <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-webmvc</artifactId></dependency>
     <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-validation</artifactId></dependency>
     <dependency><groupId>com.microsoft.onnxruntime</groupId><artifactId>onnxruntime</artifactId><version>1.30.0</version></dependency>

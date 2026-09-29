@@ -5,8 +5,16 @@ server:
     threads:
       max: 16
 spring:
+  config:
+    import: optional:file:./.local/generation.yml
   application:
     name: smart-closet-server
+  datasource:
+    url: ${CLOSET_DB_URL:jdbc:h2:file:${closet.storage-dir}/db/closet}
+    username: ${CLOSET_DB_USER:sa}
+    password: ${CLOSET_DB_PASSWORD:}
+    hikari:
+      maximum-pool-size: 4
   servlet:
     multipart:
       max-file-size: 15MB
@@ -18,3 +26,9 @@ closet:
   max-pixels: 12000000
   grabcut-max-side: 1000
   inference-threads: 2
+workflow:
+  max-queued: 30
+  poll-ms: 300
+mybatis-plus:
+  global-config:
+    banner: false

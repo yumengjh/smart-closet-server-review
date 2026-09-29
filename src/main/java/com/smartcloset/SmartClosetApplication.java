@@ -5,7 +5,7 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 
 @SpringBootApplication
-@EnableConfigurationProperties(ClosetProperties.class)
+@EnableConfigurationProperties({ClosetProperties.class, com.smartcloset.generation.GenerationProperties.class})
 public class SmartClosetApplication {
     public static void main(String[] args) {
         SpringApplication.run(SmartClosetApplication.class, args);

@@ -31,7 +31,7 @@ public class ApiExceptionHandler {
     @ExceptionHandler({MethodArgumentTypeMismatchException.class, HttpMessageNotReadableException.class,
             MethodArgumentNotValidException.class, ServletRequestBindingException.class, MultipartException.class})
     public ResponseEntity<ErrorBody> invalid(Exception e) {
-        return ResponseEntity.badRequest().body(new ErrorBody("INVALID_REQUEST", "请检查参数：file、方法 GRABCUT/U2NET、UUID，以及完整的整数框选坐标。"));
+        return ResponseEntity.badRequest().body(new ErrorBody("INVALID_REQUEST", "请检查请求格式、UUID、图片参数与工作流步骤；multipart 的 workflow 部分须使用 application/json。"));
     }
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ErrorBody> unexpected(Exception e) {
