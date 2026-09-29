@@ -1,0 +1,24 @@
+# Copy provider settings to .local/generation.yml (ignored by Git), then restart.
+# API base URLs include the version prefix. Never place real credentials in this example.
+generation:
+  providers:
+    yumg:
+      protocol: OPENAI_IMAGES
+      base-url: https://api.yumg.cn/v1
+      api-key: ${YUMG_API_KEY:}
+      default-model: gpt-image-2.5-flare
+      timeout-seconds: 180
+      defaults:
+        size: 1024x1024
+        quality: low
+        output_format: png
+      image-hosts: [] # Exact trusted output CDN hostnames only, if the API returns URL instead of base64.
+    google:
+      protocol: GEMINI
+      base-url: https://generativelanguage.googleapis.com/v1beta
+      api-key: ${GEMINI_API_KEY:}
+      default-model: gemini-2.5-flash-image
+      timeout-seconds: 180
+      defaults:
+        imageConfig:
+          aspectRatio: '1:1'
