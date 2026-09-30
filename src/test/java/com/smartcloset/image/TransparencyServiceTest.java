@@ -51,6 +51,14 @@ class TransparencyServiceTest {
         var result=service.ensure(png(new BufferedImage(100,100,BufferedImage.TYPE_INT_RGB)),Policy.AUTO,SegmentationEngine.Method.GRABCUT);
         assertTrue(result.needsReview());assertNotNull(result.segmentationId());verify(segmentation,times(1)).uploadBytes(any(),any(),isNull(),eq(0d));
     }
+    @Test void reviewedAlphaAcceptsStructuralWarningButNeverOpaqueOrEmpty() throws Exception {
+        var suspicious=valid();suspicious.setRGB(0,50,0xff445566);
+        var result=service.ensure(png(suspicious),Policy.REVIEWED,null);
+        assertEquals(Action.APPROVED_ALPHA,result.decision().action());assertFalse(result.needsReview());
+        assertThrows(ProcessingException.class,()->service.ensure(png(new BufferedImage(100,100,BufferedImage.TYPE_INT_RGB)),Policy.REVIEWED,null));
+        assertTrue(service.ensure(png(new BufferedImage(100,100,BufferedImage.TYPE_INT_ARGB)),Policy.REVIEWED,null).rejected());
+        verifyNoInteractions(segmentation);
+    }
     @Test void decodingAndRotationKeepAlphaWhileLegacyRgbDecodeStillFlattens()throws Exception{
         var image=valid();image.setRGB(19,20,0x806699aa);byte[] bytes=png(image);
         var decoded=Images.decodePreservingAlpha(bytes,12000000).image();assertEquals(0x806699aa,decoded.getRGB(19,20));

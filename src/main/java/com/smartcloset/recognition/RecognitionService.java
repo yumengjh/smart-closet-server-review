@@ -29,7 +29,7 @@ public class RecognitionService {
     private final BoundedHttp http = new BoundedHttp();
     public RecognitionService(RecognitionProperties properties, GenerationProperties credentials, RecognitionSchema schema, ObjectMapper json) throws IOException {
         this.properties = properties; this.credentials = credentials; this.schema = schema; this.json = json;
-        try (var in = new ClassPathResource("recognition/garment-v1.txt").getInputStream()) { prompt = new String(in.readAllBytes(), StandardCharsets.UTF_8); }
+        try (var in = new ClassPathResource("recognition/" + RecognitionSchema.VERSION + ".txt").getInputStream()) { prompt = new String(in.readAllBytes(), StandardCharsets.UTF_8); }
     }
     public List<ProviderInfo> providers() {
         return properties.providers().entrySet().stream().sorted(Map.Entry.comparingByKey()).map(e -> {
@@ -58,7 +58,7 @@ public class RecognitionService {
         String model = request == null || request.model() == null || request.model().isBlank() ? p.defaultModel() : request.model();
         if (model == null || !model.matches("[a-zA-Z0-9][a-zA-Z0-9._:/-]{0,159}") || model.contains("..")) throw ProcessingException.invalid("识图模型名称无效。");
         if (p.protocol() == RecognitionProperties.Protocol.GEMINI && model.replaceFirst("^models/", "").contains("/")) throw ProcessingException.invalid("Gemini 模型名称不能包含路径。");
-        return new Prepared(id, model, revision(id), "garment-v1:" + WorkflowFiles.hash(prompt.getBytes(StandardCharsets.UTF_8)), RecognitionSchema.VERSION, prompt, schema.schema());
+        return new Prepared(id, model, revision(id), RecognitionSchema.VERSION + ":" + WorkflowFiles.hash(prompt.getBytes(StandardCharsets.UTF_8)), RecognitionSchema.VERSION, prompt, schema.schema());
     }
     private HttpRequest.Builder builder(String id, String path) {
         var p = provider(id); var c = credential(p);

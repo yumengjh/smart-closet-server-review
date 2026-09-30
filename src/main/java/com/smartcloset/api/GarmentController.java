@@ -35,7 +35,8 @@ public class GarmentController {
     @GetMapping("/recognition/providers/{id}/models") public Object models(@PathVariable String id) {
         return Map.of("models", modelPolicy.recognitionModels(id, recognition.models(id)), "note", "模型许可由服务端控制；上游目录不代表识图能力已验证。");
     }
-    @GetMapping("/recognition/schema") public Object schema() { return Map.of("version", RecognitionSchema.VERSION, "fields", RecognitionSchema.FIELDS, "schema", schema.schema()); }
+    @GetMapping("/recognition/schema") public Object schema() { return Map.of("version", RecognitionSchema.VERSION, "allowCustomValues", true,
+        "fields", garments.metadataFields(ClosetIdentity.username()), "schema", schema.schema()); }
     @GetMapping("/garments") public Object list(@RequestParam(defaultValue = "1") int page, @RequestParam(defaultValue = "12") int size) {
         if (ClosetIdentity.administrator()) return garments.list(page, size).stream().map(garments::get).toList();
         var active = garments.listCloset(ClosetIdentity.username(), "ACTIVE", "", "", "", "", page, size);

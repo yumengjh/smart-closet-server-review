@@ -193,4 +193,40 @@ class WorkflowServiceTest {
         assertEquals(Status.UNKNOWN,recovered.steps().getFirst().status());assertEquals("UNKNOWN",recovered.attempts().getFirst().status());
         verify(recognition,never()).recognize(any(),any());
     }
+    @Test void pausedStickerBlocksConfirmationAndApprovedLocalContinuationReallyRenders() throws Exception {
+        var image=new BufferedImage(100,100,BufferedImage.TYPE_INT_ARGB);
+        var g=image.createGraphics();g.setColor(Color.BLUE);g.fillRect(0,20,60,60);g.dispose();
+        var bytes=new ByteArrayOutputStream();ImageIO.write(image,"png",bytes);
+        var spec=new Request(0d,null,null,List.of(new Step(Type.ENSURE_TRANSPARENCY,null,null,null,TransparencyService.Policy.AUTO),new Step(Type.STICKER,null,null,null)));
+        var parent=await(service,service.submit(UUID.randomUUID(),spec,bytes.toByteArray()).id());
+        assertEquals(Status.NEEDS_REVIEW,parent.status());assertEquals(Status.SKIPPED,parent.steps().get(1).status());
+        var record=garments.get(parent.request().garmentId());
+        final UUID garmentId=record.id();
+        assertTrue(record.imageProcessing().stickerRequired());assertFalse(record.imageProcessing().stickerReady());
+        var partial=parent.assets().stream().filter(a->a.kind().equals("ENSURE_TRANSPARENCY")).findFirst().orElseThrow();
+        var request=new com.smartcloset.garment.GarmentRepository.Confirm(record.revision(),partial.id(),Map.of(),List.of());
+        assertEquals("STICKER_NOT_READY",assertThrows(ProcessingException.class,()->garments.confirm(garmentId,request)).code());
+        var bypass=new com.smartcloset.garment.GarmentRepository.Confirm(record.revision(),partial.id(),Map.of(),List.of(),true);
+        assertThrows(ProcessingException.class,()->garments.confirm(garmentId,bypass));
+        var original=new com.smartcloset.garment.GarmentRepository.Confirm(record.revision(),record.sourceAssetId(),Map.of("category",List.of("衬衫")),List.of(),true);
+        record=garments.confirm(record.id(),original);assertEquals("ACTIVE",record.status());assertFalse(record.imageProcessing().stickerReady());
+        var continuation=new ContinueRequest(partial.id(),TransparencyService.Policy.REVIEWED,null);
+        assertThrows(ProcessingException.class,()->service.continueFrom(parent.id(),UUID.randomUUID(),continuation));
+        service.review(parent.id(),partial.id(),new ReviewRequest("APPROVED","已核对"));
+        UUID key=UUID.randomUUID();var child=await(service,service.continueFrom(parent.id(),key,continuation).id());
+        assertEquals(Status.SUCCEEDED,child.status());assertEquals(Status.SUCCEEDED,child.steps().get(1).status());
+        assertEquals(key,service.continueFrom(parent.id(),key,continuation).id());assertTrue(child.attempts().isEmpty());
+        assertEquals(Status.NEEDS_REVIEW,service.get(parent.id()).status());
+        var sticker=child.assets().stream().filter(a->a.kind().equals("STICKER")).findFirst().orElseThrow();
+        assertNotEquals(partial.sha256(),sticker.sha256());
+        var finished=garments.get(record.id());assertTrue(finished.imageProcessing().stickerReady());assertEquals(sticker.id(),finished.imageProcessing().stickerAssetId());
+        assertEquals(List.of("衬衫"),finished.effective().get("category"));
+        var saved=garments.confirm(finished.id(),new com.smartcloset.garment.GarmentRepository.Confirm(finished.revision(),sticker.id(),Map.of(),List.of()));
+        assertEquals(sticker.id(),saved.displayAssetId());verifyNoInteractions(generation);
+    }
+    @Test void unreviewedWorkflowCannotRequestHumanApprovalPolicy() throws Exception {
+        var spec=new Request(0d,null,null,List.of(new Step(Type.ENSURE_TRANSPARENCY,null,null,null,TransparencyService.Policy.REVIEWED),new Step(Type.STICKER,null,null,null)));
+        assertThrows(ProcessingException.class,()->service.submit(UUID.randomUUID(),spec,image()));
+    }
+
 }

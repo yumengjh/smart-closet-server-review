@@ -80,12 +80,15 @@ java -jar .local/runtime/smart-closet-workflow.jar --closet-command=claim-legacy
 | `GET /api/closet/tasks` | `page,size`，轻量任务数组；当前界面展示最近 50 个任务 |
 | `GET /api/workflows/{id}` | 真实步骤、开始/结束时间、模型调用及图片资产 |
 | `POST /api/workflows/{id}/cancel` | 提交取消，等待服务端状态终止 |
-| `GET /api/recognition/schema` | `{version,fields,schema}`，16 项字段及允许选项 |
+| `GET /api/recognition/schema` | `{version,allowCustomValues,fields,schema}`，16 项字段及常见/本人已入柜建议，允许新值 |
+| `GET /api/closet/metadata-options` | 本人全部 ACTIVE 衣物的有效值，用于动态筛选 |
 | `GET /api/closet/quota` | `{limit,used,resetAt}`；剩余额度由 `limit-used` 计算 |
 
 上传 JSON 的 `mode` 为 `识别并整理`、`仅识别` 或 `本地贴纸`；可选 `restage,precut,postcut,rotationDegrees,generationProvider,generationModel,recognitionProvider,recognitionModel`。普通用户不能编辑任意提示词或参数 JSON，模型许可由服务端校验。
 
-图片限制为 JPEG/PNG、15 MB、最多 1200 万像素；每次一张照片、一件衣物。`fields` 的值均为字符串数组，字段 key 和枚举直接采用 schema：`secondaryColors`、`materialComposition`、`careInstructions` 等名称不可缩写。单值文本中的逗号保留为文本，不拆成多个值。
+图片限制为 JPEG/PNG、15 MB、最多 1200 万像素；每次一张照片、一件衣物。`fields` 的值均为字符串数组，字段 key 和状态采用 schema，属性值允许新增（options 是建议）：`secondaryColors`、`materialComposition`、`careInstructions` 等名称不可缩写。单值文本中的逗号保留为文本，不拆成多个值。
+
+元信息开放值规则、同义词归并与颜色大类筛选见 [元信息识别](RECOGNITION.md#开放值与复用)。新名称在确认入柜后进入该账号的动态选项，草稿和回收站不提供选项，不跨账号共享。
 
 ## 处理、核对与入柜
 
@@ -125,3 +128,11 @@ npm run build:server
 ```
 
 本次交付记录见 [2026-09-30 验证报告](../reports/closet/README.md)。首版不包含公网部署、穿搭推荐、批量上传、HEIC 转换、永久清除及完整 JSON 工作流编辑器。AI 返回的整理图需要用户对照原图核对款式与细节；透明结构检查不能证明衣物保真。
+
+## 贴纸中断与恢复（2026-09-30）
+
+透明背景检测是本地结构检查，不能把其短耗时当作 AI 生成耗时。`NEEDS_REVIEW` 表示中断，后续 `STICKER / SKIPPED` 表示尚未制作，不能视为贴纸成功。详情新增 `imageProcessing: {jobId,status,stickerRequired,stickerReady,stickerAssetId}`，以最新图片任务的真实成功步骤及对应资产判定；重新识别不会覆盖图片任务状态。
+
+工作台提供「重新抠图并制作贴纸」，使用透明检查前的图片进行本地处理。已有真实透明背景、只触发结构警告时，用户可对照原图核对完整性，采纳图片后继续制作。`POST /api/workflows/{id}/continue` 使用 `FORCE`（重新抠图）或 `REVIEWED`（人工核对透明图），生成独立子任务并保留父任务中断历史；不会再次识图或生图，不占 AI 额度。`REVIEWED` 仅允许已采纳资产的继续处理，仍拒绝不透明或无主体图片，不允许直接提交任意工作流绕过审核。
+
+正常确认接口在贴纸尚未成功时返回 `409 STICKER_NOT_READY`。备用操作「暂用原图入柜」需显式传 `allowIncompleteSticker:true`，且 assetId 必须是衣物上传原图；人工信息与原图仍原子保存，贴纸状态保持未完成。原先已入柜但处理未完成的记录也显示提示，允许继续制作；贴纸完成后选择贴纸展示图并保存修改。衣物状态与任务状态不会相互冒充。

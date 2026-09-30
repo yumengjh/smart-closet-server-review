@@ -68,6 +68,7 @@ public class WorkflowService {
     }
 
     public synchronized Job submit(UUID key, Request request, byte[] upload) throws IOException {
+        rejectUnreviewedPolicy(request);
         if (request != null && request.garmentId() != null) throw ProcessingException.invalid("已有衣物请使用重新处理接口。");
         return submit(key, request, upload, null, fingerprint(request, upload, true));
     }
@@ -115,6 +116,16 @@ public class WorkflowService {
         if (request == null || request.assetId() == null) throw ProcessingException.invalid("请选择需要继续处理的图片。");
         var parent = get(parentId); var asset = repository.asset(request.assetId());
         if (!asset.jobId.equals(parentId.toString())) throw ProcessingException.invalid("图片不属于此任务。");
+        if (Set.of(Status.QUEUED, Status.RUNNING, Status.CANCEL_REQUESTED).contains(parent.status()))
+            throw new ProcessingException(HttpStatus.CONFLICT, "WORKFLOW_ACTIVE", "请等待当前任务停止后再继续处理。");
+        if (parent.request().garmentId() != null) {
+            var garment = garments.get(parent.request().garmentId());
+            if ("TRASHED".equals(garment.status())) throw ProcessingException.invalid("请先恢复衣物再继续处理。");
+            if (!repository.exists(key) && garment.runs().stream().anyMatch(r -> Set.of("QUEUED", "RUNNING", "CANCEL_REQUESTED").contains(r.status())))
+                throw new ProcessingException(HttpStatus.CONFLICT, "WORKFLOW_ACTIVE", "此衣物已有活动任务，请等待完成。");
+        }
+        if (request.policy() == TransparencyService.Policy.REVIEWED && !"APPROVED".equals(asset.reviewStatus))
+            throw ProcessingException.invalid("请先核对并采纳这张透明图片，再继续制作贴纸。");
         // A continuation explicitly contains only local steps, including for an UNKNOWN parent.
         var policy = request.policy() == null ? TransparencyService.Policy.AUTO : request.policy();
         var method = request.method() == null ? SegmentationEngine.Method.U2NET : request.method();
@@ -127,6 +138,7 @@ public class WorkflowService {
 
     public synchronized Job rerun(UUID garmentId, UUID key, RerunRequest request) throws IOException {
         if (key == null || request == null || request.steps() == null) throw ProcessingException.invalid("重新处理需要 Idempotency-Key 和步骤。");
+        rejectUnreviewedPolicy(new Request(0d, null, null, request.steps(), null, null));
         var garment = garments.get(garmentId);
         var source = repository.asset(garment.sourceAssetId());
         var spec = new Request(0d, null, null, request.steps(), garmentId, Origin.valueOf(garment.sourceOrigin()));
@@ -159,6 +171,10 @@ public class WorkflowService {
             synchronized (this) { id = repository.claimNext(); }
             if (id != null) execute(get(id));
         } catch (Exception e) { log.error("Workflow dispatch failed; durable state retained", e); }
+    }
+    private void rejectUnreviewedPolicy(Request request) {
+        if (request != null && request.steps() != null && request.steps().stream().anyMatch(s -> s != null && s.policy() == TransparencyService.Policy.REVIEWED))
+            throw ProcessingException.invalid("人工核对策略仅能通过已采纳图片的继续处理接口使用。");
     }
     private Request validate(Request r, boolean uploaded) {
         double angle = Images.rotation(r.rotationDegrees() == null ? 0 : r.rotationDegrees());
@@ -288,7 +304,9 @@ public class WorkflowService {
                         output = ensured.png(); segmentationId = ensured.segmentationId();
                     }
                     case STICKER -> {
-                        var checked = transparency.ensure(verifiedInput(original.id(), current), TransparencyService.Policy.PRESERVE, null);
+                        var previousPolicy = index > 0 ? original.request().steps().get(index - 1).policy() : null;
+                        var checked = transparency.ensure(verifiedInput(original.id(), current),
+                                previousPolicy == TransparencyService.Policy.REVIEWED ? previousPolicy : TransparencyService.Policy.PRESERVE, null);
                         if (checked.needsReview() || checked.rejected()) { ensured = checked; output = checked.png(); }
                         else {
                             var rendered = stickers.render(Images.decodePreservingAlpha(checked.png(), closet.maxPixels()).image());
@@ -298,7 +316,8 @@ public class WorkflowService {
                     default -> throw new IllegalStateException("Unknown workflow step");
                 }
                 String name = "step-" + index + ".png";
-                var asset = files.write(original.id(), name, spec.type().name(), output);
+                var kind = spec.type() == Type.STICKER && ensured != null ? Type.ENSURE_TRANSPARENCY.name() : spec.type().name();
+                var asset = files.write(original.id(), name, kind, output);
                 current = files.path(original.id(), name); String outputUrl = files.url(original.id(), name);
                 Status stepStatus = ensured != null && ensured.rejected() ? Status.FAILED
                         : ensured != null && ensured.needsReview() ? Status.NEEDS_REVIEW : Status.SUCCEEDED;

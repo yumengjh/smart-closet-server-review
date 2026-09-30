@@ -9,7 +9,7 @@ import static com.smartcloset.recognition.Recognition.*;
 
 @Component
 public class RecognitionSchema {
-    public static final String VERSION = "garment-v1";
+    public static final String VERSION = "garment-v2";
     public record Field(String key, String label, List<String> options, boolean multiple, boolean suggestion) {}
     public static final List<Field> FIELDS = List.of(
         field("category", "品类", false, false, "T恤,衬衫,卫衣,毛衣,背心,夹克,西装外套,大衣,羽绒服,连衣裙,半身裙,长裤,短裤,连体衣,上装,下装,其他衣物"),
@@ -41,7 +41,9 @@ public class RecognitionSchema {
     public JsonNode schema() {
         var attrs = new LinkedHashMap<String, Object>();
         for (var f : FIELDS) {
-            Map<String, Object> item = f.options().isEmpty() ? Map.of("type", "string") : Map.of("type", "string", "enum", f.options());
+            Map<String, Object> item = Map.of("type", "string", "description", f.options().isEmpty()
+                ? "依据照片填写，无法确定时留空。"
+                : "常见示例：" + String.join("、", f.options()) + "。示例不是限制，可以填写更准确的新名称。");
             attrs.put(f.key(), object(Map.of("values", Map.of("type", "array", "items", item),
                 "status", Map.of("type", "string", "enum", Arrays.stream(State.values()).map(Enum::name).toList()), "evidence", Map.of("type", "string"))));
         }
@@ -64,7 +66,7 @@ public class RecognitionSchema {
                 if (!values.isArray() || values.size() > (f.multiple() ? 12 : 1)) throw new IllegalArgumentException();
                 var list = new ArrayList<String>();
                 for (var value : values) list.add(text(value, 400));
-                validateValues(f, list);
+                list = new ArrayList<>(normalizeValues(f, list));
                 boolean absent = Set.of(State.UNKNOWN, State.NOT_APPLICABLE, State.CONFLICT).contains(state);
                 if (absent != list.isEmpty()) throw new IllegalArgumentException();
                 String evidence = text(a.get("evidence"), 600);
@@ -95,8 +97,12 @@ public class RecognitionSchema {
     public static void validateValues(Field f, List<String> values) {
         if (values == null || values.size() > (f.multiple() ? 12 : 1) || new HashSet<>(values).size() != values.size())
             throw ProcessingException.invalid("字段值数量无效：" + f.label());
-        for (String v : values) if (v == null || v.isBlank() || v.length() > 400 || (!f.options().isEmpty() && !f.options().contains(v)))
-            throw ProcessingException.invalid("字段值不在允许范围内：" + f.label());
+        for (String v : values) if (v == null || v.isBlank() || v.length() > 400)
+            throw ProcessingException.invalid("字段值须为 1 到 400 字的非空文本：" + f.label());
+    }
+    public static List<String> normalizeValues(Field f, List<String> values) {
+        validateValues(f, values);
+        return MetadataValues.canonical(f.key(), values);
     }
     private void keys(JsonNode n, Set<String> expected) {
         if (n == null || !n.isObject() || !new HashSet<>(n.propertyNames()).equals(expected)) throw new IllegalArgumentException();

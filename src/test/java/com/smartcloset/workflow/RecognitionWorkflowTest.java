@@ -82,6 +82,7 @@ class RecognitionWorkflowTest {
     @Autowired com.smartcloset.image.StickerRenderer stickers;
     @Autowired com.smartcloset.image.TransparencyService transparency;
     @Autowired ObjectMapper json;
+    @Autowired org.springframework.jdbc.core.JdbcTemplate jdbc;
     @MockitoBean GenerationService generation;
     @BeforeEach void setup() throws Exception {
         responseCode=200;assessment="READY";color="蓝色";finish="stop";entered=null;release=null;
@@ -141,7 +142,7 @@ class RecognitionWorkflowTest {
         var rerun=await(service.rerun(id,UUID.randomUUID(),new RerunRequest(List.of(identify()))).id());
         assertEquals(Status.NEEDS_REVIEW,rerun.status());assertEquals("RECOGNITION_INCOMPLETE",rerun.steps().getFirst().error().code());
         assertEquals(job.id(),garments.get(id).appliedRecognitionJobId());
-        finish="stop";color="编造的颜色";rerun=await(service.rerun(id,UUID.randomUUID(),new RerunRequest(List.of(identify()))).id());
+        finish="stop";color="";rerun=await(service.rerun(id,UUID.randomUUID(),new RerunRequest(List.of(identify()))).id());
         assertEquals("RECOGNITION_INVALID_OUTPUT",rerun.steps().getFirst().error().code());assertEquals(List.of("蓝色"),garments.get(id).effective().get("primaryColor"));
     }
     @Test void newRequestAndUserEditWinAgainstLateResponseAndDuplicateKeys()throws Exception{
@@ -169,6 +170,54 @@ class RecognitionWorkflowTest {
         assertThrows(ProcessingException.class,()->schema.validate(data));
         var bad=codec.valueToTree(fixture("NO_GARMENT","蓝色"));((tools.jackson.databind.node.ObjectNode)bad.path("attributes")).set("category",codec.valueToTree(Map.of("values",List.of("T恤"),"status","OBSERVED","evidence","猜测")));
         assertThrows(ProcessingException.class,()->schema.validate(bad));
+    }
+    @Test void openValuesAreAcceptedAndUnknownAndCardinalityRulesStillApply() {
+        var data=codec.valueToTree(fixture("READY","淡蓝色"));
+        ((tools.jackson.databind.node.ObjectNode)data.path("attributes")).set("neckline",codec.valueToTree(Map.of("values",List.of("小圆领"),"status","OBSERVED","evidence","较窄的圆弧形领口")));
+        var result=schema.validate(data);
+        assertEquals(List.of("浅蓝色"),result.attributes().get("primaryColor").values());
+        assertEquals(List.of("小圆领"),result.attributes().get("neckline").values());
+        assertFalse(schema.schema().at("/properties/attributes/properties/primaryColor/properties/values/items").has("enum"));
+        assertTrue(recognition.prepare(new Recognition.Request("test","vision-test")).prompt().contains("不是枚举限制"));
+        ((tools.jackson.databind.node.ObjectNode)data.path("attributes").path("primaryColor")).put("status","UNKNOWN");
+        assertThrows(ProcessingException.class,()->schema.validate(data));
+        assertThrows(ProcessingException.class,()->RecognitionSchema.normalizeValues(RecognitionSchema.field("primaryColor"),List.of("浅蓝色","灰蓝色")));
+        assertThrows(ProcessingException.class,()->RecognitionSchema.normalizeValues(RecognitionSchema.field("primaryColor"),List.of("x".repeat(401))));
+        assertThrows(ProcessingException.class,()->RecognitionSchema.field("inventedField"));
+        assertEquals(List.of("浅蓝色"),RecognitionSchema.normalizeValues(RecognitionSchema.field("secondaryColors"),List.of("浅蓝","淡蓝色")));
+        assertEquals("蓝绿色",MetadataValues.colorFamily("蓝绿色"));
+    }
+    @Test void confirmedVocabularyUsesEffectiveValuesAcrossAllPagesAndOnlyForItsOwner() throws Exception {
+        String owner="vocabulary-"+UUID.randomUUID();
+        color="浅蓝色";var job=await(upload(identify()).id());var view=garments.get(job.request().garmentId());
+        jdbc.update("UPDATE garment SET owner_username=? WHERE id=?",owner,view.id().toString());
+        assertTrue(garments.metadataOptions(owner).get("primaryColor").isEmpty(),"draft model output is not a reusable choice");
+        view=garments.edit(view.id(),new GarmentRepository.Edit(view.revision(),Map.of("neckline",List.of("小圆领"),"patterns",List.of("细条纹","刺绣")),List.of()));
+        view=garments.confirm(view.id(),new GarmentRepository.Confirm(view.revision(),view.sourceAssetId(),Map.of(),List.of()));
+        var options=garments.metadataOptions(owner);
+        assertEquals(List.of("浅蓝色","蓝色"),options.get("primaryColor"));
+        assertEquals(List.of("小圆领"),options.get("neckline"));
+        assertTrue(garments.metadataFields(owner).stream().filter(f->f.key().equals("neckline")).findFirst().orElseThrow().options().contains("小圆领"));
+        assertTrue(garments.metadataOptions("other-"+owner).get("neckline").isEmpty());
+        assertEquals(1,garments.listCloset(owner,"ACTIVE","","","蓝色","",1,1).total());
+        assertEquals(1,garments.listCloset(owner,"ACTIVE","","","淡蓝","",1,1).total());
+        assertEquals(0,garments.listCloset(owner,"ACTIVE","","","灰色","",1,1).total());
+        var second=await(upload(identify()).id());var other=garments.get(second.request().garmentId());
+        jdbc.update("UPDATE garment SET owner_username=? WHERE id=?",owner,other.id().toString());
+        other=garments.confirm(other.id(),new GarmentRepository.Confirm(other.revision(),other.sourceAssetId(),Map.of("category",List.of("针织开衫"),"primaryColor",List.of("灰蓝色")),List.of()));
+        assertEquals(1,garments.listCloset(owner,"ACTIVE","","","","",1,1).items().size());
+        assertTrue(garments.metadataOptions(owner).get("category").contains("针织开衫"),"choices cover more than the current page");
+        assertEquals(2,garments.listCloset(owner,"ACTIVE","","","蓝色","",1,1).total());
+        view=garments.edit(view.id(),new GarmentRepository.Edit(view.revision(),Map.of("primaryColor",List.of("鼠尾草绿")),List.of()));
+        assertFalse(garments.metadataOptions(owner).get("primaryColor").contains("浅蓝色"),"manual edits replace automatic choices");
+        view=garments.edit(view.id(),new GarmentRepository.Edit(view.revision(),Map.of("primaryColor",List.of()),List.of()));
+        assertFalse(garments.metadataOptions(owner).get("primaryColor").contains("鼠尾草绿"));
+        view=garments.edit(view.id(),new GarmentRepository.Edit(view.revision(),Map.of(),List.of("primaryColor")));
+        assertTrue(garments.metadataOptions(owner).get("primaryColor").contains("浅蓝色"));
+        view=garments.trash(view.id(),view.revision());
+        assertFalse(garments.metadataOptions(owner).get("neckline").contains("小圆领"));
+        garments.restore(view.id(),view.revision());
+        assertTrue(garments.metadataOptions(owner).get("neckline").contains("小圆领"));
     }
     @Test void nativeGeminiProtocolAndBoundedWhiteBackgroundInput()throws Exception {
         var large=new BufferedImage(2000,1000,BufferedImage.TYPE_INT_ARGB);var g=large.createGraphics();g.setColor(Color.BLUE);g.fillRect(500,250,1000,500);g.dispose();

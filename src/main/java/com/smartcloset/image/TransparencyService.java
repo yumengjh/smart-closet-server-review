@@ -8,8 +8,8 @@ import org.springframework.stereotype.Service;
 
 @Service
 public class TransparencyService {
-    public enum Policy { AUTO, FORCE, PRESERVE }
-    public enum Action { REUSED_ALPHA, SEGMENTED, NEEDS_REVIEW, REJECTED }
+    public enum Policy { AUTO, FORCE, PRESERVE, REVIEWED }
+    public enum Action { REUSED_ALPHA, APPROVED_ALPHA, SEGMENTED, NEEDS_REVIEW, REJECTED }
     public record Decision(Policy policy, Action action, TransparencyInspector.Report before, TransparencyInspector.Report after) {}
     public record Result(byte[] png, UUID segmentationId, Decision decision) {
         public boolean needsReview() { return decision.action() == Action.NEEDS_REVIEW; }
@@ -25,6 +25,13 @@ public class TransparencyService {
         var before = inspect(png);
         if (before.verdict() == TransparencyInspector.Verdict.EMPTY)
             return new Result(png, null, new Decision(policy, Action.REJECTED, before, before));
+        if (policy == Policy.REVIEWED) {
+            // Human approval may accept structural warnings, never opaque or empty pixels.
+            if (!before.hasAlpha() || before.transparentRatio() < TransparencyInspector.MIN_TRANSPARENT_RATIO
+                    || before.verdict() == TransparencyInspector.Verdict.OPAQUE)
+                throw ProcessingException.invalid("这张图片没有有效透明背景，请先重新抠图。");
+            return new Result(png, null, new Decision(policy, Action.APPROVED_ALPHA, before, before));
+        }
         if (policy != Policy.FORCE && before.verdict() == TransparencyInspector.Verdict.USABLE)
             return new Result(png, null, new Decision(policy, Action.REUSED_ALPHA, before, before));
         if (policy == Policy.PRESERVE || (policy == Policy.AUTO && before.verdict() == TransparencyInspector.Verdict.SUSPICIOUS))

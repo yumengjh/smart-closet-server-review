@@ -39,6 +39,8 @@ public class ClosetProductController {
         this.ownership = ownership; this.models = models; this.jdbc = jdbc; this.files = files;
     }
 
+    @GetMapping("/metadata-options") public Map<String, List<String>> metadataOptions() { return garments.metadataOptions(ClosetIdentity.username()); }
+
     @GetMapping("/garments") public GarmentRepository.ClosetPage list(
             @RequestParam(defaultValue = "ACTIVE") String status, @RequestParam(defaultValue = "") String q,
             @RequestParam(defaultValue = "") String category, @RequestParam(defaultValue = "") String color,

@@ -20,13 +20,18 @@ public class GarmentRepository {
                        Map<String, List<String>> overrides, Map<String, List<String>> effective,
                        UUID latestRecognitionJobId, UUID appliedRecognitionJobId, List<Run> runs,
                        String status, String restoreStatus, long createdAtMs, long updatedAtMs, UUID latestImageJobId,
-                       List<ImageOption> images) {}
+                       List<ImageOption> images, ImageProcessing imageProcessing) {}
+    public record ImageProcessing(UUID jobId, String status, boolean stickerRequired, boolean stickerReady, UUID stickerAssetId) {}
     public record ImageOption(UUID id, String url, String kind, String reviewStatus) {}
     public record ClosetPage(List<View> items, long total, int page, int size) {}
     public record Run(UUID id, String status, long createdAtMs, String outputUrl) {}
     public record Edit(Long revision, Map<String, List<String>> fields, List<String> resetFields) {}
     public record SelectImage(Long revision, UUID assetId) {}
-    public record Confirm(Long revision, UUID assetId, Map<String, List<String>> fields, List<String> resetFields) {}
+    public record Confirm(Long revision, UUID assetId, Map<String, List<String>> fields, List<String> resetFields, Boolean allowIncompleteSticker) {
+        public Confirm(Long revision, UUID assetId, Map<String, List<String>> fields, List<String> resetFields) {
+            this(revision, assetId, fields, resetFields, false);
+        }
+    }
     private final JdbcTemplate jdbc;
     private final ObjectMapper json;
     private final TransactionTemplate tx;
@@ -47,17 +52,28 @@ public class GarmentRepository {
         return tx.execute(t -> {
             var r = row(id, true); var overrides = overrides(r.overrides());
             var automatic = r.automatic() == null ? null : json.readValue(r.automatic(), Recognition.Result.class);
-            var effective = new LinkedHashMap<String, List<String>>();
-            for (var f : RecognitionSchema.FIELDS) effective.put(f.key(), overrides.containsKey(f.key()) ? overrides.get(f.key())
-                : automatic == null ? List.of() : automatic.attributes().get(f.key()).values());
+            var effective = effective(automatic, overrides);
             var runs = jdbc.query("SELECT id,status,created_at_ms,output_url FROM workflow_job WHERE garment_id=? ORDER BY created_at_ms DESC,id DESC",
                 (rs, n) -> new Run(UUID.fromString(rs.getString(1)), rs.getString(2), rs.getLong(3), rs.getString(4)), id.toString());
             var images = jdbc.query("SELECT a.id,j.id AS job_id,a.file_name,a.kind,a.review_status FROM image_asset a JOIN workflow_job j ON a.job_id=j.id WHERE j.garment_id=? ORDER BY j.created_at_ms,a.created_at_ms,a.file_name",
                     (rs,n) -> new ImageOption(UUID.fromString(rs.getString(1)), "/api/workflows/" + rs.getString(2) + "/files/" + rs.getString(3), rs.getString(4), rs.getString(5)), id.toString());
             return new View(id, r.revision(), UUID.fromString(r.source()), assetUrl(r.source()), r.origin(), UUID.fromString(r.display()), assetUrl(r.display()),
                 automatic, overrides, effective, uuid(r.latest()), uuid(r.applied()), runs,
-                r.status(), r.restoreStatus(), r.created(), r.updated(), uuid(r.latestImage()), images);
+                r.status(), r.restoreStatus(), r.created(), r.updated(), uuid(r.latestImage()), images, imageProcessing(r));
         });
+    }
+    private ImageProcessing imageProcessing(Row row) {
+        if (row.latestImage() == null) return null;
+        String status = jdbc.queryForObject("SELECT status FROM workflow_job WHERE id=?", String.class, row.latestImage());
+        var steps = jdbc.query("SELECT result_json FROM workflow_step WHERE job_id=? AND step_type='STICKER' ORDER BY step_no DESC",
+                (rs,n) -> json.readValue(rs.getString(1), StepResult.class), row.latestImage());
+        if (steps.isEmpty()) return new ImageProcessing(uuid(row.latestImage()), status, false, false, null);
+        var step = steps.getFirst();
+        var assets = step.status() == Status.SUCCEEDED && step.outputUrl() != null
+                ? jdbc.query("SELECT id FROM image_asset WHERE job_id=? AND kind='STICKER' AND file_name=?",
+                    (rs,n) -> UUID.fromString(rs.getString(1)), row.latestImage(), step.outputUrl().substring(step.outputUrl().lastIndexOf('/') + 1))
+                : List.<UUID>of();
+        return new ImageProcessing(uuid(row.latestImage()), status, true, !assets.isEmpty(), assets.isEmpty() ? null : assets.getFirst());
     }
     public ClosetPage listCloset(String owner, String status, String query, String category, String color, String season, int page, int size) {
         if (page < 1 || size < 1 || size > 50) throw ProcessingException.invalid("page 从 1 开始，size 为 1 到 50。");
@@ -67,14 +83,43 @@ public class GarmentRepository {
         var matches = new ArrayList<View>();
         for (UUID id : ids) {
             View view = get(id);
-            if (category != null && !category.isBlank() && !view.effective().getOrDefault("category", List.of()).contains(category)) continue;
-            if (color != null && !color.isBlank() && !view.effective().getOrDefault("primaryColor", List.of()).contains(color)) continue;
-            if (season != null && !season.isBlank() && !view.effective().getOrDefault("seasons", List.of()).contains(season)) continue;
+            if (category != null && !category.isBlank() && !view.effective().getOrDefault("category", List.of()).contains(MetadataValues.canonical("category", category))) continue;
+            if (color != null && !color.isBlank() && !MetadataValues.matchesColor(view.effective().getOrDefault("primaryColor", List.of()), color)) continue;
+            if (season != null && !season.isBlank() && !view.effective().getOrDefault("seasons", List.of()).contains(MetadataValues.canonical("seasons", season))) continue;
             if (!q.isBlank() && view.effective().values().stream().flatMap(Collection::stream).noneMatch(value -> value.toLowerCase(Locale.ROOT).contains(q))) continue;
             matches.add(view);
         }
         int from = Math.min(matches.size(), (page - 1) * size), to = Math.min(matches.size(), from + size);
         return new ClosetPage(matches.subList(from, to), matches.size(), page, size);
+    }
+    /** Only confirmed, currently visible clothes contribute reusable account-specific choices. */
+    public Map<String, List<String>> metadataOptions(String owner) {
+        var choices = new LinkedHashMap<String, SortedSet<String>>();
+        for (var field : RecognitionSchema.FIELDS) choices.put(field.key(), new TreeSet<>());
+        jdbc.query("SELECT automatic_json,overrides_json FROM garment WHERE owner_username=? AND closet_status='ACTIVE'", (rs, n) -> {
+            var automatic = rs.getString(1) == null ? null : json.readValue(rs.getString(1), Recognition.Result.class);
+            effective(automatic, overrides(rs.getString(2))).forEach((key, values) -> {
+                choices.get(key).addAll(values);
+                if (key.equals("primaryColor")) for (String value : values) choices.get(key).add(MetadataValues.colorFamily(value));
+            });
+            return null;
+        }, owner);
+        var result = new LinkedHashMap<String, List<String>>();
+        choices.forEach((key, values) -> result.put(key, List.copyOf(values)));
+        return result;
+    }
+    public List<RecognitionSchema.Field> metadataFields(String owner) {
+        var choices = metadataOptions(owner);
+        return RecognitionSchema.FIELDS.stream().map(f -> {
+            var values = new LinkedHashSet<>(f.options()); values.addAll(choices.get(f.key()));
+            return new RecognitionSchema.Field(f.key(), f.label(), List.copyOf(values), f.multiple(), f.suggestion());
+        }).toList();
+    }
+    private Map<String, List<String>> effective(Recognition.Result automatic, Map<String, List<String>> overrides) {
+        var values = new LinkedHashMap<String, List<String>>();
+        for (var field : RecognitionSchema.FIELDS) values.put(field.key(), MetadataValues.canonical(field.key(), overrides.containsKey(field.key())
+            ? overrides.get(field.key()) : automatic == null ? List.of() : automatic.attributes().get(field.key()).values()));
+        return values;
     }
     public List<UUID> list(int page, int size) {
         if (page < 1 || size < 1 || size > 50) throw ProcessingException.invalid("page 从 1 开始，size 为 1 到 50。");
@@ -116,7 +161,7 @@ public class GarmentRepository {
         tx.executeWithoutResult(t -> {
             var r = row(id, true); checkRevision(r, request.revision()); var values = overrides(r.overrides());
             if (request.fields() != null) for (var e : request.fields().entrySet()) {
-                var f = RecognitionSchema.field(e.getKey()); RecognitionSchema.validateValues(f, e.getValue()); values.put(e.getKey(), List.copyOf(e.getValue()));
+                var f = RecognitionSchema.field(e.getKey()); values.put(e.getKey(), RecognitionSchema.normalizeValues(f, e.getValue()));
             }
             if (request.resetFields() != null) for (String key : request.resetFields()) {
                 RecognitionSchema.field(key);
@@ -148,10 +193,13 @@ public class GarmentRepository {
             if (blocked > 0) throw new ProcessingException(HttpStatus.CONFLICT, "GARMENT_TARGET_UNCLEAR", "照片中的衣物数量或清晰度不适合确认入柜，请更换照片后重新录入。");
             int active = jdbc.queryForObject("SELECT COUNT(*) FROM workflow_job WHERE garment_id=? AND status IN ('QUEUED','RUNNING','CANCEL_REQUESTED')", Integer.class, id.toString());
             if (active > 0) throw new ProcessingException(HttpStatus.CONFLICT, "WORKFLOW_ACTIVE", "图片仍在处理中，请等待完成或取消任务后再确认。");
+            var image = imageProcessing(current);
+            if (image != null && image.stickerRequired() && !image.stickerReady()
+                    && !(Boolean.TRUE.equals(request.allowIncompleteSticker()) && request.assetId().toString().equals(current.source())))
+                throw new ProcessingException(HttpStatus.CONFLICT, "STICKER_NOT_READY", "贴纸尚未制作完成，请继续处理；如需先入柜，请明确选择暂用上传原图。");
             var values = overrides(current.overrides());
             if (request.fields() != null) for (var entry : request.fields().entrySet()) {
-                RecognitionSchema.validateValues(RecognitionSchema.field(entry.getKey()), entry.getValue());
-                values.put(entry.getKey(), List.copyOf(entry.getValue()));
+                values.put(entry.getKey(), RecognitionSchema.normalizeValues(RecognitionSchema.field(entry.getKey()), entry.getValue()));
             }
             if (request.resetFields() != null) for (String key : request.resetFields()) {
                 RecognitionSchema.field(key);

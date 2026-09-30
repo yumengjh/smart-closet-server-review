@@ -48,7 +48,7 @@ class ClosetAuthenticationApiTest {
         assertEquals(204, response.statusCode(), response.body());
     }
     @Test void anonymousBusinessRequestsReturnExplicit401InsteadOf403() throws Exception {
-        for (String path : new String[]{"/api/auth/me", "/api/closet/garments", "/api/closet/tasks", "/api/recognition/schema"}) {
+        for (String path : new String[]{"/api/auth/me", "/api/closet/garments", "/api/closet/tasks", "/api/recognition/schema", "/api/closet/metadata-options"}) {
             var response = get(path);
             assertEquals(401, response.statusCode(), path + ": " + response.body());
             assertEquals("AUTHENTICATION_REQUIRED", json.readTree(response.body()).path("code").asText());
@@ -56,7 +56,7 @@ class ClosetAuthenticationApiTest {
     }
     @Test void firstLoginBlocksBusinessWithReasonAndPasswordChangeUnlocksScreenshotEndpoints() throws Exception {
         login();
-        String[] endpoints = {"/api/closet/garments?status=ACTIVE&page=1&size=24", "/api/closet/garments?status=DRAFT&page=1&size=24", "/api/closet/tasks?page=1&size=50", "/api/recognition/schema", "/api/closet/quota"};
+        String[] endpoints = {"/api/closet/garments?status=ACTIVE&page=1&size=24", "/api/closet/garments?status=DRAFT&page=1&size=24", "/api/closet/tasks?page=1&size=50", "/api/recognition/schema", "/api/closet/quota", "/api/closet/metadata-options"};
         for (String path : endpoints) {
             var response = get(path);
             assertEquals(403, response.statusCode(), path + ": " + response.body());
