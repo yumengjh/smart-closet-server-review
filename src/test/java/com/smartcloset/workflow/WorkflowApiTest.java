@@ -16,6 +16,8 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
+import org.springframework.beans.factory.annotation.Autowired;
+import com.smartcloset.security.ClosetAccountService;
 import tools.jackson.databind.*;
 import tools.jackson.databind.json.JsonMapper;
 import static org.junit.jupiter.api.Assertions.*;
@@ -40,17 +42,31 @@ class WorkflowApiTest {
         p.add("generation.providers.test.base-url",()->"http://127.0.0.1:"+provider.getAddress().getPort()+"/v1");
         p.add("generation.providers.test.api-key",()->"fake-secret");p.add("generation.providers.test.default-model",()->"stub-image");
     }
-    @BeforeEach void resetProvider(){fail=false;generatedOverride=null;}
+    @BeforeEach void resetProvider() throws Exception {
+        fail=false;generatedOverride=null;
+        accounts.bootstrap("test-admin", "test-admin-password");
+        var response=client.send(HttpRequest.newBuilder(URI.create("http://127.0.0.1:"+port+"/api/auth/csrf")).GET().build(),HttpResponse.BodyHandlers.ofByteArray());
+        csrf=json.readTree(response.body()).path("token").asText();
+        var login=client.send(HttpRequest.newBuilder(URI.create("http://127.0.0.1:"+port+"/api/auth/login")).header("Content-Type","application/json").header("X-XSRF-TOKEN",csrf)
+                .POST(HttpRequest.BodyPublishers.ofString("{\"username\":\"test-admin\",\"password\":\"test-admin-password\"}")).build(),HttpResponse.BodyHandlers.ofByteArray());
+        assertEquals(200,login.statusCode(),new String(login.body()));
+        var password=client.send(HttpRequest.newBuilder(URI.create("http://127.0.0.1:"+port+"/api/auth/password")).header("Content-Type","application/json").header("X-XSRF-TOKEN",csrf)
+                .POST(HttpRequest.BodyPublishers.ofString("{\"currentPassword\":\"test-admin-password\",\"newPassword\":\"test-admin-password\"}")).build(),HttpResponse.BodyHandlers.ofByteArray());
+        assertEquals(204,password.statusCode(),new String(password.body()));
+    }
     @AfterAll static void stop(){provider.stop(0);}
     @LocalServerPort int port;
-    HttpClient client=HttpClient.newHttpClient();JsonMapper json=JsonMapper.builder().build();
+    CookieManager cookieManager=new CookieManager(null,CookiePolicy.ACCEPT_ALL);
+    HttpClient client=HttpClient.newBuilder().cookieHandler(cookieManager).build();JsonMapper json=JsonMapper.builder().build();
+    @Autowired ClosetAccountService accounts;
+    String csrf;
     static byte[] fixture() throws IOException{
         var image=new BufferedImage(160,200,BufferedImage.TYPE_INT_RGB);var g=image.createGraphics();g.setColor(Color.WHITE);g.fillRect(0,0,160,200);g.setColor(Color.BLUE);g.fillRect(40,40,80,120);g.dispose();
         var out=new ByteArrayOutputStream();ImageIO.write(image,"png",out);return out.toByteArray();
     }
     String generate="{\"type\":\"GENERATE\",\"mode\":\"TEXT_TO_IMAGE\",\"generation\":{\"provider\":\"test\",\"prompt\":\"Blue shirt\"}}";
     HttpResponse<byte[]> get(String path)throws Exception{return client.send(HttpRequest.newBuilder(URI.create("http://127.0.0.1:"+port+path)).GET().build(),HttpResponse.BodyHandlers.ofByteArray());}
-    HttpResponse<byte[]> post(String body,UUID key)throws Exception{return client.send(HttpRequest.newBuilder(URI.create("http://127.0.0.1:"+port+"/api/workflows")).header("Content-Type","application/json").header("Idempotency-Key",key.toString()).POST(HttpRequest.BodyPublishers.ofString(body)).build(),HttpResponse.BodyHandlers.ofByteArray());}
+    HttpResponse<byte[]> post(String body,UUID key)throws Exception{return client.send(HttpRequest.newBuilder(URI.create("http://127.0.0.1:"+port+"/api/workflows")).header("Content-Type","application/json").header("X-XSRF-TOKEN",csrf).header("Idempotency-Key",key.toString()).POST(HttpRequest.BodyPublishers.ofString(body)).build(),HttpResponse.BodyHandlers.ofByteArray());}
     JsonNode await(UUID id)throws Exception{
         for(int i=0;i<200;i++){var job=json.readTree(get("/api/workflows/"+id).body());if(!Set.of("QUEUED","RUNNING").contains(job.path("status").asText()))return job;Thread.sleep(30);}
         throw new AssertionError("workflow timeout");
@@ -82,7 +98,7 @@ class WorkflowApiTest {
     @Test void multipartRotatesBeforeSavingAndLocalOnlyDoesNotCallProvider()throws Exception{
         int before=calls.get();String workflow="{\"rotationDegrees\":90,\"steps\":[{\"type\":\"SEGMENT\",\"method\":\"GRABCUT\"},{\"type\":\"STICKER\"}]}";
         var bytes=new ByteArrayOutputStream();bytes.write(("--test\r\nContent-Disposition: form-data; name=\"workflow\"\r\nContent-Type: application/json\r\n\r\n"+workflow+"\r\n--test\r\nContent-Disposition: form-data; name=\"file\"; filename=\"shirt.png\"\r\nContent-Type: image/png\r\n\r\n").getBytes());bytes.write(fixture());bytes.write("\r\n--test--\r\n".getBytes());
-        UUID id=UUID.randomUUID();var response=client.send(HttpRequest.newBuilder(URI.create("http://127.0.0.1:"+port+"/api/workflows")).header("Content-Type","multipart/form-data; boundary=test").header("Idempotency-Key",id.toString()).POST(HttpRequest.BodyPublishers.ofByteArray(bytes.toByteArray())).build(),HttpResponse.BodyHandlers.ofByteArray());
+        UUID id=UUID.randomUUID();var response=client.send(HttpRequest.newBuilder(URI.create("http://127.0.0.1:"+port+"/api/workflows")).header("Content-Type","multipart/form-data; boundary=test").header("X-XSRF-TOKEN",csrf).header("Idempotency-Key",id.toString()).POST(HttpRequest.BodyPublishers.ofByteArray(bytes.toByteArray())).build(),HttpResponse.BodyHandlers.ofByteArray());
         assertEquals(202,response.statusCode(),new String(response.body()));var job=await(id);assertEquals("SUCCEEDED",job.path("status").asText(),job.toString());assertFalse(job.path("requiresReview").asBoolean());
         var input=ImageIO.read(new ByteArrayInputStream(get(job.path("inputUrl").asText()).body()));assertEquals(200,input.getWidth());assertEquals(160,input.getHeight());assertEquals(before,calls.get());
         for(String file:new String[]{"index.html","app.js","styles.css"})assertEquals(200,get("/workflow/"+file).statusCode());
@@ -96,7 +112,7 @@ class WorkflowApiTest {
     HttpResponse<byte[]> multipart(String workflow,byte[] file,UUID id)throws Exception{
         var bytes=new ByteArrayOutputStream();bytes.write(("--alpha-test\r\nContent-Disposition: form-data; name=\"workflow\"\r\nContent-Type: application/json\r\n\r\n"+workflow+"\r\n--alpha-test\r\nContent-Disposition: form-data; name=\"file\"; filename=\"shirt.png\"\r\nContent-Type: image/png\r\n\r\n").getBytes());
         bytes.write(file);bytes.write("\r\n--alpha-test--\r\n".getBytes());
-        return client.send(HttpRequest.newBuilder(URI.create("http://127.0.0.1:"+port+"/api/workflows")).header("Content-Type","multipart/form-data; boundary=alpha-test")
+        return client.send(HttpRequest.newBuilder(URI.create("http://127.0.0.1:"+port+"/api/workflows")).header("Content-Type","multipart/form-data; boundary=alpha-test").header("X-XSRF-TOKEN",csrf)
                 .header("Idempotency-Key",id.toString()).POST(HttpRequest.BodyPublishers.ofByteArray(bytes.toByteArray())).build(),HttpResponse.BodyHandlers.ofByteArray());
     }
     @Test void generatedTransparentImageBypassesSegmentationAndFeedsStickerDirectly()throws Exception{
@@ -139,8 +155,56 @@ class WorkflowApiTest {
 
     HttpResponse<byte[]> action(String path,String body,UUID key)throws Exception{
         var request=HttpRequest.newBuilder(URI.create("http://127.0.0.1:"+port+path)).header("Content-Type","application/json");
+        request.header("X-XSRF-TOKEN",csrf);
         if(key!=null)request.header("Idempotency-Key",key.toString());
         return client.send(request.POST(HttpRequest.BodyPublishers.ofString(body)).build(),HttpResponse.BodyHandlers.ofByteArray());
+    }
+    String signIn(HttpClient target, String username, String password) throws Exception {
+        var csrfResponse=target.send(HttpRequest.newBuilder(URI.create("http://127.0.0.1:"+port+"/api/auth/csrf")).GET().build(),HttpResponse.BodyHandlers.ofByteArray());
+        String token=json.readTree(csrfResponse.body()).path("token").asText();
+        var login=target.send(HttpRequest.newBuilder(URI.create("http://127.0.0.1:"+port+"/api/auth/login")).header("Content-Type","application/json").header("X-XSRF-TOKEN",token)
+                .POST(HttpRequest.BodyPublishers.ofString("{\"username\":\""+username+"\",\"password\":\""+password+"\"}")).build(),HttpResponse.BodyHandlers.ofByteArray());
+        assertEquals(200,login.statusCode(),new String(login.body()));
+        var changed=target.send(HttpRequest.newBuilder(URI.create("http://127.0.0.1:"+port+"/api/auth/password")).header("Content-Type","application/json").header("X-XSRF-TOKEN",token)
+                .POST(HttpRequest.BodyPublishers.ofString("{\"currentPassword\":\""+password+"\",\"newPassword\":\""+password+"\"}")).build(),HttpResponse.BodyHandlers.ofByteArray());
+        assertEquals(204,changed.statusCode());
+        return token;
+    }
+    HttpResponse<byte[]> productUpload(HttpClient target, String token, UUID key) throws Exception {
+        String boundary="closet-product-test";
+        var bytes=new ByteArrayOutputStream();
+        bytes.write(("--"+boundary+"\r\nContent-Disposition: form-data; name=\"workflow\"\r\nContent-Type: application/json\r\n\r\n{\"mode\":\"本地贴纸\"}\r\n--"+boundary+"\r\nContent-Disposition: form-data; name=\"file\"; filename=\"shirt.png\"\r\nContent-Type: image/png\r\n\r\n").getBytes());
+        bytes.write(fixture()); bytes.write(("\r\n--"+boundary+"--\r\n").getBytes());
+        return target.send(HttpRequest.newBuilder(URI.create("http://127.0.0.1:"+port+"/api/closet/garments")).header("Content-Type","multipart/form-data; boundary="+boundary)
+                .header("X-XSRF-TOKEN",token).header("Idempotency-Key",key.toString()).POST(HttpRequest.BodyPublishers.ofByteArray(bytes.toByteArray())).build(),HttpResponse.BodyHandlers.ofByteArray());
+    }
+    @Test void usersCannotReadAnotherClosetOrReuseItsIdempotencyKey() throws Exception {
+        UUID taskId=UUID.randomUUID();
+        var created=multipart("{\"steps\":[{\"type\":\"ENSURE_TRANSPARENCY\",\"method\":\"GRABCUT\"}]}",fixture(),taskId);
+        assertEquals(202,created.statusCode(),new String(created.body()));
+        var task=json.readTree(get("/api/workflows/"+taskId).body());
+        String garmentId=task.at("/request/garmentId").asText(); assertFalse(garmentId.isBlank());
+        accounts.create("second-user","second-user-password","USER");
+        CookieManager otherCookies=new CookieManager(null,CookiePolicy.ACCEPT_ALL);
+        HttpClient other=HttpClient.newBuilder().cookieHandler(otherCookies).build();
+        String otherCsrf=signIn(other,"second-user","second-user-password");
+        var list=other.send(HttpRequest.newBuilder(URI.create("http://127.0.0.1:"+port+"/api/closet/garments?status=DRAFT")).GET().build(),HttpResponse.BodyHandlers.ofByteArray());
+        assertEquals(200,list.statusCode()); assertEquals(0,json.readTree(list.body()).path("total").asInt());
+        assertEquals(404,other.send(HttpRequest.newBuilder(URI.create("http://127.0.0.1:"+port+"/api/workflows/"+taskId)).GET().build(),HttpResponse.BodyHandlers.ofByteArray()).statusCode());
+        assertEquals(404,other.send(HttpRequest.newBuilder(URI.create("http://127.0.0.1:"+port+"/api/workflows/"+taskId+"/files/input.png")).GET().build(),HttpResponse.BodyHandlers.ofByteArray()).statusCode());
+        assertEquals(404,other.send(HttpRequest.newBuilder(URI.create("http://127.0.0.1:"+port+"/api/garments/"+garmentId)).GET().build(),HttpResponse.BodyHandlers.ofByteArray()).statusCode());
+        assertEquals(404,productUpload(other,otherCsrf,taskId).statusCode());
+    }
+    @Test void productionVueBundleAndHistoryRoutesAreServedBySpring() throws Exception {
+        for (String path : java.util.List.of("/", "/login", "/wardrobe", "/pending", "/tasks", "/settings", "/add", "/trash", "/garment/00000000-0000-0000-0000-000000000000")) {
+            var page=get(path);
+            assertEquals(200,page.statusCode(),path);
+            assertTrue(new String(page.body()).contains("id=\"app\""),path);
+        }
+        String html=new String(get("/").body());
+        var script=java.util.regex.Pattern.compile("src=\"([^\"]+\\.js)\"").matcher(html);
+        assertTrue(script.find(),html);
+        assertEquals(200,get(script.group(1)).statusCode());
     }
     @Test void failedPostprocessingCanContinueWithoutAnotherGenerationAndReviewPersists()throws Exception{
         int before=calls.get();UUID id=UUID.randomUUID();

@@ -22,3 +22,14 @@ generation:
       defaults:
         imageConfig:
           aspectRatio: '1:1'
+
+# Recognition reuses a server-side provider's credentials; its model is independent.
+recognition:
+  default-provider: yumg
+  providers:
+    yumg:
+      credential-provider: yumg
+      protocol: OPENAI_CHAT
+      default-model: gpt-5.6-luna
+      max-output-tokens: 4096
+      reasoning-effort: low

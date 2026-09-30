@@ -5,10 +5,12 @@ import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.smartcloset.image.ProcessingException;
 import com.smartcloset.workflow.Workflow.*;
+import com.smartcloset.security.ClosetIdentity;
 import java.time.Instant;
 import java.util.*;
 import org.flywaydb.core.Flyway;
 import org.springframework.http.HttpStatus;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
@@ -23,11 +25,14 @@ public class WorkflowRepository {
     private final AssetMapper assets;
     private final ObjectMapper json;
     private final TransactionTemplate tx;
+    private final com.smartcloset.garment.GarmentRepository garments;
+    private final JdbcTemplate jdbc;
 
     public WorkflowRepository(JobMapper jobs, StepMapper steps, AttemptMapper attempts, AssetMapper assets,
-            ObjectMapper json, PlatformTransactionManager manager, Flyway workflowMigrations) {
+            ObjectMapper json, PlatformTransactionManager manager, Flyway workflowMigrations,
+            com.smartcloset.garment.GarmentRepository garments, JdbcTemplate jdbc) {
         this.jobs = jobs; this.steps = steps; this.attempts = attempts; this.assets = assets;
-        this.json = json; this.tx = new TransactionTemplate(manager);
+        this.json = json; this.tx = new TransactionTemplate(manager); this.garments = garments; this.jdbc = jdbc;
     }
 
     public synchronized boolean exists(UUID id) { return jobs.selectById(id.toString()) != null; }
@@ -36,8 +41,10 @@ public class WorkflowRepository {
         tx.executeWithoutResult(t -> {
             JobRow row = row(job); row.version = 0L;
             jobs.insert(row);
+            reserveQuota(job);
             for (var result : job.steps()) steps.insert(step(job.id(), result));
             inputAssets.forEach(assets::insert);
+            garments.submitted(job, inputAssets);
         });
     }
 
@@ -52,6 +59,7 @@ public class WorkflowRepository {
                 throw new IllegalStateException("Concurrent workflow update");
             for (var result : job.steps()) steps.updateById(step(job.id(), result));
             if (asset != null && assetByFile(job.id(), asset.fileName) == null) assets.insert(asset);
+            garments.progress(job, asset);
         });
     }
 
@@ -70,7 +78,8 @@ public class WorkflowRepository {
 
     public synchronized History history(int page, int size, Status status) {
         if (page < 1 || size < 1 || size > 50) throw ProcessingException.invalid("page 从 1 开始，size 为 1 到 50。");
-        var q = new QueryWrapper<JobRow>().eq(status != null, "status", status == null ? null : status.name())
+        String owner = ClosetIdentity.username();
+        var q = new QueryWrapper<JobRow>().eq(owner != null, "owner_username", owner).eq(status != null, "status", status == null ? null : status.name())
                 .orderByDesc("created_at_ms", "id");
         var result = jobs.selectPage(new Page<JobRow>(page, size), q);
         var items = result.getRecords().stream().map(r -> new Summary(UUID.fromString(r.id), Status.valueOf(r.status),
@@ -100,8 +109,14 @@ public class WorkflowRepository {
     }
 
     public synchronized String startAttempt(UUID jobId, int stepNo, com.smartcloset.generation.GenerationService.Prepared prepared) {
+        return startAttempt(jobId, stepNo, prepared.provider(), prepared.model(), prepared);
+    }
+    public synchronized String startAttempt(UUID jobId, int stepNo, com.smartcloset.recognition.Recognition.Prepared prepared) {
+        return startAttempt(jobId, stepNo, prepared.provider(), prepared.model(), prepared);
+    }
+    private String startAttempt(UUID jobId, int stepNo, String provider, String model, Object prepared) {
         var row = new AttemptRow(); row.id = UUID.randomUUID().toString(); row.jobId = jobId.toString();
-        row.stepNo = stepNo; row.attemptNo = 1; row.providerId = prepared.provider(); row.modelId = prepared.model();
+        row.stepNo = stepNo; row.attemptNo = 1; row.providerId = provider; row.modelId = model;
         row.status = "DISPATCHING"; row.requestJson = json.writeValueAsString(prepared); row.startedAtMs = System.currentTimeMillis();
         attempts.insert(row);
         return row.id;
@@ -158,7 +173,24 @@ public class WorkflowRepository {
         r.requiresReview = job.requiresReview() ? 1 : 0; r.errorJson = job.error() == null ? null : json.writeValueAsString(job.error());
         r.parentJobId = job.parentJobId() == null ? null : job.parentJobId().toString();
         r.selectedAssetId = job.selectedAssetId() == null ? null : job.selectedAssetId().toString();
+        r.ownerUsername = ClosetIdentity.username();
         return r;
+    }
+
+    private void reserveQuota(Job job) {
+        String owner = ClosetIdentity.username();
+        boolean ai = job.request().steps().stream().anyMatch(s -> s.type() == Type.GENERATE || s.type() == Type.RECOGNIZE);
+        if (!ai || owner == null) return;
+        var today = java.time.LocalDate.now(java.time.ZoneId.of("Asia/Shanghai"));
+        var values = jdbc.query("SELECT used FROM ai_daily_quota WHERE owner_username=? AND quota_date=? FOR UPDATE",
+                (r,n) -> r.getInt(1), owner, java.sql.Date.valueOf(today));
+        if (values.isEmpty()) {
+            jdbc.update("INSERT INTO ai_daily_quota(owner_username,quota_date,used) VALUES(?,?,1)", owner, java.sql.Date.valueOf(today));
+        } else {
+            int count = values.getFirst();
+            if (count >= 20) throw new ProcessingException(HttpStatus.TOO_MANY_REQUESTS, "AI_DAILY_QUOTA_EXCEEDED", "今天的 AI 任务额度已用完，明天可以继续整理。");
+            jdbc.update("UPDATE ai_daily_quota SET used=? WHERE owner_username=? AND quota_date=?", count + 1, owner, java.sql.Date.valueOf(today));
+        }
     }
     private StepRow step(UUID id, StepResult result) {
         var r = new StepRow(); r.id = id + ":" + result.index(); r.jobId = id.toString(); r.stepNo = result.index();

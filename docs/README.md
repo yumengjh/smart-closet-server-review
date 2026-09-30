@@ -7,12 +7,18 @@
 
 ## 接口与配置
 
+- [数字衣柜首版交付](CLOSET_PRODUCT.md)：真实运行、首次改密、账号命令、旧数据认领、当前产品路由和错误码。
+
+- [衣物档案与元信息识别](RECOGNITION.md)：默认自动流程、独立识别、字段编辑、模型替换与重跑。
+
 - [图片工作流接口](IMAGE_WORKFLOWS.md)
 - [生图服务商配置示例](generation.example.yml)：不含真实密钥。
 
 - [图生图 504 排查记录](UPSTREAM_TIMEOUTS.md)
 
 ## 验证报告
+
+- [数字衣柜 Vue 联调验证](../reports/closet/README.md)：真实 AI、选图与入柜、回收站、冲突核对、响应式及首次登录 403 修复。
 
 - [四表工作流验证](../reports/workflow/README.md)：数据库持久化、排队、取消、继续处理、采纳及进程重启验证。
 

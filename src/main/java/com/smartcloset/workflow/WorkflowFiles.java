@@ -60,6 +60,12 @@ public class WorkflowFiles {
         var path = directory(id).resolve("step-" + index + ".receipt.json");
         if (!Files.isRegularFile(path)) return null;
         var receipt = json.readValue(path.toFile(), Receipt.class);
+        if (receipt.result().type() == Workflow.Type.RECOGNIZE) {
+            if (receipt.result().index() != index || receipt.asset() != null || receipt.result().recognition() == null
+                    || !url(id, "input.png").equals(receipt.result().inputUrl()) || receipt.result().outputUrl() != null)
+                throw new IOException("Invalid recognition receipt");
+            return receipt;
+        }
         if (receipt.result().index() != index || !id.toString().equals(receipt.asset().jobId)
                 || !("step-" + index + ".png").equals(receipt.asset().fileName)
                 || !url(id, receipt.asset().fileName).equals(receipt.result().outputUrl()))

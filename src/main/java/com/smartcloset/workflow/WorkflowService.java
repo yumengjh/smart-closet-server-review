@@ -2,6 +2,10 @@ package com.smartcloset.workflow;
 
 import com.smartcloset.ClosetProperties;
 import com.smartcloset.generation.GenerationService;
+import com.smartcloset.recognition.*;
+import com.smartcloset.garment.GarmentRepository;
+import com.smartcloset.security.ClosetModelPolicy;
+import com.smartcloset.security.ClosetIdentity;
 import com.smartcloset.image.*;
 import com.smartcloset.workflow.persistence.*;
 import jakarta.annotation.PreDestroy;
@@ -33,6 +37,9 @@ public class WorkflowService {
     private final TransparencyService transparency;
     private final WorkflowRepository repository;
     private final WorkflowFiles files;
+    private final RecognitionService recognition;
+    private final GarmentRepository garments;
+    private final ClosetModelPolicy modelPolicy;
     private final int maxQueued;
     private final FileChannel lockChannel;
     private final FileLock storeLock;
@@ -42,11 +49,13 @@ public class WorkflowService {
 
     public WorkflowService(ClosetProperties closet, ObjectMapper json, GenerationService generation,
             SegmentationService segmentations, StickerRenderer stickers, TransparencyService transparency,
-            WorkflowRepository repository, WorkflowFiles files,
+            WorkflowRepository repository, WorkflowFiles files, RecognitionService recognition, GarmentRepository garments,
+            ClosetModelPolicy modelPolicy,
             @Value("${workflow.max-queued:30}") int maxQueued, @Value("${workflow.poll-ms:300}") long pollMs) throws IOException {
         this.closet = closet; this.json = json; this.generation = generation;
         this.segmentations = segmentations; this.stickers = stickers; this.transparency = transparency;
-        this.repository = repository; this.files = files; this.maxQueued = Math.max(1, maxQueued);
+        this.repository = repository; this.files = files; this.recognition = recognition; this.garments = garments;
+        this.modelPolicy = modelPolicy; this.maxQueued = Math.max(1, maxQueued);
         lockChannel = FileChannel.open(files.root().resolve(".worker.lock"), StandardOpenOption.CREATE, StandardOpenOption.WRITE);
         FileLock acquired;
         try { acquired = lockChannel.tryLock(); }
@@ -59,6 +68,7 @@ public class WorkflowService {
     }
 
     public synchronized Job submit(UUID key, Request request, byte[] upload) throws IOException {
+        if (request != null && request.garmentId() != null) throw ProcessingException.invalid("已有衣物请使用重新处理接口。");
         return submit(key, request, upload, null, fingerprint(request, upload, true));
     }
 
@@ -77,6 +87,11 @@ public class WorkflowService {
             throw ProcessingException.invalid("工作流需要 1 到 6 个步骤。");
         if (parentId == null && upload != null && upload.length > 15 * 1024 * 1024) throw ProcessingException.invalid("图片不能超过 15 MB。");
         Request prepared = validate(request, upload != null);
+        if (upload != null || prepared.sourceSegmentationId() != null) {
+            UUID garmentId = prepared.garmentId() == null ? UUID.randomUUID() : prepared.garmentId();
+            Origin origin = prepared.sourceOrigin() == null ? (parentId == null && upload != null ? Origin.USER_UPLOAD : Origin.UNKNOWN) : prepared.sourceOrigin();
+            prepared = new Request(prepared.rotationDegrees(), prepared.sourceSegmentationId(), prepared.sourceImage(), prepared.steps(), garmentId, origin);
+        }
         if (repository.queuedCount() >= maxQueued) throw new ProcessingException(HttpStatus.TOO_MANY_REQUESTS,
                 "WORKFLOW_QUEUE_FULL", "等待队列已满，请稍后再提交；已提交的任务仍会继续执行。");
         byte[] initial = initial(prepared, upload);
@@ -104,10 +119,21 @@ public class WorkflowService {
         var policy = request.policy() == null ? TransparencyService.Policy.AUTO : request.policy();
         var method = request.method() == null ? SegmentationEngine.Method.U2NET : request.method();
         var spec = new Request(0d, null, null, List.of(new Step(Type.ENSURE_TRANSPARENCY, null, null, method, policy),
-                new Step(Type.STICKER, null, null, null)));
+                new Step(Type.STICKER, null, null, null)), parent.request().garmentId(), parent.request().sourceOrigin());
         String hash = WorkflowFiles.hash(json.writeValueAsBytes(List.of(parent.id(), asset.id, policy, method)));
         if (repository.exists(key)) return submit(key, spec, null, parentId, hash);
         return submit(key, spec, files.readVerified(asset), parentId, hash);
+    }
+
+    public synchronized Job rerun(UUID garmentId, UUID key, RerunRequest request) throws IOException {
+        if (key == null || request == null || request.steps() == null) throw ProcessingException.invalid("重新处理需要 Idempotency-Key 和步骤。");
+        var garment = garments.get(garmentId);
+        var source = repository.asset(garment.sourceAssetId());
+        var spec = new Request(0d, null, null, request.steps(), garmentId, Origin.valueOf(garment.sourceOrigin()));
+        String hash = WorkflowFiles.hash(json.writeValueAsBytes(canonical(List.of(garmentId, source.sha256, spec))));
+        UUID parentId = UUID.fromString(source.jobId);
+        if (repository.exists(key)) return submit(key, spec, null, parentId, hash);
+        return submit(key, spec, files.readVerified(source), parentId, hash);
     }
 
     public synchronized Job cancel(UUID id) {
@@ -141,13 +167,23 @@ public class WorkflowService {
         boolean hasImage = uploaded || r.sourceSegmentationId() != null;
         if (!hasImage && angle != 0) throw ProcessingException.invalid("没有输入图片时不能设置旋转角度。");
         if (r.sourceImage() == Source.CUTOUT && angle != 0) throw ProcessingException.invalid("透明抠图不支持在工作流入口再次旋转，请旋转原图后重新抠图。");
-        int calls = 0; Type previous = null;
+        int calls = 0, recognitions = 0; Type previous = null;
         var steps = new ArrayList<Step>();
         for (var step : r.steps()) {
             if (step == null || step.type() == null) throw ProcessingException.invalid("每个步骤都需要 type。");
             if (step.type() != Type.ENSURE_TRANSPARENCY && step.policy() != null)
                 throw ProcessingException.invalid("policy 仅用于 ENSURE_TRANSPARENCY 步骤。");
+            if (step.type() != Type.RECOGNIZE && (step.recognition() != null || step.preparedRecognition() != null)) throw ProcessingException.invalid("识图参数仅用于 RECOGNIZE。");
             switch (step.type()) {
+                case RECOGNIZE -> {
+                    if (++recognitions > 1 || !steps.isEmpty()) throw ProcessingException.invalid("识别步骤最多一个，且需放在流程开头以先检查目标。");
+                    if (!hasImage || r.sourceImage() == Source.CUTOUT) throw ProcessingException.invalid("识别需要原始照片，请上传图片或选择 ORIGINAL。");
+                    if (step.mode() != null || step.generation() != null || step.method() != null) throw ProcessingException.invalid("识别步骤只接受 recognition 配置。");
+                    var prepared = recognition.prepare(step.recognition());
+                    modelPolicy.checkRecognition(prepared.provider(), prepared.model());
+                    steps.add(new Step(Type.RECOGNIZE, null, null, null, null, null,
+                        new Recognition.Request(prepared.provider(), prepared.model()), prepared));
+                }
                 case GENERATE -> {
                     if (++calls > 2) throw ProcessingException.invalid("单次工作流最多包含两个生图步骤。");
                     if (step.mode() == null) throw ProcessingException.invalid("生图步骤需要明确 mode。");
@@ -155,6 +191,9 @@ public class WorkflowService {
                     if (step.mode() == Mode.TEXT_TO_IMAGE && hasImage) throw ProcessingException.invalid("文生图必须位于无输入图片的工作流开头，请使用图生图衔接已有图片。");
                     if (step.method() != null) throw ProcessingException.invalid("生图步骤不接受 method。");
                     var g = generation.prepare(step.generation());
+                    modelPolicy.checkGeneration(g.provider(), g.model());
+                    if (ClosetIdentity.username() != null && !ClosetIdentity.administrator() && !ClosetPrompts.allowedPrompt(g.prompt()))
+                        throw new ProcessingException(HttpStatus.FORBIDDEN, "PROMPT_NOT_ALLOWED", "普通账号只能使用预设的衣物整理要求。");
                     steps.add(new Step(Type.GENERATE, step.mode(), new GenerationService.Request(g.provider(), g.model(), g.prompt(), g.parameters()), null, null, generation.revision(g.provider())));
                     hasImage = true;
                 }
@@ -178,10 +217,10 @@ public class WorkflowService {
                     steps.add(new Step(Type.STICKER, null, null, null));
                 }
             }
-            previous = step.type();
+            if (step.type() != Type.RECOGNIZE) previous = step.type();
         }
         return new Request(angle, r.sourceSegmentationId(), r.sourceSegmentationId() == null ? null
-                : r.sourceImage() == null ? Source.ORIGINAL : r.sourceImage(), List.copyOf(steps));
+                : r.sourceImage() == null ? Source.ORIGINAL : r.sourceImage(), List.copyOf(steps), r.garmentId(), r.sourceOrigin());
     }
     private byte[] initial(Request r, byte[] upload) throws IOException {
         if (r.sourceSegmentationId() != null) {
@@ -202,6 +241,7 @@ public class WorkflowService {
         int index = 0; String attemptId = null; boolean returned = false;
         try {
             for (; index < original.request().steps().size(); index++) {
+                if (results.get(index).type() == Type.RECOGNIZE && !Set.of(Status.PENDING, Status.RUNNING).contains(results.get(index).status())) continue;
                 if (results.get(index).status() == Status.SUCCEEDED) {
                     currentUrl = results.get(index).outputUrl();
                     current = files.path(original.id(), "step-" + index + ".png");
@@ -211,6 +251,17 @@ public class WorkflowService {
                 var spec = original.request().steps().get(index); Instant started = Instant.now();
                 results.set(index, new StepResult(index, spec.type(), Status.RUNNING, started, null, currentUrl, null, null, null, null));
                 if (!advance(update(original, Status.RUNNING, results, currentUrl, null), null)) return;
+                if (spec.type() == Type.RECOGNIZE) {
+                    var result = executeRecognition(original, index, started);
+                    results.set(index, result);
+                    if (result.recognition() != null && result.recognition().blocksImages()) {
+                        skipRemaining(results, index + 1);
+                        advance(update(original, Status.NEEDS_REVIEW, results, currentUrl, new Failure("GARMENT_TARGET_UNCLEAR", "无法确定可识别的单件衣物，请检查照片后重新上传。")), null);
+                        return;
+                    }
+                    if (!advance(update(original, index == results.size() - 1 ? completionStatus(results) : Status.RUNNING, results, currentUrl, null), null)) return;
+                    continue;
+                }
                 byte[] output; tools.jackson.databind.JsonNode usage = null;
                 TransparencyService.Result ensured = null;
                 String providerRequestId = null; attemptId = null; returned = false;
@@ -263,11 +314,11 @@ public class WorkflowService {
                     skipRemaining(results, index + 1);
                     advance(update(original, stepStatus, results, currentUrl, problem), asset); return;
                 }
-                if (!advance(update(original, index == results.size() - 1 ? Status.SUCCEEDED : Status.RUNNING,
+                if (!advance(update(original, index == results.size() - 1 ? completionStatus(results) : Status.RUNNING,
                         results, currentUrl, null), asset)) return;
             }
             if (get(original.id()).status() == Status.RUNNING)
-                advance(update(original, Status.SUCCEEDED, results, currentUrl, null), null);
+                advance(update(original, completionStatus(results), results, currentUrl, null), null);
         } catch (Exception e) {
             Failure error = e instanceof ProcessingException p ? new Failure(p.code(), p.getMessage())
                     : new Failure("WORKFLOW_PROCESSING_FAILED", "处理或保存失败；已完成图片保留，不会自动重新生图。");
@@ -286,6 +337,32 @@ public class WorkflowService {
             skipRemaining(results, index + 1);
             try { advance(update(original, status, results, currentUrl, error), null); }
             catch (Exception failure) { log.error("Cannot persist workflow outcome for {}; restart recovery required", original.id(), failure); }
+        }
+    }
+
+    private Status completionStatus(List<StepResult> results) {
+        return results.stream().anyMatch(s -> s.type() == Type.RECOGNIZE && (s.status() != Status.SUCCEEDED
+            || (s.recognition() != null && s.recognition().assessment() != Recognition.Assessment.READY))) ? Status.NEEDS_REVIEW : Status.SUCCEEDED;
+    }
+    private StepResult executeRecognition(Job job, int index, Instant started) throws IOException {
+        String attempt = null; boolean returned = false;
+        try {
+            var spec = job.request().steps().get(index);
+            byte[] input = verifiedInput(job.id(), files.path(job.id(), "input.png"));
+            synchronized (this) {
+                if (get(job.id()).status() == Status.CANCEL_REQUESTED) throw new ProcessingException(HttpStatus.CONFLICT, "CANCELLED", "识别已取消。");
+                attempt = repository.startAttempt(job.id(), index, spec.preparedRecognition());
+            }
+            var output = recognition.recognize(spec.preparedRecognition(), input); returned = true;
+            var result = new StepResult(index, Type.RECOGNIZE, Status.SUCCEEDED, started, Instant.now(), job.inputUrl(), null, null, output.usage(), null, null, output.result(), output.raw());
+            files.receipt(job.id(), new WorkflowFiles.Receipt(result, null, output.requestId()));
+            repository.finishAttempt(attempt, "SUCCEEDED", output.requestId(), output.usage(), null);
+            return result;
+        } catch (Exception e) {
+            var error = e instanceof ProcessingException p ? new Failure(p.code(), p.getMessage()) : new Failure("RECOGNITION_PROCESSING_FAILED", "识别或保存失败，已保留照片，可以重新识别。");
+            boolean unknown = attempt != null && !returned && (uncertain(error.code()) || error.code().equals("RECOGNITION_PROCESSING_FAILED"));
+            if (attempt != null) repository.finishAttempt(attempt, unknown ? "UNKNOWN" : returned ? "RESULT_NOT_SAVED" : "FAILED", null, null, error.code());
+            return new StepResult(index, Type.RECOGNIZE, unknown ? Status.UNKNOWN : Status.FAILED, started, Instant.now(), job.inputUrl(), null, null, null, error);
         }
     }
 
@@ -374,18 +451,24 @@ public class WorkflowService {
                 try {
                     var receipt = files.receipt(id, i);
                     if (receipt != null) {
-                        results.set(i, receipt.result()); output = receipt.result().outputUrl();
+                        results.set(i, receipt.result());
+                        if (receipt.result().type() != Type.RECOGNIZE) output = receipt.result().outputUrl();
                         for (var attempt : job.attempts()) if (attempt.stepIndex() == i)
                             repository.finishAttempt(attempt.id().toString(), "SUCCEEDED", receipt.providerRequestId(), receipt.result().usage(), null);
                         repository.save(update(job, job.status(), results, output, null), receipt.asset());
-                        if (receipt.result().status() != Status.SUCCEEDED) {
+                        if (receipt.result().status() != Status.SUCCEEDED || (receipt.result().recognition() != null && receipt.result().recognition().blocksImages())) {
                             skipRemaining(results, i + 1);
-                            repository.save(update(job, receipt.result().status(), results, output, receipt.result().error()), null);
+                            repository.save(update(job, receipt.result().recognition() != null ? Status.NEEDS_REVIEW : receipt.result().status(), results, output, receipt.result().error()), null);
                             blocked = true;
                         }
                         continue;
                     }
                 } catch (Exception e) { log.warn("Cannot recover receipt for {} step {}", id, i, e); }
+                if (s.type() == Type.RECOGNIZE && job.attempts().stream().anyMatch(a -> a.stepIndex() == s.index())) {
+                    var error = new Failure("SERVER_RESTARTED", "识别期间服务中断，结果未知；不会自动重试，图片处理可继续。");
+                    results.set(i, new StepResult(i, s.type(), Status.UNKNOWN, s.startedAt(), Instant.now(), job.inputUrl(), null, null, null, error));
+                    continue;
+                }
                 if (s.type() == Type.GENERATE && !job.attempts().stream().filter(a -> a.stepIndex() == s.index()).toList().isEmpty()) {
                     var error = new Failure("SERVER_RESTARTED", "生图期间服务中断，调用结果未知；不会自动重新提交，请核对服务商记录。");
                     results.set(i, new StepResult(i, s.type(), Status.UNKNOWN, s.startedAt(), Instant.now(), s.inputUrl(), null, null, null, error));

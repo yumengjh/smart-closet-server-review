@@ -1,6 +1,7 @@
 package com.smartcloset.api;
 
 import com.smartcloset.image.*;
+import com.smartcloset.security.ClosetOwnership;
 import com.smartcloset.image.SegmentationEngine.Method;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotNull;
@@ -17,7 +18,8 @@ import org.springframework.web.multipart.MultipartFile;
 public class SegmentationController {
     private final SegmentationService service;
     private final U2NetEngine u2net;
-    public SegmentationController(SegmentationService service, U2NetEngine u2net) { this.service = service; this.u2net = u2net; }
+    private final ClosetOwnership ownership;
+    public SegmentationController(SegmentationService service, U2NetEngine u2net, ClosetOwnership ownership) { this.service = service; this.u2net = u2net; this.ownership = ownership; }
 
     @GetMapping("/health")
     public Map<String, String> health() { return Map.of("status", "UP"); }
@@ -43,22 +45,27 @@ public class SegmentationController {
                 throw ProcessingException.invalid("框选需要同时提供 x、y、width、height。");
             region = new Region(x, y, width, height);
         }
-        return created(service.upload(file, method, region, rotationDegrees));
+        var result = service.upload(file, method, region, rotationDegrees);
+        ownership.registerSegmentation(UUID.fromString(result.id()));
+        return created(result);
     }
 
     public record RefineRequest(@NotNull Method method, Region region, Double rotationDegrees) {}
 
     @PostMapping("/segmentations/{id}/refine")
     public ResponseEntity<SegmentationResult> refine(@PathVariable UUID id, @Valid @RequestBody RefineRequest request) throws IOException {
-        return created(service.refine(id, request.method(), request.region(),
-                request.rotationDegrees() == null ? 0 : request.rotationDegrees()));
+        ownership.segmentation(id);
+        var result = service.refine(id, request.method(), request.region(), request.rotationDegrees() == null ? 0 : request.rotationDegrees());
+        ownership.registerSegmentation(UUID.fromString(result.id()));
+        return created(result);
     }
 
     @GetMapping("/segmentations/{id}")
-    public SegmentationResult result(@PathVariable UUID id) throws IOException { return service.get(id); }
+    public SegmentationResult result(@PathVariable UUID id) throws IOException { ownership.segmentation(id); return service.get(id); }
 
     @GetMapping("/segmentations/{id}/files/{name}")
     public ResponseEntity<FileSystemResource> image(@PathVariable UUID id, @PathVariable String name) {
+        ownership.segmentation(id);
         var path = service.file(id, name);
         return ResponseEntity.ok().contentType(name.endsWith(".jpg") ? MediaType.IMAGE_JPEG : MediaType.IMAGE_PNG)
                 .header("X-Content-Type-Options", "nosniff")

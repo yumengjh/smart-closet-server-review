@@ -5,28 +5,48 @@ import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
 import java.net.URI;
 import java.net.http.*;
+import java.net.CookieManager;
+import java.net.CookiePolicy;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
 import javax.imageio.ImageIO;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.io.TempDir;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import tools.jackson.databind.json.JsonMapper;
 import static org.junit.jupiter.api.Assertions.*;
+import com.smartcloset.security.ClosetAccountService;
 
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
         properties = "closet.model-path=target/absent-test-model.onnx")
 class SegmentationApiTest {
     @TempDir static Path storage;
     @LocalServerPort int port;
-    private final HttpClient client = HttpClient.newHttpClient();
+    private final CookieManager cookies = new CookieManager(null, CookiePolicy.ACCEPT_ALL);
+    private final HttpClient client = HttpClient.newBuilder().cookieHandler(cookies).build();
     private final JsonMapper json = JsonMapper.builder().build();
+    @Autowired ClosetAccountService accounts;
+    private String csrf;
     @DynamicPropertySource static void configure(DynamicPropertyRegistry registry) {
         registry.add("closet.storage-dir", () -> storage.toString());
     }
+    @BeforeEach void signInAdministrator() throws Exception {
+        accounts.bootstrap("seg-admin", "seg-admin-password");
+        var response = client.send(HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + port + "/api/auth/csrf")).GET().build(), HttpResponse.BodyHandlers.ofByteArray());
+        csrf = json.readTree(response.body()).path("token").asText();
+        var login = client.send(HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + port + "/api/auth/login")).header("Content-Type", "application/json").header("X-XSRF-TOKEN", csrf)
+                .POST(HttpRequest.BodyPublishers.ofString("{\"username\":\"seg-admin\",\"password\":\"seg-admin-password\"}")).build(), HttpResponse.BodyHandlers.ofByteArray());
+        assertEquals(200, login.statusCode(), new String(login.body(), StandardCharsets.UTF_8));
+        var password = client.send(HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + port + "/api/auth/password")).header("Content-Type", "application/json").header("X-XSRF-TOKEN", csrf)
+                .POST(HttpRequest.BodyPublishers.ofString("{\"currentPassword\":\"seg-admin-password\",\"newPassword\":\"seg-admin-password\"}")).build(), HttpResponse.BodyHandlers.ofByteArray());
+        assertEquals(204, password.statusCode());
+    }
+    private HttpRequest.Builder csrf(HttpRequest.Builder request) { return request.header("X-XSRF-TOKEN", csrf); }
 
     private HttpResponse<byte[]> get(String path) throws Exception {
         return client.send(HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + port + path)).GET().build(), HttpResponse.BodyHandlers.ofByteArray());
@@ -41,7 +61,7 @@ class SegmentationApiTest {
         ByteArrayOutputStream body = new ByteArrayOutputStream();
         body.write("--closet-test\r\nContent-Disposition: form-data; name=\"file\"; filename=\"../../fake.jpg\"\r\nContent-Type: image/jpeg\r\n\r\n".getBytes(StandardCharsets.UTF_8));
         body.write(bytes); body.write("\r\n--closet-test--\r\n".getBytes(StandardCharsets.UTF_8));
-        return client.send(HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + port + "/api/segmentations?" + query))
+        return client.send(csrf(HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + port + "/api/segmentations?" + query)))
                 .header("Content-Type", "multipart/form-data; boundary=closet-test")
                 .POST(HttpRequest.BodyPublishers.ofByteArray(body.toByteArray())).build(), HttpResponse.BodyHandlers.ofByteArray());
     }
@@ -63,7 +83,7 @@ class SegmentationApiTest {
         assertEquals(255, cutout.getRGB(80, 100) >>> 24);
         var source = get(result.path("sourceUrl").asText());
         assertArrayEquals(fixture(), source.body());
-        var refined = client.send(HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + port + location + "/refine"))
+        var refined = client.send(csrf(HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + port + location + "/refine")))
                 .header("Content-Type", "application/json")
                 .POST(HttpRequest.BodyPublishers.ofString("{\"method\":\"GRABCUT\",\"region\":{\"x\":20,\"y\":20,\"width\":120,\"height\":160}}"))
                 .build(), HttpResponse.BodyHandlers.ofByteArray());
@@ -109,7 +129,7 @@ class SegmentationApiTest {
         byte[] originalCutout = get(result.path("cutoutUrl").asText()).body();
         assertEquals(404, get(location + "/sticker").statusCode());
         assertEquals(404, get(location + "/sticker/image").statusCode());
-        var request = HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + port + location + "/sticker"))
+        var request = csrf(HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + port + location + "/sticker")))
                 .POST(HttpRequest.BodyPublishers.noBody()).build();
         var created = client.send(request, HttpResponse.BodyHandlers.ofByteArray());
         assertEquals(201, created.statusCode(), new String(created.body(), StandardCharsets.UTF_8));
@@ -148,7 +168,7 @@ class SegmentationApiTest {
         assertFalse(Files.exists(dir.resolve("source.jpg")));
         String location = response.headers().firstValue("Location").orElseThrow();
         for (String body : new String[]{"{\"method\":\"GRABCUT\"}", "{\"method\":\"GRABCUT\",\"rotationDegrees\":90}"}) {
-            var refined = client.send(HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + port + location + "/refine"))
+            var refined = client.send(csrf(HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + port + location + "/refine")))
                     .header("Content-Type", "application/json").POST(HttpRequest.BodyPublishers.ofString(body)).build(), HttpResponse.BodyHandlers.ofByteArray());
             assertEquals(201, refined.statusCode());
             var newResult = json.readTree(refined.body());
@@ -182,7 +202,7 @@ class SegmentationApiTest {
         json.writerWithDefaultPrettyPrinter().writeValue(storage.resolve(result.path("id").asText()).resolve("result.json").toFile(), result);
         String location = response.headers().firstValue("Location").orElseThrow();
         assertEquals(200, get(location).statusCode());
-        var refined = client.send(HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + port + location + "/refine"))
+        var refined = client.send(csrf(HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + port + location + "/refine")))
                 .header("Content-Type", "application/json")
                 .POST(HttpRequest.BodyPublishers.ofString("{\"method\":\"GRABCUT\"}")).build(), HttpResponse.BodyHandlers.ofByteArray());
         assertEquals(201, refined.statusCode());

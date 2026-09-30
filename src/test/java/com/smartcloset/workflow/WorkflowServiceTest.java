@@ -33,6 +33,9 @@ class WorkflowServiceTest {
     @Autowired WorkflowService service;
     @Autowired WorkflowRepository repository;
     @Autowired WorkflowFiles files;
+    @MockitoBean com.smartcloset.recognition.RecognitionService recognition;
+    @Autowired com.smartcloset.garment.GarmentRepository garments;
+    @Autowired com.smartcloset.security.ClosetModelPolicy modelPolicy;
     @Autowired ClosetProperties properties;
     @Autowired ObjectMapper json;
     @Autowired SegmentationService segmentation;
@@ -56,7 +59,7 @@ class WorkflowServiceTest {
             new GenerationService.Request("test","image","shirt",Map.of()),null))); }
     WorkflowService restart() throws Exception {
         service.close();
-        restarted = new WorkflowService(properties,json,generation,segmentation,stickers,transparency,repository,files,30,50);
+        restarted = new WorkflowService(properties,json,generation,segmentation,stickers,transparency,repository,files,recognition,garments,modelPolicy,30,50);
         return restarted;
     }
     Job await(WorkflowService target, UUID id) throws Exception {
@@ -121,7 +124,7 @@ class WorkflowServiceTest {
     @Test void concurrentSameKeyCreatesOneTask() throws Exception {
         service.close();UUID id=UUID.randomUUID();
         // Stop dispatch, while keeping submission enabled through a fresh slow-polling service.
-        restarted=new WorkflowService(properties,json,generation,segmentation,stickers,transparency,repository,files,30,60000);
+        restarted=new WorkflowService(properties,json,generation,segmentation,stickers,transparency,repository,files,recognition,garments,modelPolicy,30,60000);
         var pool=Executors.newFixedThreadPool(4);
         try {
             var calls=new ArrayList<Callable<Job>>();for(int i=0;i<8;i++)calls.add(()->restarted.submit(id,request(),null));
@@ -145,7 +148,7 @@ class WorkflowServiceTest {
         }finally{release.countDown();}
     }
     @Test void canonicalParametersDeduplicateAndQueueLimitDoesNotRejectExistingTask() throws Exception {
-        service.close();restarted=new WorkflowService(properties,json,generation,segmentation,stickers,transparency,repository,files,1,60000);
+        service.close();restarted=new WorkflowService(properties,json,generation,segmentation,stickers,transparency,repository,files,recognition,garments,modelPolicy,1,60000);
         var first=new LinkedHashMap<String,Object>();first.put("quality","high");first.put("size","1024x1024");
         var second=new LinkedHashMap<String,Object>();second.put("size","1024x1024");second.put("quality","high");
         var r1=new Request(0d,null,null,List.of(new Step(Type.GENERATE,Mode.TEXT_TO_IMAGE,new GenerationService.Request("test","image","shirt",first),null)));
@@ -155,4 +158,39 @@ class WorkflowServiceTest {
         restarted.cancel(id);
     }
 
+
+    com.smartcloset.recognition.Recognition.Prepared recognitionPrepared() {
+        return new com.smartcloset.recognition.Recognition.Prepared("test", "vision", "revision", "prompt-v1", "garment-v1", "recognize", json.createObjectNode());
+    }
+    Job storedRecognition(UUID id, boolean withReceipt) throws Exception {
+        var prepared=recognitionPrepared();var now=Instant.now();
+        var step=new Step(Type.RECOGNIZE,null,null,null,null,null,new com.smartcloset.recognition.Recognition.Request("test","vision"),prepared);
+        var request=new Request(0d,null,null,List.of(step),UUID.randomUUID(),Origin.USER_UPLOAD);
+        var input=files.write(id,"input.png","INPUT",image());
+        var running=new StepResult(0,Type.RECOGNIZE,Status.RUNNING,now,null,files.url(id,"input.png"),null,null,null,null);
+        var job=new Job(id,"recognition-recovery",Status.RUNNING,now,now,request,files.url(id,"input.png"),null,false,List.of(running),null);
+        repository.insert(job,List.of(input));repository.startAttempt(id,0,prepared);
+        if(withReceipt){
+            var schema=new com.smartcloset.recognition.RecognitionSchema(json);
+            var result=schema.validate(json.valueToTree(RecognitionWorkflowTest.fixture("READY","蓝色")));
+            var completed=new StepResult(0,Type.RECOGNIZE,Status.SUCCEEDED,now,Instant.now(),job.inputUrl(),null,null,null,null,null,result,json.valueToTree(result));
+            files.receipt(id,new WorkflowFiles.Receipt(completed,null,"recovered-recognition"));
+        }
+        return job;
+    }
+    @Test void recognitionReceiptRecoversMetadataWithoutCallingModelAgain() throws Exception {
+        service.close();UUID id=UUID.randomUUID();var job=storedRecognition(id,true);
+        var recovered=await(restart(),id);assertEquals(Status.SUCCEEDED,recovered.status());
+        assertEquals("recovered-recognition",recovered.attempts().getFirst().providerRequestId());
+        var garment=garments.get(job.request().garmentId());assertEquals(List.of("蓝色"),garment.effective().get("primaryColor"));
+        assertEquals(1,recovered.assets().size());verify(recognition,never()).recognize(any(),any());
+        var edited=garments.edit(garment.id(),new com.smartcloset.garment.GarmentRepository.Edit(garment.revision(),Map.of("brand",List.of()),List.of()));
+        restarted.close();restarted=null;restart();assertTrue(garments.get(edited.id()).overrides().containsKey("brand"));
+    }
+    @Test void recognitionWithoutReceiptBecomesUnknownAndIsNeverReplayed() throws Exception {
+        service.close();UUID id=UUID.randomUUID();storedRecognition(id,false);
+        var recovered=await(restart(),id);assertEquals(Status.NEEDS_REVIEW,recovered.status());
+        assertEquals(Status.UNKNOWN,recovered.steps().getFirst().status());assertEquals("UNKNOWN",recovered.attempts().getFirst().status());
+        verify(recognition,never()).recognize(any(),any());
+    }
 }

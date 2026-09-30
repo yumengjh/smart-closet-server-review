@@ -1,6 +1,37 @@
 # AI 数字衣柜 · 图片处理后端
 
-Spring Boot 4.1.1 / Java 21。第一阶段验证：**单件平铺衣物照片 → 前景蒙版 → 透明 PNG**。
+Spring Boot 4.1.1 / Java 21。当前提供数字衣柜产品接口、账号与数据归属、真实 AI 识别/图片整理，以及本地透明背景与贴纸处理。Vue 正式界面由后端同源提供。
+
+[首版启动、账号管理、接口与交付说明](docs/CLOSET_PRODUCT.md) · [2026-09-30 验证记录](reports/closet/README.md)。
+
+## 数字衣柜前端与账号
+
+完整的 Vue 产品界面位于同级项目 [smart-closet](../smart-closet/README.md)。生产构建由 Spring Boot 同源提供，先在前端目录运行 `npm install && npm run build:server`，再启动此服务。Vite 开发页面默认使用真实 API。只有显式设置 `VITE_USE_MOCKS=true` 才启用示例演示，演示模式禁止提交 AI 任务。
+
+数据库使用本地 H2。首次启动创建管理员并强制首次改密：
+
+```bash
+CLOSET_BOOTSTRAP_USERNAME=admin CLOSET_BOOTSTRAP_PASSWORD='请换成至少12位的初始密码' mvn spring-boot:run
+```
+
+管理员可通过命令创建、禁用、启用和重置受邀账号。执行命令前先停止正在运行的后端，完成后再重启服务；命令使用同一份 H2 文件库，不会启动第二个图片 worker：
+
+```bash
+mvn spring-boot:run -Dspring-boot.run.arguments="--closet-command=create-user,--username=alice,--initial-password=ChangeMe12345"
+mvn spring-boot:run -Dspring-boot.run.arguments="--closet-command=reset-password,--username=alice,--initial-password=ChangeMe12345"
+mvn spring-boot:run -Dspring-boot.run.arguments="--closet-command=disable-user,--username=alice"
+mvn spring-boot:run -Dspring-boot.run.arguments="--closet-command=enable-user,--username=alice"
+```
+
+管理员账号同样可用 `create-admin` 创建。Flyway 迁移保留旧版本并为现存衣物增加待确认状态；旧数据默认没有所有者，确认账号和备份后显式认领：
+
+```bash
+mvn spring-boot:run -Dspring-boot.run.arguments="--closet-command=claim-legacy,--username=admin"
+```
+
+首次登录先进入“设置新密码”；完成前不开放衣柜、任务、字段配置和额度页面。未登录业务请求返回 `401 AUTHENTICATION_REQUIRED`，未改初始密码返回 `403 PASSWORD_CHANGE_REQUIRED`，CSRF 校验失败返回 `403 CSRF_INVALID`。
+
+默认只监听 `127.0.0.1:8080`。同一局域网内访问时设置 `SERVER_ADDRESS=0.0.0.0`，然后打开服务电脑的局域网 IP。会话空闲 30 分钟后失效；浏览器使用 HttpOnly 会话 Cookie 与 CSRF 令牌。普通账号只能读取自己的衣物、任务和图片，每日 AI 任务上限为 20 次。原工作流测试台及底层分割接口仅管理员可用。
 
 两种处理方法都在 Java 服务本地运行：
 
@@ -9,7 +40,16 @@ Spring Boot 4.1.1 / Java 21。第一阶段验证：**单件平铺衣物照片 �
 | `GRABCUT` | OpenCV 4.14，传统颜色/图割算法 | 框外为确定背景，必须留下部分框外背景 |
 | `U2NET`（默认） | ONNX Runtime 1.30 + U²-Net | 在框内裁剪输入再推理，框外透明；不是语义定位提示 |
 
-**本地算法做主体分割，不做衣物类别识别。** 人、床、植物等也可能被分割为主体。结果里的警告不是模型置信度。材质、风格、季节识别尚未实现；可选生成式 AI 步骤可按提示词整理图片，但没有保真、去褶皱或补全准确性保证。
+**本地算法做主体分割，不做衣物类别识别。** 人、床、植物等也可能被分割为主体。结果里的警告不是模型置信度。现已接入独立于分割算法的多模态元信息识别：默认上传流程先识别、再整理图片，风格与季节标为推测，成分需衣标证据；可选生成式 AI 步骤可按提示词整理图片，但没有保真、去褶皱或补全准确性保证。
+
+## 衣物档案与元信息识别
+
+工作流页默认自动识别上传照片的品类、颜色、图案与结构，再整理展示图片。支持仅识别、替换模型、重新识别、人工编辑/清空元数据、恢复自动值及更换展示图。重新处理保留同一个衣物 ID，人工修改不会被模型覆盖。
+
+- 默认沿用现有上游的 `gpt-5.6-luna`，图片输入和结构化输出已完成少量实测；上游未公开价格，尚未确认它是最便宜的模型。
+- 多件衣物或目标不明会暂停后续处理；识别调用失败不会阻止图片步骤继续。
+- 使用新增 H2 衣物表、现有工作流队列与调用记录，无额外本机服务。
+- [功能、接口、配置和边界](docs/RECOGNITION.md) · [实测及质量限制](reports/recognition/README.md)。
 
 ## 生成式 AI 与图片工作流
 
@@ -20,7 +60,7 @@ Spring Boot 4.1.1 / Java 21。第一阶段验证：**单件平铺衣物照片 �
 - 已适配 **OpenAI Images**（JSON 生图 / multipart 编辑）和 **Gemini generateContent**（文字 / 图片输入）。
 - MyBatis-Plus + H2 持久化排队；任务历史、筛选、取消和重启恢复。
 - 每张结果可以采纳或不采纳，也可以直接继续本地后处理，无需再次生图。
-- 四张业务表保存任务、步骤、生图调用和图片资产；同键提交幂等，未知云端调用不自动重放。
+- 五张业务表保存衣物档案、任务、步骤、模型调用和图片资产；同键提交幂等，未知云端调用不自动重放。
 - 服务商和密钥放在 Git 忽略的 `.local/generation.yml`；不传给浏览器。单次最多 6 步、2 次单图生成，不自动重试。
 - [接口、配置与边界说明](docs/IMAGE_WORKFLOWS.md) · [无密钥配置示例](docs/generation.example.yml) · [服务商实测报告](reports/generation/provider-check.md)。
 
@@ -28,7 +68,7 @@ Spring Boot 4.1.1 / Java 21。第一阶段验证：**单件平铺衣物照片 �
 
 ## 快速启动
 
-需要已有 JDK 21+ 和 Maven 3.9+。项目内置 H2 文件数据库，无需安装数据库服务、Python、Redis 或 Docker；纯本地流程可离线运行，只有显式选择 GENERATE 步骤才调用已配置的云端 AI。
+需要已有 JDK 21+ 和 Maven 3.9+。项目内置 H2 文件数据库，无需安装数据库服务、Python、Redis 或 Docker；纯本地流程可离线运行，只有选择 GENERATE 或 RECOGNIZE 步骤才调用已配置的云端 AI（工作流页默认包含这两步）。
 
 ```bash
 # 首次运行下载约 176 MB 模型到 models/，已下载且校验正确时直接跳过
@@ -38,10 +78,12 @@ bash scripts/download-model.sh
 mvn spring-boot:run
 ```
 
-启动后打开 [衣物测试页面](http://127.0.0.1:8080/studio/index.html)。页面位于 `src/main/resources/static/studio/`，随后端一起提供，无需 Node 构建、外部 CDN 或额外前端服务。支持选图/拖放、左右 90° 旋转、角度滑杆与数值输入、抠图/贴纸预览、浅深背景切换和图片下载。
+完成 Vue 构建后，启动并打开 [数字衣柜](http://127.0.0.1:8080/login)。管理员登录并完成首次改密后，也可打开 [衣物测试页面](http://127.0.0.1:8080/studio/index.html)。页面位于 `src/main/resources/static/studio/`，随后端一起提供，无需 Node 构建、外部 CDN 或额外前端服务。支持选图/拖放、左右 90° 旋转、角度滑杆与数值输入、抠图/贴纸预览、浅深背景切换和图片下载。
 
 首次 Maven 构建会下载 Java 依赖和随依赖发布的 OpenCV/ONNX 本地库，不需要 Homebrew/pip 安装。
 模型未准备好时服务仍能启动，`GRABCUT` 可用；`U2NET` 返回明确的 `503 MODEL_NOT_INSTALLED`。服务自身不会自动下载模型，纯本地流程不向第三方上传图片。
+
+下列分割请求展示参数用法；除 `/api/health` 外，业务请求均需管理员会话，写请求还需 `X-XSRF-TOKEN`。鉴权契约见 [产品接口文档](docs/CLOSET_PRODUCT.md#登录与账号管理)，日常录入建议使用数字衣柜页面。
 
 ```bash
 curl http://127.0.0.1:8080/api/health
@@ -170,7 +212,7 @@ curl -X POST http://127.0.0.1:8080/api/segmentations/结果ID/sticker
 - 不做一刀切填洞或只保留最大连通块，以免删除镂空、细肩带等真实结构。细边缘、阴影、背景同色仍可能失败。
 - 单次处理一个任务，其余请求立即返回 `429` 和 `Retry-After: 3`，避免多个大图和本地模型同时挤占内存。原型为同步接口。
 - 文件保存在 `data/{UUID}/`，上传文件名不参与路径拼接。失败时清理该次临时输出；成功的原图与结果不会自动过期，删除不用的结果目录可回收空间。
-- 当前原型仅绑定回环地址，无用户登录和访问隔离；面向本机开发使用。
+- 原有底层分割 API 与测试台由管理员专用；普通账号应通过数字衣柜产品页面使用带归属检查的衣物/任务接口。默认仍只监听回环地址。
 
 常见错误：`400 INVALID_IMAGE/INVALID_REQUEST`、`413 IMAGE_TOO_LARGE`、`422 NO_FOREGROUND/SEGMENTATION_FAILED`、`429 PROCESSOR_BUSY`、`503 MODEL_NOT_INSTALLED/MODEL_UNAVAILABLE`。
 

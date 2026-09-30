@@ -9,11 +9,11 @@ import java.util.concurrent.*;
 import org.springframework.http.HttpStatus;
 
 /** No redirects, no retries; limit the body while receiving it, including chunked responses. */
-final class BoundedHttp {
+public final class BoundedHttp {
     private final HttpClient client = HttpClient.newBuilder().followRedirects(HttpClient.Redirect.NEVER)
             .connectTimeout(java.time.Duration.ofSeconds(15)).build();
 
-    HttpResponse<byte[]> send(HttpRequest request, int limit) {
+    public HttpResponse<byte[]> send(HttpRequest request, int limit) {
         var call = client.sendAsync(request, info -> new LimitedBody(limit));
         try {
             return call.get(request.timeout().orElseThrow().toMillis(), TimeUnit.MILLISECONDS);

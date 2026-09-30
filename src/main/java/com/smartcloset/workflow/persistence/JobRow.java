@@ -30,4 +30,6 @@ public class JobRow {
     public String selectedAssetId;
     @TableField(updateStrategy = FieldStrategy.ALWAYS)
     public Long version;
+    @TableField("owner_username")
+    public String ownerUsername;
 }

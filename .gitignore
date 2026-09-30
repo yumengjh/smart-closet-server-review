@@ -8,3 +8,5 @@ models/.download-*/
 *.iml
 .DS_Store
 .local/
+# Private photo used for ad hoc testing; retain locally.
+/samples/round2-candidates/图像.jpeg

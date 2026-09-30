@@ -1,5 +1,5 @@
 server:
-  address: 127.0.0.1
+  address: ${SERVER_ADDRESS:127.0.0.1}
   port: ${PORT:8080}
   tomcat:
     threads:
@@ -16,6 +16,8 @@ spring:
     hikari:
       maximum-pool-size: 4
   servlet:
+    session:
+      timeout: 30m
     multipart:
       max-file-size: 15MB
       max-request-size: 16MB
@@ -29,6 +31,15 @@ closet:
 workflow:
   max-queued: 30
   poll-ms: 300
+recognition:
+  default-provider: yumg
+  providers:
+    yumg:
+      credential-provider: yumg
+      protocol: OPENAI_CHAT
+      default-model: ${CLOSET_RECOGNITION_MODEL:gpt-5.6-luna}
+      max-output-tokens: 4096
+      reasoning-effort: low
 mybatis-plus:
   global-config:
     banner: false
