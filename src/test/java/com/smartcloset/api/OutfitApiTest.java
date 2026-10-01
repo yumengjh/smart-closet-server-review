@@ -148,4 +148,83 @@ class OutfitApiTest {
                 .POST(HttpRequest.BodyPublishers.ofString("{}" )).build(), HttpResponse.BodyHandlers.ofString());
         assertEquals(403, noCsrf.statusCode());
     }
+    private Map<String, Object> person(int layer) {
+        var item = new LinkedHashMap<String, Object>();
+        item.put("elementId", UUID.randomUUID()); item.put("kind", "PERSON_PART");
+        item.put("stickerId", "chibi/head"); item.put("stickerVersion", 1); item.put("role", "OTHER");
+        item.put("x", 430); item.put("y", 280); item.put("width", 160); item.put("height", 200);
+        item.put("rotation", 15); item.put("zIndex", layer); item.put("garmentLabel", "人物头部");
+        item.put("cropX", .1); item.put("cropY", 0); item.put("cropWidth", .8); item.put("cropHeight", 1);
+        item.put("flipX", true); item.put("freeStretch", true);
+        return item;
+    }
+    private Map<String, Object> collage(List<Map<String, Object>> elements) {
+        return Map.of("name", "人物贴纸作品", "scene", Map.of("version", 2, "elements", elements));
+    }
+    @Test void personCatalogAndCollagesRequireLoginAndPersistIndependentInstances() throws Exception {
+        assertEquals(401, get("/api/person-stickers").statusCode());
+        assertEquals(401, get("/api/person-stickers/v1/chibi/head.png").statusCode());
+        String owner = "parts-" + UUID.randomUUID().toString().substring(0, 8); signIn(owner);
+        JsonNode catalog = json.readTree(get("/api/person-stickers").body());
+        assertEquals(3, catalog.path("sets").size());
+        assertEquals(14, catalog.at("/sets/0/parts").size());
+        assertEquals("image/png", get("/api/person-stickers/v1/chibi/head.png").headers().firstValue("content-type").orElse(""));
+        var body = collage(List.of(person(0), person(1)));
+        var response = send("POST", "/api/outfits", body);
+        assertEquals(200, response.statusCode(), response.body());
+        JsonNode saved = json.readTree(response.body()); String id = saved.path("id").asText();
+        assertEquals(2, saved.at("/scene/version").asInt());
+        assertNotEquals(saved.at("/scene/elements/0/elementId"), saved.at("/scene/elements/1/elementId"));
+        var reopened = json.readTree(get("/api/outfits/" + id).body());
+        assertTrue(reopened.at("/scene/elements/0/flipX").asBoolean());
+        assertTrue(reopened.at("/scene/elements/0/freeStretch").asBoolean());
+        assertEquals(.8, reopened.at("/scene/elements/0/cropWidth").asDouble());
+        assertEquals("/api/person-stickers/v1/chibi/head.png", reopened.at("/scene/elements/0/assetUrl").asText());
+        var update = new LinkedHashMap<>(body); update.put("revision", 0);
+        assertEquals(200, send("PUT", "/api/outfits/" + id, update).statusCode());
+        assertEquals(409, send("PUT", "/api/outfits/" + id, update).statusCode());
+        var noCsrf = client.send(HttpRequest.newBuilder(uri("/api/outfits")).header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(json.writeValueAsString(body))).build(), HttpResponse.BodyHandlers.ofString());
+        assertEquals(403, noCsrf.statusCode());
+        signIn("parts-other-" + UUID.randomUUID().toString().substring(0, 8));
+        assertEquals(404, get("/api/outfits/" + id).statusCode());
+    }
+    @Test void mixedScenesCheckLimitsSourcesAndGarmentOwnership() throws Exception {
+        String owner = "mixed-" + UUID.randomUUID().toString().substring(0, 8); signIn(owner);
+        var unknown = person(0); unknown.put("stickerId", "../private/file");
+        assertEquals(400, send("POST", "/api/outfits", collage(List.of(unknown))).statusCode());
+        var unknownVersion = person(0); unknownVersion.put("stickerVersion", 99);
+        assertEquals(400, send("POST", "/api/outfits", collage(List.of(unknownVersion))).statusCode());
+        assertEquals(400, send("POST", "/api/outfits", collage(List.of())).statusCode());
+        var same = person(0); var duplicate = new LinkedHashMap<>(same); duplicate.put("zIndex", 1);
+        assertEquals(400, send("POST", "/api/outfits", collage(List.of(same, duplicate))).statusCode());
+        var parts = new ArrayList<Map<String, Object>>(); for (int n = 0; n < 64; n++) parts.add(person(n));
+        assertEquals(200, send("POST", "/api/outfits", collage(parts)).statusCode());
+        parts.add(person(64)); assertEquals(400, send("POST", "/api/outfits", collage(parts)).statusCode());
+        UUID garment = activeGarment(owner); UUID asset = UUID.fromString(jdbc.queryForObject("SELECT source_asset_id FROM garment WHERE id=?", String.class, garment.toString()));
+        @SuppressWarnings("unchecked") var base = (Map<String,Object>) ((List<?>) ((Map<?,?>) saveBody(garment, asset, 420, null).get("scene")).get("elements")).getFirst();
+        var mixed = new ArrayList<Map<String,Object>>();
+        for (int n = 0; n < 32; n++) { var clothing = new LinkedHashMap<>(base); clothing.put("kind", "GARMENT"); clothing.put("elementId", UUID.randomUUID()); clothing.put("zIndex", n); mixed.add(clothing); }
+        mixed.add(person(32)); assertEquals(200, send("POST", "/api/outfits", collage(mixed)).statusCode());
+        var extra = new LinkedHashMap<>(mixed.getFirst()); extra.put("elementId", UUID.randomUUID()); extra.put("zIndex", 33); mixed.add(extra);
+        assertEquals(400, send("POST", "/api/outfits", collage(mixed)).statusCode());
+        signIn("mixed-other-" + UUID.randomUUID().toString().substring(0, 8));
+        assertEquals(404, send("POST", "/api/outfits", collage(List.of(mixed.getFirst()))).statusCode());
+    }
+    @Test void legacyStoredScenesRemainReadableAndUpgradeOnSave() throws Exception {
+        String owner = "legacy-" + UUID.randomUUID().toString().substring(0, 8); signIn(owner);
+        UUID garment = activeGarment(owner); UUID asset = UUID.fromString(jdbc.queryForObject("SELECT source_asset_id FROM garment WHERE id=?", String.class, garment.toString()));
+        JsonNode created = json.readTree(send("POST", "/api/outfits", saveBody(garment, asset, 420, null)).body());
+        String id = created.path("id").asText();
+        var scene = (tools.jackson.databind.node.ObjectNode) created.path("scene"); scene.put("version", 1);
+        var element = (tools.jackson.databind.node.ObjectNode) scene.path("elements").get(0);
+        for (String key : List.of("elementId", "kind", "stickerId", "stickerVersion", "flipX", "freeStretch")) element.remove(key);
+        jdbc.update("UPDATE outfit SET scene_version=1,scene_json=? WHERE id=?", json.writeValueAsString(scene), id);
+        JsonNode read = json.readTree(get("/api/outfits/" + id).body());
+        assertEquals(420, read.at("/scene/elements/0/x").asInt());
+        assertEquals(garment.toString(), read.at("/scene/elements/0/elementId").asText());
+        JsonNode updated = json.readTree(send("PUT", "/api/outfits/" + id, saveBody(garment, asset, 510, 0L)).body());
+        assertEquals(2, updated.at("/scene/version").asInt()); assertEquals(510, updated.at("/scene/elements/0/x").asInt());
+    }
+
 }
