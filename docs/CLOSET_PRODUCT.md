@@ -34,7 +34,7 @@ java -jar .local/runtime/smart-closet-workflow.jar
 
 ## 登录与账号管理
 
-登录使用用户名、密码和同源 HttpOnly 会话 Cookie；写请求携带从 `/api/auth/csrf` 获取的 `X-XSRF-TOKEN`。会话空闲 30 分钟后需重新登录。
+登录使用用户名、密码和同源 HttpOnly 会话 Cookie；写请求携带从 `/api/auth/csrf` 获取的 `X-XSRF-TOKEN`。会话由 Spring Session JDBC 保存到现有数据库，服务重启后仍可恢复。默认空闲期限和 Cookie 有效期均为 7 天，可分别通过 `CLOSET_SESSION_TIMEOUT` 与 `CLOSET_SESSION_COOKIE_MAX_AGE` 调整。Cookie 名称为 `YIXU_SESSION`，启用 HttpOnly 和 SameSite=Lax；重新登录轮换会话 ID，主动退出或会话过期后旧 Cookie 无法恢复登录。
 
 初始或重置密码登录后，前端先进入“设置新密码”，设置成功才进入衣柜。改密前不挂载业务页面、不请求任务计数、衣柜列表、字段配置或额度；直接打开业务地址或刷新也遵守相同规则。
 

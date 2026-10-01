@@ -1,6 +1,13 @@
 server:
   address: ${SERVER_ADDRESS:127.0.0.1}
   port: ${PORT:8080}
+  servlet:
+    session:
+      cookie:
+        name: YIXU_SESSION
+        http-only: true
+        same-site: lax
+        max-age: ${CLOSET_SESSION_COOKIE_MAX_AGE:7d}
   tomcat:
     threads:
       max: 16
@@ -15,9 +22,11 @@ spring:
     password: ${CLOSET_DB_PASSWORD:}
     hikari:
       maximum-pool-size: 4
+  session:
+    timeout: ${CLOSET_SESSION_TIMEOUT:7d}
+    jdbc:
+      initialize-schema: never
   servlet:
-    session:
-      timeout: 30m
     multipart:
       max-file-size: 15MB
       max-request-size: 16MB

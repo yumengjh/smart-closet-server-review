@@ -33,6 +33,7 @@ public class AuthController {
         try {
             var auth = authentication.authenticate(UsernamePasswordAuthenticationToken.unauthenticated(credentials.username(), credentials.password()));
             var context = SecurityContextHolder.createEmptyContext(); context.setAuthentication(auth); SecurityContextHolder.setContext(context);
+            if (request.getSession(false) != null) request.changeSessionId();
             contexts.saveContext(context, request, response);
             var user = accounts.find(auth.getName());
             return ResponseEntity.ok(new UserView(user.username(), user.role(), user.mustChangePassword()));
