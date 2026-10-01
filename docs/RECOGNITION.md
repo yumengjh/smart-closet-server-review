@@ -66,7 +66,7 @@ recognition:
     yumg:
       credential-provider: yumg
       protocol: OPENAI_CHAT
-      default-model: gpt-5.6-luna
+      default-model: gpt-6-luna
       max-output-tokens: 4096
       reasoning-effort: low
     # google:
@@ -78,7 +78,7 @@ recognition:
 
 OPENAI_CHAT 使用 `/chat/completions` 的图像输入与严格 `json_schema`；GEMINI 使用 `generateContent` 的文本/图像输入与 `responseJsonSchema`。不自动从结构化输出降级为自由文本，不自动切换到更贵模型。服务商地址或关键参数改变会阻止旧任务调用。官方协议参考：[OpenAI Structured Outputs](https://developers.openai.com/api/docs/guides/structured-outputs)、[Gemini Structured Outputs](https://ai.google.dev/gemini-api/docs/generate-content/structured-output)。兼容网关必须单独实测。
 
-现有上游 `/models` 已确认存在 gpt-5.6-luna，并已实测图片输入与结构化输出。按用户给出的低成本候选默认选用它；目录没有价格信息，公开首页关闭模型广场，**尚不能确认它是该账户最便宜的模型**。只记录上游 usage，不把缺失用量或价格当成免费，不用模型名称估算金额。GEMINI 适配以本地模拟响应验证，未对真实 Gemini 服务付费验证。
+2026-10-01 现有上游 `/models` 已确认存在 gpt-6-luna，按已确认方案将助手和识图默认统一到它；如目录移除它，两者一起回退到原识图模型 gpt-5.6-luna。兼容性实测见 [全局个人助手](AGENT.md)。上游没有公开价格，不用模型名称估算金额。GEMINI 适配只以模拟响应验证。
 
 ## 接口
 
@@ -100,12 +100,12 @@ OPENAI_CHAT 使用 `/chat/completions` 的图像输入与严格 `json_schema`；
 识别步骤：
 
 ```json
-{"type":"RECOGNIZE","recognition":{"provider":"yumg","model":"gpt-5.6-luna"}}
+{"type":"RECOGNIZE","recognition":{"provider":"yumg","model":"gpt-6-luna"}}
 ```
 
 独立入口：multipart 中 `file` 必需；`recognition` 是可选 JSON 部分，结构同上面的 recognition 对象。必须带 UUID `Idempotency-Key`。返回 202 和工作流地址，查询不会再次识别。
 
-重新识别请求体：`{"provider":"yumg","model":"gpt-5.6-luna"}`。同一 UUID key/相同请求复用任务；改变内容返回 409。换一个 key 才是新的付费请求。页面在响应丢失时保留 key。
+重新识别请求体：`{"provider":"yumg","model":"gpt-6-luna"}`。同一 UUID key/相同请求复用任务；改变内容返回 409。换一个 key 才是新的付费请求。页面在响应丢失时保留 key。
 
 修改示例：
 

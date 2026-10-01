@@ -43,7 +43,7 @@ public class SecurityConfiguration {
     @Bean SecurityFilterChain closetSecurity(HttpSecurity http, ClosetAccountService accounts,
             SecurityContextRepository contexts, tools.jackson.databind.ObjectMapper json) throws Exception {
         http
-            .csrf(csrf -> csrf.csrfTokenRepository(CookieCsrfTokenRepository.withHttpOnlyFalse()))
+            .csrf(csrf -> csrf.csrfTokenRepository(CookieCsrfTokenRepository.withHttpOnlyFalse()).ignoringRequestMatchers("/api/agent/internal/tool"))
             .exceptionHandling(errors -> errors
                     .authenticationEntryPoint((request, response, error) -> writeError(response, json, 401,
                             "AUTHENTICATION_REQUIRED", "登录已失效，请重新登录。"))
@@ -64,6 +64,8 @@ public class SecurityConfiguration {
             .httpBasic(basic -> basic.disable())
             .logout(logout -> logout.disable())
             .authorizeHttpRequests(auth -> auth
+                    .dispatcherTypeMatchers(jakarta.servlet.DispatcherType.ASYNC).permitAll()
+                    .requestMatchers(HttpMethod.POST, "/api/agent/internal/tool").permitAll()
                     .requestMatchers(HttpMethod.GET, "/api/auth/csrf").permitAll()
                     .requestMatchers(HttpMethod.POST, "/api/auth/login").permitAll()
                     .requestMatchers(HttpMethod.GET, "/api/health").permitAll()

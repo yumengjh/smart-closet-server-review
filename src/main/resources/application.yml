@@ -46,9 +46,20 @@ recognition:
     yumg:
       credential-provider: yumg
       protocol: OPENAI_CHAT
-      default-model: ${CLOSET_RECOGNITION_MODEL:gpt-5.6-luna}
+      default-model: ${CLOSET_RECOGNITION_MODEL:gpt-6-luna}
       max-output-tokens: 4096
       reasoning-effort: low
 mybatis-plus:
   global-config:
     banner: false
+
+agent:
+  runtime-url: ${CLOSET_AGENT_RUNTIME_URL:http://127.0.0.1:8091}
+  callback-url: ${CLOSET_AGENT_CALLBACK_URL:http://127.0.0.1:8080}
+  secret: ${CLOSET_AGENT_SECRET:}
+  credential-provider: yumg
+  default-model: ${CLOSET_AGENT_MODEL:gpt-6-luna}
+  allowed-models: gpt-6-luna,gpt-5.6-luna
+  daily-limit: ${CLOSET_AGENT_DAILY_LIMIT:30}
+  max-tool-calls: 8
+  timeout-seconds: 120

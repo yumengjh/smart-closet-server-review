@@ -1,0 +1,26 @@
+{
+  "dependencies": {
+    "@langchain/core": "1.2.14",
+    "@langchain/langgraph": "1.4.18",
+    "@langchain/openai": "1.6.1",
+    "zod": "4.6.5"
+  },
+  "devDependencies": {
+    "@types/node": "26.6.3",
+    "tsx": "4.23.15",
+    "typescript": "7.0.2"
+  },
+  "name": "smart-closet-agent",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx src/server.ts",
+    "build": "tsc",
+    "start": "node dist/server.js",
+    "test": "tsx --test src/*.test.ts"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}
