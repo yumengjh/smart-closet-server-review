@@ -6,6 +6,6 @@ import org.springframework.web.bind.annotation.GetMapping;
 /** Keeps Vue Router history URLs working when the production bundle is served by Spring Boot. */
 @Controller
 public class ClosetSpaController {
-    @GetMapping({"/login", "/wardrobe", "/pending", "/tasks", "/settings", "/add", "/trash", "/garment/{id}"})
+    @GetMapping({"/login", "/wardrobe", "/pending", "/tasks", "/settings", "/add", "/trash", "/garment/{id}", "/outfits", "/outfits/{id}"})
     public String app() { return "forward:/index.html"; }
 }
