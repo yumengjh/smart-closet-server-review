@@ -119,6 +119,7 @@ public class AgentService {
         payload.put("model",model);payload.put("baseURL",p.baseUrl());payload.put("apiKey",p.apiKey());
         payload.put("callbackURL",config.callbackUrl().resolve("/api/agent/internal/tool").toString());payload.put("callbackToken",token);
         payload.put("maxToolCalls",config.maxToolCalls());payload.put("timeoutSeconds",config.timeoutSeconds());
+        payload.put("avatarMode",repo.avatarMode(owner));
         payload.put("context",modelContext(owner,request.context()));payload.put("memories",repo.memories(owner));
         var history=repo.messages(owner,session);payload.put("messages",history.subList(Math.max(0,history.size()-20),history.size()).stream().map(this::historyMessage).toList());
         if(image!=null)payload.put("image",image);
@@ -136,10 +137,14 @@ public class AgentService {
                     if(upstream.statusCode()!=200)throw new IOException("runtime-http");
                     var deadline=watchdog.schedule(()->{try{stream.close();}catch(IOException ignored){}},config.timeoutSeconds(),TimeUnit.SECONDS);
                     try(var reader=new BufferedReader(new InputStreamReader(stream,StandardCharsets.UTF_8))){
-                        String line;boolean done=false;
+                        String line;boolean done=false;boolean avatarSent=false;
                         while((line=reader.readLine())!=null){
                             if(line.length()>200000)throw new IOException("frame-too-large");
                             var frame=json.readTree(line);String event=frame.path("event").asText();var data=frame.path("data");
+                            if(event.equals("avatar")){
+                                if(avatarSent||!"personal".equals(repo.avatarMode(owner))||!Set.of("idle","thinking","wink","wide","alert","notify","exclaim","sleep","egg","hexagon","play","orbit","burst","comet").contains(data.path("state").asText())||!Set.of("neutral","attentive","happy","curious","surprised","confused","shy","concern").contains(data.path("expression").asText()))continue;
+                                avatarSent=true;send(output,"avatar",Map.of("requestId",request.requestId(),"state",data.path("state").asText(),"expression",data.path("expression").asText()));continue;
+                            }
                             if(!Set.of("token","status","proposal","memory","navigation","sources","done","error").contains(event))continue;
                             if(event.equals("token")){text.append(data.path("text").asText());if(text.length()>24000)throw new IOException("output-too-large");}
                             else if(!event.equals("status")&&!event.equals("done")){

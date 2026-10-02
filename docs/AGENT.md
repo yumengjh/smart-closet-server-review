@@ -136,3 +136,7 @@ npm run build:server
 - `status.data.phase` 明确发送 `thinking` 或 `operating`；开始输出回答后隐藏思考提示，实际画板操作仍在进行时优先显示操作状态。结束、取消或出错后停止动画与计时。
 - 动效在当前助手消息区内显示，不改变助手覆盖主布局的方式。支持 `prefers-reduced-motion`，交互控件继续使用 Ant Design Vue。
 - 前端源码位于 `src/agent/effects`，使用本地 CSS 适配现有主题；上游许可证保留在源码中，并随发布提供 `/licenses/vue-bits.txt`。
+
+## 蓝色角色动效
+
+助手设置支持静态、基础动效、Agent个性动效，默认个性。基础任务/拖拽/空闲动画不消耗模型token；个性档在原回复附带可选短控制信息，不增加模型调用次数。设置中的动作预览独立运行，无需模型。详见[蓝色Bloub助手悬浮球](design/蓝色Bloub助手悬浮球.md)。

@@ -112,7 +112,14 @@ public class AgentRepository {
     }
     public void preference(String owner,String model) {
         checkModel(model); if(model==null)throw invalid("请选择模型。");
-        db.update("MERGE INTO agent_preference(owner_username,model) KEY(owner_username) VALUES(?,?)",owner,model);
+        tx.executeWithoutResult(t->{db.queryForObject("SELECT username FROM closet_user WHERE username=? FOR UPDATE",String.class,owner);db.update("MERGE INTO agent_preference(owner_username,model) KEY(owner_username) VALUES(?,?)",owner,model);});
+    }
+    public String avatarMode(String owner) {
+        return db.query("SELECT avatar_mode FROM agent_preference WHERE owner_username=?",(r,n)->r.getString(1),owner).stream().findFirst().orElse("personal");
+    }
+    public void avatarMode(String owner,String mode) {
+        if(!Set.of("static","basic","personal").contains(mode))throw invalid("助手动效模式无效。");
+        tx.executeWithoutResult(t->{db.queryForObject("SELECT username FROM closet_user WHERE username=? FOR UPDATE",String.class,owner);db.update("MERGE INTO agent_preference(owner_username,model,avatar_mode) KEY(owner_username) VALUES(?,?,?)",owner,preference(owner),mode);});
     }
     public void checkModel(String model) {
         if(model!=null && !config.allowedModels().contains(model))throw invalid("该模型未由后端开放。");

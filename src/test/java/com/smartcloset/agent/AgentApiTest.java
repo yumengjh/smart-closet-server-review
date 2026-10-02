@@ -56,6 +56,14 @@ class AgentApiTest {
   String old=csrf;csrf=null;assertEquals(403,send("POST","/api/agent/sessions",Map.of()).statusCode());csrf=old;
   assertEquals(403,send("POST","/api/agent/internal/tool",Map.of("name","search_help","args",Map.of("query","搭配"))).statusCode());
  }
+ @Test void avatarPreferenceIsIndependentValidatedAndAccountScoped()throws Exception{
+  String owner=login();assertEquals("personal",repo.avatarMode(owner));
+  assertEquals(200,send("PUT","/api/agent/preferences",Map.of("avatarMode","basic")).statusCode());
+  assertEquals("basic",repo.avatarMode(owner));assertEquals("gpt-6-luna",repo.preference(owner));
+  assertEquals(200,send("PUT","/api/agent/preferences",Map.of("model","gpt-6-luna")).statusCode());assertEquals("basic",repo.avatarMode(owner));
+  assertEquals(400,send("PUT","/api/agent/preferences",Map.of("avatarMode","invalid","model","gpt-6-luna")).statusCode());assertEquals("basic",repo.avatarMode(owner));
+  String other="avatar-"+UUID.randomUUID();accounts.create(other,"agent-test-password","USER");assertEquals("personal",repo.avatarMode(other));
+ }
  @Test void dailyQuotaIdempotencyAndBusyDeletion()throws Exception{
   String owner=login();var s=repo.create(owner);String request=UUID.randomUUID().toString();repo.begin(owner,s.id(),request,"请帮我搭配");
   assertThrows(com.smartcloset.image.ProcessingException.class,()->repo.delete(owner,s.id()));
@@ -77,19 +85,19 @@ class AgentApiTest {
   String owner=login();var s=repo.create(owner);
   runtime.createContext("/run",exchange->{
    assertEquals("01234567890123456789012345678901",exchange.getRequestHeaders().getFirst("X-Agent-Secret"));
-   var input=json.readTree(exchange.getRequestBody().readAllBytes());assertEquals("gpt-6-luna",input.path("model").asText());
+   var input=json.readTree(exchange.getRequestBody().readAllBytes());assertEquals("gpt-6-luna",input.path("model").asText());assertEquals("personal",input.path("avatarMode").asText());
    var result=service.tool(input.path("callbackToken").asText(),new AgentService.ToolRequest("search_help",json.readTree("{\"query\":\"组合台保存草稿\"}")));
    assertNotNull(result);
    assertThrows(com.smartcloset.image.ProcessingException.class,()->service.tool(input.path("callbackToken").asText(),new AgentService.ToolRequest("navigate",json.readTree("{\"path\":\"https://example.com\"}"))));
    assertThrows(com.smartcloset.image.ProcessingException.class,()->service.tool(input.path("callbackToken").asText(),new AgentService.ToolRequest("remember_preference",json.readTree("{\"evidence\":\"不存在的原话\",\"content\":\"红色\",\"category\":\"COLOR\"}"))));
-   byte[] out="{\"event\":\"token\",\"data\":{\"text\":\"测试回复\"}}\n{\"event\":\"done\",\"data\":{}}\n".getBytes(StandardCharsets.UTF_8);
+   byte[] out=("{\"event\":\"avatar\",\"data\":{\"state\":\"bad\",\"expression\":\"happy\"}}\n{\"event\":\"avatar\",\"data\":{\"state\":\"wink\",\"expression\":\"happy\"}}\n{\"event\":\"avatar\",\"data\":{\"state\":\"wide\",\"expression\":\"happy\"}}\n"+"{\"event\":\"token\",\"data\":{\"text\":\"测试回复\"}}\n{\"event\":\"done\",\"data\":{}}\n").getBytes(StandardCharsets.UTF_8);
    exchange.getResponseHeaders().set("Content-Type","application/x-ndjson");exchange.sendResponseHeaders(200,out.length);exchange.getResponseBody().write(out);exchange.close();
   });
   try{
    var response=send("POST","/api/agent/sessions/"+s.id()+"/messages",Map.of("requestId",UUID.randomUUID().toString(),"content","怎样使用组合台？","context",Map.of("route","/wardrobe")));
-   assertEquals(200,response.statusCode(),response.body());assertTrue(response.body().contains("event: done"));assertFalse(response.body().contains("fake-test-key"));
+   assertEquals(200,response.statusCode(),response.body());assertTrue(response.body().contains("event: done"));assertEquals(1,response.body().split("event: avatar",-1).length-1);assertFalse(response.body().contains("fake-test-key"));
    for(int n=0;n<20 && repo.messages(owner,s.id()).size()<2;n++)Thread.sleep(25);
-   assertEquals(2,repo.messages(owner,s.id()).size());assertEquals(1,repo.quota(owner).get("used"));
+   assertEquals(2,repo.messages(owner,s.id()).size());assertEquals(1,repo.quota(owner).get("used"));for(var m:repo.messages(owner,s.id()))for(var e:m.events())assertNotEquals("avatar",e.path("event").asText());
   }finally{runtime.removeContext("/run");}
  }
  private String clothing(String owner,String status) {

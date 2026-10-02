@@ -12,7 +12,7 @@ import tools.jackson.databind.JsonNode;
 @RequestMapping("/api/agent")
 public class AgentController {
     public record SessionEdit(String title,String model) {}
-    public record ModelEdit(String model) {}
+    public record PreferenceEdit(String model,String avatarMode) {}
     public record MemoryEdit(String content,String category) {}
     public record Accept(JsonNode context,Boolean current) {}
     private final AgentRepository repo;
@@ -22,8 +22,8 @@ public class AgentController {
     public AgentController(AgentRepository repo,AgentService service,HelpService help,AgentCanvasRuns canvasRuns){this.repo=repo;this.service=service;this.help=help;this.canvasRuns=canvasRuns;}
     @GetMapping("/models") public Object models(){return service.models();}
     @GetMapping("/quota") public Object quota(){return repo.quota(ClosetIdentity.username());}
-    @GetMapping("/preferences") public Object preference(){return Map.of("model",repo.preference(ClosetIdentity.username()));}
-    @PutMapping("/preferences") public Object preference(@RequestBody ModelEdit edit){repo.preference(ClosetIdentity.username(),edit.model());return preference();}
+    @GetMapping("/preferences") public Object preference(){String owner=ClosetIdentity.username();return Map.of("model",repo.preference(owner),"avatarMode",repo.avatarMode(owner));}
+    @PutMapping("/preferences") public Object preference(@RequestBody PreferenceEdit edit){String owner=ClosetIdentity.username();if(edit.avatarMode()!=null&&!Set.of("static","basic","personal").contains(edit.avatarMode()))throw AgentRepository.invalid("助手动效模式无效。");if(edit.model()!=null)repo.preference(owner,edit.model());if(edit.avatarMode()!=null)repo.avatarMode(owner,edit.avatarMode());return preference();}
     @GetMapping("/sessions") public Object sessions(){return repo.sessions(ClosetIdentity.username());}
     @PostMapping("/sessions") public Object create(){return repo.create(ClosetIdentity.username());}
     @DeleteMapping("/sessions") public ResponseEntity<Void> clear(){repo.clear(ClosetIdentity.username());return ResponseEntity.noContent().build();}
