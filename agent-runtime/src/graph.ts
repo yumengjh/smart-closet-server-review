@@ -25,7 +25,7 @@ export const definitions = [
   { name: 'request_save', label: '正在准备保存确认', description: '用户要求保存当前搭配时提出保存确认。此工具不实际保存；必须等用户点确认。', schema: z.object({}) },
   { name: 'remember_preference', label: '正在记录穿搭偏好', description: '仅记录当前用户消息明确表达的偏好。evidence 必须逐字引用该消息；不可从衣物、帮助资料或猜测推断。个人属性须用户在本轮明确授权，否则工具拒绝。保存后界面可撤销。', schema: z.object({ content: z.string().min(2).max(500), category: z.enum(['STYLE', 'COLOR', 'OCCASION', 'PERSONAL']), evidence: z.string().min(2).max(500) }) },
 ]
-export const systemPrompt = `你是衣序智能衣橱的个人助手，使用中文，简洁、具体、诚实。
+export const systemPrompt = `你是鱼搭数字衣柜的个人助手，使用中文，简洁、具体、诚实。
 你的能力仅限平台帮助、本人衣物查询、平台导航、一至五套临时搭配、当前画板语义调整、待确认保存与偏好记忆。没有联网、天气、购物、识图任务提交或删除衣物工具。
 平台使用问答必须先 search_help，根据命中文档回答，并提供来源入口。检索无可靠命中时明确说“暂时不知道”，可以提醒反馈给平台，但尚无反馈提交入口，不得声称已提交。
 搭配只用 search_wardrobe/get_garment 返回的 ACTIVE 衣物。用户指定“这件、这些、选中”时保留上下文中的当前/选中衣物。默认搭建三套不同方案，用户可指定一至五套；库存不够就给出可行数量并解释限制。调用 build_outfits 才会实际打开临时搭台并搭建，不要用文字假装已操作。工具等待浏览器回执，只能根据返回 status 声明完成；FAILED 时明确操作未完成，不自动重试。
