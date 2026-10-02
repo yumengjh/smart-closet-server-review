@@ -25,13 +25,18 @@ import tools.jackson.databind.*;
 public class AgentService {
     public record Request(String requestId,String content,JsonNode context,Boolean imageConsent,Boolean personalMemoryConsent) {}
     public record ToolRequest(String name,JsonNode args) {}
-    private record Grant(String owner,String session,Request request,AtomicInteger calls,long expires) {}
+    private static final class CanvasChannel {
+        volatile java.util.function.BiConsumer<String,Object> emit;
+        void send(String event,Object data) { var target=emit;if(target==null)throw AgentRepository.invalid("浏览器执行通道已关闭。");target.accept(event,data); }
+    }
+    private record Grant(String owner,String session,Request request,AtomicInteger calls,long expires,CanvasChannel channel) {}
     private final ConcurrentHashMap<String,Grant> grants=new ConcurrentHashMap<>();
     private final AgentProperties config;
     private final GenerationProperties credentials;
     private final AgentRepository repo;
     private final GarmentRepository garments;
     private final OutfitRepository outfits;
+    private final AgentCanvasRuns canvasRuns;
     private final HelpService help;
     private final JdbcTemplate db;
     private final ObjectMapper json;
@@ -40,8 +45,8 @@ public class AgentService {
     private final HttpClient http=HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(3)).build();
     private final ScheduledExecutorService watchdog=Executors.newSingleThreadScheduledExecutor(r->{var t=new Thread(r,"agent-deadline");t.setDaemon(true);return t;});
     public AgentService(AgentProperties config,GenerationProperties credentials,AgentRepository repo,GarmentRepository garments,
-        OutfitRepository outfits,HelpService help,JdbcTemplate db,ObjectMapper json,WorkflowFiles files,WorkflowRepository workflows) {
-        this.config=config;this.credentials=credentials;this.repo=repo;this.garments=garments;this.outfits=outfits;this.help=help;this.db=db;this.json=json;this.files=files;this.workflows=workflows;
+        OutfitRepository outfits,HelpService help,JdbcTemplate db,ObjectMapper json,WorkflowFiles files,WorkflowRepository workflows,AgentCanvasRuns canvasRuns) {
+        this.config=config;this.credentials=credentials;this.repo=repo;this.garments=garments;this.outfits=outfits;this.help=help;this.db=db;this.json=json;this.files=files;this.workflows=workflows;this.canvasRuns=canvasRuns;
     }
     @jakarta.annotation.PreDestroy public void close(){watchdog.shutdownNow();grants.clear();}
     public Map<String,Object> models() {
@@ -74,7 +79,7 @@ public class AgentService {
     }
     private JsonNode modelContext(String owner,JsonNode source) {
         var out=json.createObjectNode();
-        for(String key:List.of("route","garmentId","outfitId","name","revision","selectedIds"))if(source.has(key))out.set(key,source.get(key));
+        for(String key:List.of("route","workspaceId","boardId","contentVersion","boardCount","garmentId","outfitId","name","revision","selectedIds"))if(source.has(key))out.set(key,source.get(key));
         if(source.has("garmentId")&&!source.path("garmentId").asText().isBlank())out.set("garment",json.valueToTree(metadata(garment(owner,source.path("garmentId").asText(),false))));
         var elements=out.putArray("elements");
         for(var item:source.path("scene").path("elements")){
@@ -108,7 +113,8 @@ public class AgentService {
         }
         repo.begin(owner,session,request.requestId(),request.content());
         String token=UUID.randomUUID()+"-"+UUID.randomUUID();
-        grants.put(token,new Grant(owner,session,request,new AtomicInteger(),System.currentTimeMillis()+config.timeoutSeconds()*1000L+5000));
+        var channel=new CanvasChannel();
+        grants.put(token,new Grant(owner,session,request,new AtomicInteger(),System.currentTimeMillis()+config.timeoutSeconds()*1000L+5000,channel));
         var payload=new LinkedHashMap<String,Object>();
         payload.put("model",model);payload.put("baseURL",p.baseUrl());payload.put("apiKey",p.apiKey());
         payload.put("callbackURL",config.callbackUrl().resolve("/api/agent/internal/tool").toString());payload.put("callbackToken",token);
@@ -117,7 +123,11 @@ public class AgentService {
         var history=repo.messages(owner,session);payload.put("messages",history.subList(Math.max(0,history.size()-20),history.size()).stream().map(this::historyMessage).toList());
         if(image!=null)payload.put("image",image);
         return output->{
-            var text=new StringBuilder();var events=new ArrayList<Map<String,Object>>();String status="FAILED";JsonNode usage=json.nullNode();long started=System.currentTimeMillis();
+            var text=new StringBuilder();var events=Collections.synchronizedList(new ArrayList<Map<String,Object>>());String status="FAILED";JsonNode usage=json.nullNode();long started=System.currentTimeMillis();
+            channel.emit=(event,data)->{
+                try { if(!event.equals("canvas_operation"))events.add(Map.of("event",event,"data",data));send(output,event,data); }
+                catch(IOException e){throw new UncheckedIOException(e);}
+            };
             try{
                 send(output,"status",Map.of("text","正在理解你的请求","requestId",request.requestId()));
                 var upstream=http.send(HttpRequest.newBuilder(config.runtimeUrl().resolve("/run")).timeout(Duration.ofSeconds(config.timeoutSeconds()))
@@ -133,7 +143,7 @@ public class AgentService {
                             if(!Set.of("token","status","proposal","memory","navigation","sources","done","error").contains(event))continue;
                             if(event.equals("token")){text.append(data.path("text").asText());if(text.length()>24000)throw new IOException("output-too-large");}
                             else if(!event.equals("status")&&!event.equals("done")){
-                                if(events.size()>=50)throw new IOException("too-many-events");events.add(Map.of("event",event,"data",data));
+                                if(events.size()>=256)throw new IOException("too-many-events");events.add(Map.of("event",event,"data",data));
                             }
                             if(event.equals("done")){done=true;status="COMPLETE";usage=data.path("usage");repo.finish(owner,session,request.requestId(),text.toString(),status,events);send(output,event,Map.of("model",model,"quota",repo.quota(owner),"usage",usage));}
                             else send(output,event,data);
@@ -145,7 +155,7 @@ public class AgentService {
             }catch(Exception e){
                 try{send(output,"error",Map.of("message","助手回复中断，请查看已返回内容后主动重试。","code","AGENT_RUN_FAILED"));}catch(IOException ignored){}
             }finally{
-                grants.remove(token);repo.finish(owner,session,request.requestId(),text.toString(),status,events);
+                channel.emit=null;grants.remove(token);repo.finish(owner,session,request.requestId(),text.toString(),status,events);
                 org.slf4j.LoggerFactory.getLogger(getClass()).info("agent request={} model={} status={} durationMs={} usage={}",request.requestId(),model,status,System.currentTimeMillis()-started,usage.isMissingNode()?"unknown":usage);
             }
         };
@@ -157,6 +167,7 @@ public class AgentService {
             String type=event.path("event").asText();var data=event.path("data");var safe=json.createObjectNode();safe.put("event",type);
             if(type.equals("proposal")){for(String key:List.of("id","kind","payload","consumed"))if(data.has(key))safe.set(key,data.get(key));}
             else if(type.equals("memory")){for(String key:List.of("content","category","revoked"))if(data.has(key))safe.set(key,data.get(key));}
+            else if(type.equals("workspace_result")){for(String key:List.of("workspaceId","sessionId","boardIds","status","message"))if(data.has(key))safe.set(key,data.get(key));}
             else if(type.equals("navigation"))safe.set("path",data.path("path"));
             else continue;
             events.add(safe);
@@ -165,7 +176,7 @@ public class AgentService {
         return Map.of("role","assistant","content",text);
     }
     private void send(OutputStream output,String event,Object data) throws IOException {
-        output.write(("event: "+event+"\ndata: "+json.writeValueAsString(data)+"\n\n").getBytes(StandardCharsets.UTF_8));output.flush();
+        synchronized(output) { output.write(("event: "+event+"\ndata: "+json.writeValueAsString(data)+"\n\n").getBytes(StandardCharsets.UTF_8));output.flush(); }
     }
     public Object tool(String token,ToolRequest call) {
         var grant=grants.get(token);
@@ -188,17 +199,32 @@ public class AgentService {
                 yield modelContext(owner,json.valueToTree(Map.of("route","/outfits/"+outfit.id(),"outfitId",outfit.id().toString(),"name",outfit.name(),"revision",outfit.revision(),"scene",outfit.scene())));
             }
             case "navigate" -> {String path=validRoute(owner,a.path("path").asText());yield Map.of("path",path);}
-            case "propose_outfits" -> {
-                var candidates=a.path("candidates");if(!candidates.isArray()||candidates.size()!=3)throw AgentRepository.invalid("请给出三套不同搭配。");
+            case "build_outfits", "propose_outfits" -> {
+                var candidates=a.path("candidates");if(!candidates.isArray()||candidates.isEmpty()||candidates.size()>5)throw AgentRepository.invalid("请给出一至五套不同搭配。");
                 Set<String> signatures=new HashSet<>();var pinned=pinned(grant);
                 for(var candidate:candidates){
                     AgentRepository.clean(candidate.path("name").asText(),100);AgentRepository.clean(candidate.path("reason").asText(),1000);
                     var ids=candidate.path("garmentIds");if(!ids.isArray()||ids.isEmpty()||ids.size()>12)throw AgentRepository.invalid("候选衣物数量无效。");
                     var selected=new TreeSet<String>();for(var id:ids){garment(owner,id.asText(),true);if(!selected.add(id.asText()))throw AgentRepository.invalid("同一方案不能重复衣物。");}
                     if(!selected.containsAll(pinned))throw AgentRepository.invalid("候选必须包含用户指定的当前衣物。");
-                    if(!signatures.add(selected.toString()))throw AgentRepository.invalid("三套候选需要使用不同组合。");
+                    if(!signatures.add(selected.toString()))throw AgentRepository.invalid("候选需要使用不同组合。");
                 }
+                if(call.name().equals("build_outfits"))yield canvasRuns.build(owner,grant.session(),grant.request().context(),a,false,grant.channel()::send);
                 yield repo.propose(owner,grant.session(),"OUTFITS",a,grant.request().context());
+            }
+            case "edit_workspace" -> {
+                var context=grant.request().context();var elements=context.path("scene").path("elements");
+                if(!elements.isArray()||elements.isEmpty())throw AgentRepository.invalid("请先选中要调整的画板。");
+                var operations=a.path("operations");if(!operations.isArray()||operations.isEmpty()||operations.size()>20)throw AgentRepository.invalid("画板操作无效。");
+                var keys=new HashSet<String>();for(var e:elements)keys.add(e.path("elementId").asText(e.path("garmentId").asText()));
+                for(var op:operations){
+                    String kind=op.path("op").asText();
+                    if(!Set.of("add","replace","remove","layout","adjust").contains(kind))throw AgentRepository.invalid("操作未开放。");
+                    if(Set.of("replace","remove","adjust").contains(kind)&&!keys.contains(op.path("elementId").asText()))throw AgentRepository.invalid("目标贴纸不在当前画板。");
+                    if(Set.of("add","replace").contains(kind))garment(owner,op.path("garmentId").asText(),true);
+                    if(kind.equals("adjust")&&!Set.of("left","right","up","down","smaller","larger","flip").contains(op.path("intent").asText()))throw AgentRepository.invalid("调整意图未开放。");
+                }
+                yield canvasRuns.build(owner,grant.session(),context,a,true,grant.channel()::send);
             }
             case "propose_edit" -> {
                 var context=grant.request().context();var elements=context.path("scene").path("elements");
@@ -241,7 +267,7 @@ public class AgentService {
         return out;
     }
     public String validRoute(String owner,String route){
-        if(Set.of("/wardrobe","/add","/pending","/tasks","/trash","/settings","/outfits","/outfits/new","/help").contains(route))return route;
+        if(Set.of("/wardrobe","/add","/pending","/tasks","/trash","/settings","/outfits","/outfits/new","/outfits/workspace","/help").contains(route))return route;
         if(route.startsWith("/help?article=")&&help.articles().stream().anyMatch(a->a.href().equals(route)))return route;
         if(route.matches("/garment/[a-fA-F0-9-]{36}")){garment(owner,route.substring(9),false);return route;}
         if(route.matches("/outfits/[a-fA-F0-9-]{36}")){outfits.get(uuid(route.substring(9)),owner);return route;}

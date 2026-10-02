@@ -57,6 +57,18 @@ public class OutfitRepository {
         return find(id, owner, false);
     }
 
+    public void validatePreview(SceneWrite scene, String owner) {
+        if (scene == null || scene.elements() == null) throw ProcessingException.invalid("缺少画板内容。");
+        if (scene.elements().isEmpty() && scene.version() == SCENE_VERSION) return;
+        validateRequest(new SaveRequest(null, "临时搭台", scene), true);
+        snapshot(scene, owner);
+    }
+
+    public Scene previewSnapshot(SceneWrite scene, String owner) {
+        validatePreview(scene, owner);
+        return scene.elements().isEmpty() ? new Scene(SCENE_VERSION, List.of()) : snapshot(scene, owner);
+    }
+
     public View create(SaveRequest request, String owner) {
         validateRequest(request, true);
         return tx.execute(status -> {
