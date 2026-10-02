@@ -47,7 +47,7 @@ export async function runAgent(input: RunInput, emit: (frame: Frame) => void, si
     return data
   }
   const tools = definitions.map(definition => tool(async (args: unknown) => {
-    emit({ event: 'status', data: { text: definition.label } })
+    emit({ event: 'status', data: { text: definition.label, phase: 'operating', tool: definition.name } })
     const result = await callback(definition.name, args)
     if (definition.name.startsWith('propose_') || definition.name === 'request_save') {
       emit({ event: 'proposal', data: result })
@@ -63,6 +63,7 @@ export async function runAgent(input: RunInput, emit: (frame: Frame) => void, si
   const bound = model.bindTools(tools)
   const graph = new StateGraph(MessagesAnnotation)
     .addNode('assistant', async state => {
+      emit({ event: 'status', data: { text: '正在思考', phase: 'thinking' } })
       let full: AIMessageChunk | undefined
       // Once the budget is exhausted, the final model call cannot request more tools.
       const chat = toolCalls >= input.maxToolCalls ? model : bound
@@ -83,7 +84,7 @@ export async function runAgent(input: RunInput, emit: (frame: Frame) => void, si
         const candidate = tools.find(t => t.name === call.name)
         let content: string
         try { content = candidate ? String(await (candidate as StructuredToolInterface).invoke(call.args, { signal })) : '工具未开放' }
-        catch (error) { content = JSON.stringify({ error: error instanceof Error ? error.message : '工具失败' }); emit({ event: 'status', data: { text: '工具未完成，正在处理返回结果' } }) }
+        catch (error) { content = JSON.stringify({ error: error instanceof Error ? error.message : '工具失败' }); emit({ event: 'status', data: { text: '工具未完成，正在处理返回结果', phase: 'thinking' } }) }
         results.push(new ToolMessage({ content, tool_call_id: call.id ?? '', name: call.name }))
       }
       return { messages: results }

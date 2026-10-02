@@ -128,3 +128,11 @@ npm run build:server
 真实模型兼容性检查必须显式设置 `CLOSET_AGENT_LIVE_VERIFY=true`、`CLOSET_CHECK_BASE_URL`、`CLOSET_CHECK_API_KEY`；模型由 CLOSET_AGENT_MODEL 指定。Agent 检查 `npx tsx src/model-check.ts` 仅一条强制工具调用并观察流，不执行平台工具；识图 `mvn -Dtest=RecognitionModelLiveCheckTest test` 仅一张公开 samples/white-shirt-light.jpg，通过平台 garment-v2 全字段校验。会产生实际费用，未设置开关时跳过。
 
 框架结构参考 [LangGraph JS 官方文档](https://docs.langchain.com/oss/javascript/langgraph/thinking-in-langgraph)。
+
+## 助手活动动效
+
+- 思考阶段使用 [Vue Bits LatticeLoader](https://vue-bits.dev/micro/lattice-loader) 的点阵波动和计时。
+- 工具执行及浏览器画板操作阶段使用 [ThoughtLine](https://vue-bits.dev/micro/thought-line) 的呼吸图标、文字闪光和计时。可展开的步骤来自真实 `operation_result` 回执，不展示模型内部推理。
+- `status.data.phase` 明确发送 `thinking` 或 `operating`；开始输出回答后隐藏思考提示，实际画板操作仍在进行时优先显示操作状态。结束、取消或出错后停止动画与计时。
+- 动效在当前助手消息区内显示，不改变助手覆盖主布局的方式。支持 `prefers-reduced-motion`，交互控件继续使用 Ant Design Vue。
+- 前端源码位于 `src/agent/effects`，使用本地 CSS 适配现有主题；上游许可证保留在源码中，并随发布提供 `/licenses/vue-bits.txt`。

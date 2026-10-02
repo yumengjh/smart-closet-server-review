@@ -129,7 +129,7 @@ public class AgentService {
                 catch(IOException e){throw new UncheckedIOException(e);}
             };
             try{
-                send(output,"status",Map.of("text","正在理解你的请求","requestId",request.requestId()));
+                send(output,"status",Map.of("text","正在理解你的请求","phase","thinking","requestId",request.requestId()));
                 var upstream=http.send(HttpRequest.newBuilder(config.runtimeUrl().resolve("/run")).timeout(Duration.ofSeconds(config.timeoutSeconds()))
                     .header("Content-Type","application/json").header("X-Agent-Secret",config.secret()).POST(HttpRequest.BodyPublishers.ofByteArray(json.writeValueAsBytes(payload))).build(),HttpResponse.BodyHandlers.ofInputStream());
                 try(var stream=upstream.body()){
