@@ -19,6 +19,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.csrf.CookieCsrfTokenRepository;
 import org.springframework.security.web.csrf.CsrfException;
+import org.springframework.security.web.header.writers.ReferrerPolicyHeaderWriter;
 import org.springframework.security.web.context.HttpSessionSecurityContextRepository;
 import org.springframework.security.web.context.SecurityContextRepository;
 
@@ -41,8 +42,9 @@ public class SecurityConfiguration {
     @Bean SecurityContextRepository securityContextRepository() { return new HttpSessionSecurityContextRepository(); }
 
     @Bean SecurityFilterChain closetSecurity(HttpSecurity http, ClosetAccountService accounts,
-            SecurityContextRepository contexts, tools.jackson.databind.ObjectMapper json) throws Exception {
+            SecurityContextRepository contexts, PortableLoginService portableLinks, tools.jackson.databind.ObjectMapper json) throws Exception {
         http
+            .headers(headers -> headers.referrerPolicy(policy -> policy.policy(ReferrerPolicyHeaderWriter.ReferrerPolicy.NO_REFERRER)))
             .csrf(csrf -> csrf.csrfTokenRepository(CookieCsrfTokenRepository.withHttpOnlyFalse()).ignoringRequestMatchers("/api/agent/internal/tool"))
             .exceptionHandling(errors -> errors
                     .authenticationEntryPoint((request, response, error) -> writeError(response, json, 401,
@@ -68,6 +70,7 @@ public class SecurityConfiguration {
                     .requestMatchers(HttpMethod.POST, "/api/agent/internal/tool").permitAll()
                     .requestMatchers(HttpMethod.GET, "/api/auth/csrf").permitAll()
                     .requestMatchers(HttpMethod.POST, "/api/auth/login").permitAll()
+                    .requestMatchers(HttpMethod.POST, "/api/auth/portable-login").permitAll()
                     .requestMatchers(HttpMethod.GET, "/api/health").permitAll()
                     .requestMatchers("/workflow/**", "/studio/**").access((authentication, context) -> {
                         var current = authentication.get();
@@ -91,6 +94,7 @@ public class SecurityConfiguration {
                         return new org.springframework.security.authorization.AuthorizationDecision(!adminOnly || isAdmin);
                     })
                     .anyRequest().permitAll());
+        http.addFilterAfter(new PortableLoginFilter(portableLinks), org.springframework.security.web.context.SecurityContextHolderFilter.class);
         return http.build();
     }
 
