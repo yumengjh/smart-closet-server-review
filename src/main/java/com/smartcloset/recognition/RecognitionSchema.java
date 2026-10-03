@@ -9,7 +9,8 @@ import static com.smartcloset.recognition.Recognition.*;
 
 @Component
 public class RecognitionSchema {
-    public static final String VERSION = "garment-v3";
+    public static final String VERSION = "garment-v4";
+    public static boolean requiresTarget(String version) { return "garment-v3".equals(version) || VERSION.equals(version); }
     public record Field(String key, String label, List<String> options, boolean multiple, boolean suggestion) {}
     public static final List<Field> FIELDS = List.of(
         field("category", "品类", false, false, "T恤,衬衫,卫衣,毛衣,背心,夹克,西装外套,大衣,羽绒服,连衣裙,半身裙,长裤,短裤,连体衣,运动鞋,靴子,凉鞋,帽子,棒球帽,贝雷帽,渔夫帽,手提包,斜挎包,背包,围巾,腰带,袜子,眼镜,上装,下装,其他衣物"),
@@ -21,6 +22,9 @@ public class RecognitionSchema {
         field("garmentLength", "衣物长度", false, false, "短款,常规,中长款,长款"),
         field("closure", "门襟", true, false, "套头,纽扣,拉链,系带,按扣,其他"),
         field("texture", "表面纹理", true, false, "平滑,针织纹理,牛仔纹理,绒面感,皮革感,光泽,蕾丝,网眼,其他"),
+        field("fit", "版型建议（需核对）", false, true, "修身,合体,宽松,廓形"),
+        field("thickness", "厚薄线索（需核对）", false, true, "薄,常规,厚"),
+        field("wearingModes", "穿着用途建议（需核对）", true, true, "可作内搭,可作外搭,适合单穿"),
         field("styles", "风格建议", true, true, "休闲,运动,通勤,正式,复古,甜美,户外"),
         field("seasons", "季节建议", true, true, "春,夏,秋,冬"),
         field("brand", "品牌（需标签）", false, false, ""),

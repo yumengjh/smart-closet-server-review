@@ -305,7 +305,7 @@ public class WorkflowService {
                 if (spec.type() == Type.RECOGNIZE) {
                     var result = executeRecognition(original, index, started);
                     results.set(index, result);
-                    boolean productNeedsTarget = "garment-v3".equals(spec.preparedRecognition().schemaVersion())
+                    boolean productNeedsTarget = RecognitionSchema.requiresTarget(spec.preparedRecognition().schemaVersion())
                             && original.request().steps().stream().anyMatch(s -> s.type() == Type.GENERATE && ClosetPrompts.allowedPrompt(s.generation().prompt()));
                     if (result.recognition() != null && result.recognition().blocksImages()
                             || productNeedsTarget && (result.recognition() == null || result.recognition().target() == null)) {

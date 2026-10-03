@@ -39,8 +39,9 @@ public class AgentCanvasRuns {
     private final ConcurrentHashMap<String,Run> runs=new ConcurrentHashMap<>();
     private final OutfitRepository outfits;
     private final ObjectMapper json;
+    private final AgentTraceService traces;
     private final AgentProperties config;
-    public AgentCanvasRuns(OutfitRepository outfits,ObjectMapper json,AgentProperties config){this.outfits=outfits;this.json=json;this.config=config;}
+    public AgentCanvasRuns(OutfitRepository outfits,ObjectMapper json,AgentProperties config,AgentTraceService traces){this.outfits=outfits;this.json=json;this.config=config;this.traces=traces;}
 
     public Object build(String owner,String session,JsonNode source,JsonNode args,boolean edit,BiConsumer<String,Object> emit) {
         var run=new Run(owner,session,emit,System.currentTimeMillis()+config.timeoutSeconds()*1000L);
@@ -112,6 +113,14 @@ public class AgentCanvasRuns {
     }
 
     public void ack(String owner,String id,Ack ack) {
+        try { acceptAck(owner,id,ack); }
+        catch(RuntimeException e) {
+            var run=runs.get(id);
+            if(run!=null&&run.owner.equals(owner))run.emit.accept("canvas_receipt",Map.of("runId",id,"operationId",ack==null?"":Objects.toString(ack.operationId(),""),"success",false,"message",Objects.toString(e.getMessage(),"无效回执"),"evidenceSource","SERVER_REJECTED"));
+            throw e;
+        }
+    }
+    private void acceptAck(String owner,String id,Ack ack) {
         if(ack==null)throw AgentRepository.invalid("缺少操作回执。");
         Run run=owned(owner,id);Command command=run.pending;
         if(command==null||!command.id.equals(ack.operationId())||command.sequence!=ack.sequence())throw AgentRepository.invalid("操作回执不匹配。");
@@ -154,6 +163,7 @@ public class AgentCanvasRuns {
                     run.scenes.put(command.board,ack.scene());
                 }
             }
+            run.emit.accept("canvas_receipt",Map.of("runId",id,"operationId",command.id,"boardId",command.board,"sequence",command.sequence,"kind",command.kind,"success",ack.success(),"expectedVersion",command.expected,"version",ack.version()==null?-1:ack.version(),"scene",ack.scene()==null?json.createObjectNode():traces.safeScene(ack.scene()),"message",ack.message()==null?"":safeMessage(ack.message())));
             command.result.complete(ack);
         }
     }

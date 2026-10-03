@@ -7,13 +7,13 @@ async function listen(server: Server) {
   await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve))
   return `http://127.0.0.1:${(server.address() as { port: number }).port}`
 }
-async function exercise(budget = 8, navigation = false, avatarMode?: string) {
-  const requests: any[] = []; const callbacks: any[] = []; const frames: Frame[] = []
+async function exercise(budget = 8, navigation = false, avatarMode?: string, traceEnabled = false) {
+  const requests: any[] = []; const callbacks: any[] = []; const frames: Frame[] = []; const traces: any[] = []
   const server = createServer(async (req, res) => {
     let raw = ''; for await (const chunk of req) raw += chunk
     const body = JSON.parse(raw)
     if (req.url === '/callback') {
-      assert.equal(req.headers.authorization, 'Bearer turn-only-token'); callbacks.push(body)
+      assert.equal(req.headers.authorization, 'Bearer turn-only-token'); if (body.name === '__trace') { traces.push(body.args); res.setHeader('Content-Type', 'application/json'); res.end('{}'); return }; callbacks.push(body)
       res.setHeader('Content-Type', 'application/json'); res.end(JSON.stringify(body.name === 'navigate' ? { path: '/help' } : { known: false, articles: [], unknownAnswer: '暂时不知道' })); return
     }
     assert.equal(req.url, '/v1/chat/completions'); requests.push(body)
@@ -26,7 +26,7 @@ async function exercise(budget = 8, navigation = false, avatarMode?: string) {
   })
   const url = await listen(server)
   try {
-    await runAgent({ avatarMode, model: 'gpt-6-luna', apiKey: 'fake-key', baseURL: url + '/v1', callbackURL: url + '/callback', callbackToken: 'turn-only-token', maxToolCalls: budget, timeoutSeconds: 5, context: { route: '/wardrobe' }, memories: [], messages: [{ role: 'user', content: '天气预报怎么用？' }] }, f => frames.push(f), AbortSignal.timeout(10000))
+    await runAgent({ traceEnabled, avatarMode, model: 'gpt-6-luna', apiKey: 'fake-key', baseURL: url + '/v1', callbackURL: url + '/callback', callbackToken: 'turn-only-token', maxToolCalls: budget, timeoutSeconds: 5, context: { route: '/wardrobe' }, memories: [], messages: [{ role: 'user', content: '天气预报怎么用？' }] }, f => frames.push(f), AbortSignal.timeout(10000))
     assert.equal(requests.length, navigation ? 3 : 2); assert.equal(callbacks.length, navigation ? 2 : 1)
     const returned = requests[1].messages.find((m: any) => m.role === 'tool')
     assert.equal(JSON.parse(returned.content).known, false)
@@ -35,6 +35,16 @@ async function exercise(budget = 8, navigation = false, avatarMode?: string) {
     assert.deepEqual(frames.at(-1), { event: 'done', data: { toolCalls: navigation ? 2 : 1, usage: null } })
     if(avatarMode==='personal'){assert.equal(frames.filter(f=>f.event==='avatar').length,1);assert.deepEqual(frames.find(f=>f.event==='avatar')?.data,{state:'wink',expression:'happy'});assert.ok(requests[0].messages[0].content.includes('<avatar>'));assert.ok(!JSON.stringify(frames.filter(f=>f.event==='token')).includes('<avatar>'))}
     else {assert.equal(frames.filter(f=>f.event==='avatar').length,0);assert.ok(!requests[0].messages[0].content.includes('<avatar>'))}
+    if (traceEnabled) {
+      assert.equal(traces.filter(t => t.phase === 'input').length, requests.length)
+      assert.equal(traces.filter(t => t.phase === 'model_output').length, requests.length)
+      const inputs = traces.filter(t => t.phase === 'input')
+      assert.equal(inputs[0].detail.messages[0].content, requests[0].messages[0].content)
+      assert.equal(inputs[0].detail.tools[0].parameters.type, 'object')
+      assert.equal(inputs[1].detail.messages.find((m: any) => m.role === 'tool').content, returned.content)
+      assert.equal(callbacks[0].callId, 'call_help')
+      assert.ok(!JSON.stringify(traces).includes('fake-key')); assert.ok(!JSON.stringify(traces).includes('turn-only-token'))
+    }
     return requests
   } finally { server.closeAllConnections(); await new Promise<void>(resolve => server.close(() => resolve())) }
 }
@@ -61,7 +71,7 @@ test('a rejected outfit returns its cause to the model and can be corrected with
     requests.push(body)
     if (requests.length === 2) assert.match(body.messages.find((m: any) => m.role === 'tool').content, /最多一件外搭/)
     const delta = requests.length < 3
-      ? { role: 'assistant', tool_calls: [{ index: 0, id: `build-${requests.length}`, type: 'function', function: { name: 'build_outfits', arguments: JSON.stringify({ candidates: [{ name: '基础搭配', reason: '修正冲突', garmentIds: requests.length === 1 ? ids : ids.slice(0, 1) }] }) } }] }
+      ? { role: 'assistant', tool_calls: [{ index: 0, id: `build-${requests.length}`, type: 'function', function: { name: 'build_outfits', arguments: JSON.stringify({ candidates: [{ name: '基础搭配', reason: '修正冲突', candidateId: ids[requests.length === 1 ? 0 : 1] }] }) } }] }
       : { role: 'assistant', content: '已修正外搭冲突，临时搭配尚未保存。' }
     res.setHeader('Content-Type', 'text/event-stream')
     res.end('data: ' + JSON.stringify({ id: 'outfit-test', object: 'chat.completion.chunk', choices: [{ index: 0, delta, finish_reason: null }] }) + '\n\ndata: [DONE]\n\n')
@@ -72,5 +82,32 @@ test('a rejected outfit returns its cause to the model and can be corrected with
     assert.equal(builds, 2); assert.equal(requests.length, 3)
     assert.equal(frames.filter(f => f.event === 'error').length, 0)
     assert.equal(frames.at(-1)?.event, 'done')
+  } finally { server.closeAllConnections(); await new Promise<void>(resolve => server.close(() => resolve())) }
+})
+
+test('trace captures every actual model input and tool correlation without adding model calls', async () => { await exercise(8, false, 'basic', true) })
+
+test('outfit selection uses server candidate IDs without arbitrary garment composition or retry', async () => {
+  const candidateId = '11111111-1111-4111-8111-111111111111'; let requests = 0; const callbacks: string[] = []
+  const server = createServer(async (req, res) => {
+    let raw = ''; for await (const chunk of req) raw += chunk; const body = JSON.parse(raw)
+    if (req.url === '/callback') {
+      callbacks.push(body.name); res.setHeader('Content-Type', 'application/json')
+      if (body.name === 'get_outfit_candidates') res.end(JSON.stringify({ candidates: [{ candidateId, garmentIds: ['g1', 'g2'] }], garments: [], ruleVersion: 'daily-evidence-v3' }))
+      else { assert.equal(body.args.candidates[0].candidateId, candidateId); assert.equal(body.args.candidates[0].garmentIds, undefined); res.end(JSON.stringify({ status: 'COMPLETE' })) }
+      return
+    }
+    requests++
+    const schema = body.tools.find((t: any) => t.function.name === 'build_outfits').function.parameters.properties.candidates.items.properties
+    assert.ok(schema.candidateId); assert.equal(schema.garmentIds, undefined)
+    const name = requests === 1 ? 'get_outfit_candidates' : 'build_outfits'
+    const args = requests === 1 ? { requiredGarmentIds: [] } : { candidates: [{ candidateId, name: '通勤', reason: '从合法候选选择' }] }
+    const delta = requests < 3 ? { role: 'assistant', tool_calls: [{ index: 0, id: `candidate-${requests}`, type: 'function', function: { name, arguments: JSON.stringify(args) } }] } : { role: 'assistant', content: '已搭建，尚未保存。' }
+    res.setHeader('Content-Type', 'text/event-stream'); res.end('data: ' + JSON.stringify({ id: 'selection', choices: [{ index: 0, delta, finish_reason: null }] }) + '\n\ndata: [DONE]\n\n')
+  })
+  const url = await listen(server)
+  try {
+    await runAgent({ model: 'gpt-6-luna', apiKey: 'fake', baseURL: url + '/v1', callbackURL: url + '/callback', callbackToken: 'test', maxToolCalls: 5, timeoutSeconds: 5, context: { route: '/wardrobe' }, memories: [], messages: [{ role: 'user', content: '搭一套' }] }, () => {}, AbortSignal.timeout(10000))
+    assert.equal(requests, 3); assert.deepEqual(callbacks, ['get_outfit_candidates', 'build_outfits'])
   } finally { server.closeAllConnections(); await new Promise<void>(resolve => server.close(() => resolve())) }
 })

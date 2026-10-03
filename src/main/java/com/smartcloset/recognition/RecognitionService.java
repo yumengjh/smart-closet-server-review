@@ -82,7 +82,7 @@ public class RecognitionService {
     }
     public Output recognize(Prepared r, byte[] png) {
         var out = raw(r, png, "识别这张照片中的单件衣物。");
-        return new Output(schema.validate(out.raw(), "garment-v3".equals(r.schemaVersion())), out.raw(), out.usage(), out.requestId());
+        return new Output(schema.validate(out.raw(), RecognitionSchema.requiresTarget(r.schemaVersion())), out.raw(), out.usage(), out.requestId());
     }
     public RawOutput raw(Prepared r, byte[] png, String instructions) {
         if (!Objects.equals(r.providerRevision(), revision(r.provider()))) throw new ProcessingException(HttpStatus.CONFLICT, "PROVIDER_CONFIG_CHANGED", "识图服务商配置已改变，请重新提交。");

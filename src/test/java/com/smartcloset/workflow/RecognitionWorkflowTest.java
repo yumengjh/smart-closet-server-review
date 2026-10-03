@@ -155,6 +155,17 @@ class RecognitionWorkflowTest {
         assertFalse(ClosetPrompts.allowedPrompt(captured.getValue().prompt()),"clients cannot supply enriched prompts themselves");
         assertTrue(garments.get(job.request().garmentId()).automatic().target().worn());
     }
+    @Test void recognitionVersionTargetRequirementSurvivesUpgrade() { assertTrue(RecognitionSchema.requiresTarget("garment-v3")); assertTrue(RecognitionSchema.requiresTarget("garment-v4")); assertFalse(RecognitionSchema.requiresTarget("garment-v2")); }
+    @Test void legacyRecognitionRemainsReadableAndNewFieldsStayUnknown() throws Exception {
+        var job=await(upload(identify()).id());var id=job.request().garmentId();
+        var result=json.valueToTree(garments.get(id).automatic());
+        var attrs=(tools.jackson.databind.node.ObjectNode)result.path("attributes");
+        for(String key:List.of("fit","thickness","wearingModes"))attrs.remove(key);
+        jdbc.update("UPDATE garment SET automatic_json=? WHERE id=?",json.writeValueAsString(result),id.toString());
+        var restored=garments.get(id);
+        assertEquals(List.of("T恤"),restored.effective().get("category"));
+        for(String key:List.of("fit","thickness","wearingModes"))assertEquals(List.of(),restored.effective().get(key));
+    }
     @Test void productPresetDoesNotSpendAnImageCallWhenRecognitionFailed() throws Exception {
         responseCode=502;
         var preset=new Step(Type.GENERATE,Mode.IMAGE_TO_IMAGE,new GenerationService.Request("test","image",ClosetPrompts.RESTAGE,Map.of()),null);

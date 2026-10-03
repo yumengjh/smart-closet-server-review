@@ -9,7 +9,7 @@ class OutfitRulesTest {
     private Map<String,List<String>> garment(String category) { return Map.of("category",List.of(category)); }
     private List<Map<String,List<String>>> clothes(String... categories) { return Arrays.stream(categories).map(this::garment).toList(); }
     @Test void dailyOutfitsAcceptSeparateAndOnePieceBodies() {
-        for(var set:List.of(clothes("衬衫","西装裤"),clothes("T恤","半身裙","针织开衫","运动鞋"),clothes("吊带裙","夹克","斜挎包"),clothes("连体裤")))
+        for(var set:List.of(clothes("衬衫","西装裤"),clothes("T恤","半身裙","运动鞋"),clothes("吊带裙","斜挎包"),clothes("连体裤")))
             assertDoesNotThrow(()->OutfitRules.validate(set,true));
     }
     @Test void rejectsConflictingSlotsAndIncompleteBodies() {
@@ -27,6 +27,13 @@ class OutfitRulesTest {
         assertDoesNotThrow(()->OutfitRules.validate(clothes("夹克"),false));
         assertDoesNotThrow(()->OutfitRules.validate(List.of(),false));
         assertThrows(ProcessingException.class,()->OutfitRules.validate(clothes("连衣裙","衬衫"),false));
+    }
+    @Test void rejectsUnverifiedLayeringEvenWithApparentlyCompatibleCategoryAndReason() {
+        for(var set:List.of(clothes("衬衫","长裤","夹克"),clothes("T恤","长裤","开衫"),clothes("吊带裙","夹克"))) {
+            assertTrue(assertThrows(ProcessingException.class,()->OutfitRules.validate(set,true)).getMessage().contains("叠穿兼容证据"));
+            assertThrows(ProcessingException.class,()->OutfitRules.validate(set,false));
+        }
+        assertEquals(false,OutfitRules.profile(garment("夹克")).get("layeringVerified"));
     }
     @Test void categoryMatchingDoesNotConfuseCompoundNames() {
         for(var category:List.of("针织开衫","cardigan","西装外套","牛仔外套"))assertEquals(OutfitRules.Role.OUTER,OutfitRules.role(garment(category)),category);

@@ -26,7 +26,19 @@ final class OutfitRules {
     static Map<String,Object> profile(Map<String,List<String>> fields) {
         Role role=role(fields);
         return Map.of("role",role,"layer",role==Role.OTHER?"UNKNOWN":role==Role.OUTER?"OUTER":Set.of(Role.TOP,Role.BOTTOM,Role.ONE_PIECE).contains(role)?"BASE":"ACCESSORY",
-            "categoryKnown",role!=Role.OTHER,"basis","由有效品类推导；不代表已知厚度、版型或可叠穿性");
+            "layeringVerified",false,"wearingDataConfirmed",confirmed(fields),"layeringPolicy","EVIDENCE_FILTERED_CANDIDATES","categoryKnown",role!=Role.OTHER,"basis","由有效品类推导；不代表已知厚度、版型或可叠穿性");
+    }
+    static boolean confirmed(Map<String,List<String>> fields) { return fields.getOrDefault("_layeringConfirmed",List.of()).contains("yes"); }
+    static boolean compatible(List<Map<String,List<String>>> garments) {
+        var inner=garments.stream().filter(f->Set.of(Role.TOP,Role.ONE_PIECE).contains(role(f))).findFirst().orElse(Map.of());
+        var outer=garments.stream().filter(f->role(f)==Role.OUTER).findFirst().orElse(Map.of());
+        var thickness=List.of("薄","常规","厚");
+        int inside=thickness.indexOf(inner.getOrDefault("thickness",List.of()).stream().findFirst().orElse(""));
+        int outside=thickness.indexOf(outer.getOrDefault("thickness",List.of()).stream().findFirst().orElse(""));
+        return confirmed(inner)&&confirmed(outer)&&inner.getOrDefault("wearingModes",List.of()).contains("可作内搭")
+            &&outer.getOrDefault("wearingModes",List.of()).contains("可作外搭")
+            &&inner.getOrDefault("fit",List.of()).stream().anyMatch(Set.of("修身","合体")::contains)
+            &&outer.getOrDefault("fit",List.of()).contains("宽松")&&inside>=0&&inside<=1&&outside>=inside;
     }
     static void validate(List<Map<String,List<String>>> garments, boolean requireComplete) {
         var counts=new EnumMap<Role,Integer>(Role.class);
@@ -43,6 +55,8 @@ final class OutfitRules {
         }
         if(counts.containsKey(Role.ONE_PIECE)&&(counts.containsKey(Role.TOP)||counts.containsKey(Role.BOTTOM)))
             throw AgentRepository.invalid("连衣裙或连体衣已构成主体，默认不能再混搭衬衫等上装或裤裙；请改用一件外搭，或单独组合上装和下装。");
+        if(counts.containsKey(Role.OUTER)&&(counts.containsKey(Role.TOP)||counts.containsKey(Role.ONE_PIECE))&&!compatible(garments))
+            throw AgentRepository.invalid("当前衣物资料缺少厚度、版型及具体叠穿兼容证据，不能自动将外套与主体衣物一起推荐。请移除外搭，改为单层主体搭配；用户指定必须保留时说明无法可靠组合，不猜测可叠穿。手动编辑仍可添加外套。");
         if(requireComplete&&!counts.containsKey(Role.ONE_PIECE)&&!(counts.containsKey(Role.TOP)&&counts.containsKey(Role.BOTTOM)))
             throw AgentRepository.invalid("搭配缺少穿着主体：请使用一件上装加一件下装，或一件连衣裙/连体衣；外套与配饰不能代替主体。库存不足时说明限制，不凑方案。");
     }

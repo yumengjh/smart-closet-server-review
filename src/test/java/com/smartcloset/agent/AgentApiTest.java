@@ -30,7 +30,7 @@ class AgentApiTest {
  @DynamicPropertySource static void config(DynamicPropertyRegistry r){r.add("closet.storage-dir",()->storage.toString());r.add("agent.runtime-url",()->"http://127.0.0.1:"+runtime.getAddress().getPort());}
  @AfterAll static void shutdown(){runtime.stop(0);}
  @LocalServerPort int port;
- @Autowired AgentRepository repo; @Autowired AgentService service; @Autowired HelpService help;
+ @Autowired AgentTraceService traces; @Autowired AgentRepository repo; @Autowired AgentService service; @Autowired HelpService help;
  @Autowired ClosetAccountService accounts; @Autowired JdbcTemplate db;
  HttpClient client=HttpClient.newBuilder().cookieHandler(new CookieManager(null,CookiePolicy.ACCEPT_ALL)).build(); String csrf;
  HttpResponse<String> send(String method,String path,Object body)throws Exception{
@@ -151,7 +151,7 @@ class AgentApiTest {
     assertTrue(search.path("fallbackApplied").asBoolean());assertEquals(0,search.path("matchedTotal").asInt());
     assertEquals(6,search.path("total").asInt());assertEquals(1,search.path("page").asInt());assertEquals("",search.path("appliedQuery").asText());
     assertFalse(search.path("hasMore").asBoolean());
-    for(String name:List.of("build_outfits","propose_outfits"))for(var ids:List.of(List.of(top,bottom,outer,cardigan),List.of(dress,top),List.of(top,unknown),List.of(outer)))
+    for(String name:List.of("build_outfits","propose_outfits"))for(var ids:List.of(List.of(top,bottom,outer,cardigan),List.of(dress,top),List.of(top,bottom,outer),List.of(dress,cardigan),List.of(top,unknown),List.of(outer)))
      assertThrows(com.smartcloset.image.ProcessingException.class,()->service.tool(token,new AgentService.ToolRequest(name,candidates(List.of(ids)))));
     for(String name:List.of("edit_workspace","propose_edit")) {
      var operations=json.valueToTree(Map.of("summary","添加开衫","operations",List.of(Map.of("op","add","garmentId",cardigan))));
@@ -159,12 +159,19 @@ class AgentApiTest {
     }
     var inverted=json.valueToTree(Map.of("summary","错误层级","operations",List.of(Map.of("op","transform","elementId","outer","patch",Map.of("zIndex",-1)))));
     assertThrows(com.smartcloset.image.ProcessingException.class,()->service.tool(token,new AgentService.ToolRequest("propose_edit",inverted)));
-    var proposal=service.tool(token,new AgentService.ToolRequest("propose_outfits",candidates(List.of(List.of(dress,cardigan),List.of(top,bottom,outer)))));
+    var proposal=service.tool(token,new AgentService.ToolRequest("propose_outfits",candidates(List.of(List.of(dress),List.of(top,bottom)))));
     assertNotNull(proposal);
     // A category change between preview and acceptance must invalidate the old combination.
-    db.update("UPDATE garment SET overrides_json=? WHERE id=?",json.writeValueAsString(Map.of("category",List.of("衬衫"))),cardigan);
+    db.update("UPDATE garment SET overrides_json=? WHERE id=?",json.writeValueAsString(Map.of("category",List.of("夹克"))),dress);
     String id=json.valueToTree(proposal).path("id").asText();
     assertThrows(com.smartcloset.image.ProcessingException.class,()->service.accept(owner,id,json.readTree("{\"route\":\"/wardrobe\"}"),false));
+    var pool=json.valueToTree(service.tool(token,new AgentService.ToolRequest("get_outfit_candidates",json.readTree("{\"requiredGarmentIds\":[]}"))));
+    assertFalse(pool.path("candidates").isEmpty());assertFalse(pool.path("garments").isEmpty());
+    assertFalse(pool.path("garments").get(0).path("quality").path("category").has("evidence"));
+    String candidate=pool.path("candidates").get(0).path("candidateId").asText();
+    var picked=json.valueToTree(Map.of("candidates",List.of(Map.of("candidateId",candidate,"name","可靠方案","reason","从预校验候选选择"))));
+    assertNotNull(service.tool(token,new AgentService.ToolRequest("propose_outfits",picked)));
+    assertThrows(com.smartcloset.image.ProcessingException.class,()->service.tool(token,new AgentService.ToolRequest("propose_outfits",candidates(List.of(List.of(top,bottom))))));
     frame="{\"event\":\"done\",\"data\":{}}\n";
    } catch(Throwable e) {failure.set(e);frame="{\"event\":\"error\",\"data\":{}}\n";}
    byte[] bytes=frame.getBytes(StandardCharsets.UTF_8);exchange.sendResponseHeaders(200,bytes.length);exchange.getResponseBody().write(bytes);exchange.close();
@@ -177,4 +184,41 @@ class AgentApiTest {
   }finally{runtime.removeContext("/run");}
  }
  @Test void helpIsSharedAndUnknownRetrievalStaysUnknown(){assertEquals(3,help.articles().size());assertFalse(help.search("组合台保存草稿").isEmpty());assertTrue(help.search("宇宙量子飞船驾驶").isEmpty());}
+ @Test void traceSnapshotsPersistArePaginatedRedactedAndAccountScoped()throws Exception {
+  String owner=login();var session=repo.create(owner);String request=UUID.randomUUID().toString();
+  repo.begin(owner,session.id(),request,"测试追踪");traces.start(session.id(),request,List.of("credential-fixture","身高170"));
+  traces.append(request,"input","CAPTURED","输入",Map.of("system","提示 credential-fixture 身高170", "apiKey","credential-fixture","image","data:image/jpeg;base64,secret-image","memories",List.of(Map.of("category","PERSONAL","content","身高170")),"category",List.of("衬衫")));
+  for(int n=0;n<105;n++)traces.append(request,"tool","COMPLETE","工具"+n,Map.of("n",n));
+  traces.finish(request,"COMPLETE");repo.finish(owner,session.id(),request,"完成","COMPLETE",List.of());
+  var page=json.readTree(send("GET","/api/agent/sessions/"+session.id()+"/runs/"+request+"/trace?limit=100",null).body());
+  assertTrue(page.path("available").asBoolean());assertTrue(page.path("hasMore").asBoolean());assertEquals(100,page.path("items").size());
+  var next=json.readTree(send("GET","/api/agent/sessions/"+session.id()+"/runs/"+request+"/trace?afterSeq=100",null).body());assertEquals(6,next.path("items").size());
+  String detail=send("GET","/api/agent/sessions/"+session.id()+"/runs/"+request+"/trace/1",null).body();
+  assertFalse(detail.contains("credential-fixture"));assertFalse(detail.contains("身高170"));assertFalse(detail.contains("secret-image"));assertTrue(detail.contains("衬衫"));
+  assertEquals(request,repo.messages(owner,session.id()).getLast().requestId());
+  assertThrows(com.smartcloset.image.ProcessingException.class,()->traces.list("unknown-owner",session.id(),request,0,100));
+  assertFalse(json.readTree(send("GET","/api/agent/sessions/"+session.id()+"/runs/"+UUID.randomUUID()+"/trace",null).body()).path("available").asBoolean());
+  repo.delete(owner,session.id());assertEquals(0,db.queryForObject("SELECT COUNT(*) FROM agent_trace_event WHERE request_id=?",Integer.class,request));
+ }
+ @Test void boardReportsAreLinkedDeduplicatedAndSurviveLaterRuns()throws Exception {
+  String owner=login();var session=repo.create(owner);String request=UUID.randomUUID().toString(),later=UUID.randomUUID().toString(),board=UUID.randomUUID().toString();
+  traces.start(session.id(),request,List.of());traces.start(session.id(),later,List.of());traces.linkBoard(session.id(),board,request);traces.linkBoard(session.id(),board,later);
+  var event=json.valueToTree(Map.of("eventId",UUID.randomUUID().toString(),"boardId",board,"workspaceId","agent:"+session.id(),"source","manual-drag","after",Map.of("version",2,"elements",List.of(Map.of("elementId","e","role","OUTER","x",570,"assetUrl","must-not-store")))));
+  assertEquals(200,send("POST","/api/agent/sessions/"+session.id()+"/board-events",event).statusCode());
+  assertTrue(json.readTree(send("POST","/api/agent/sessions/"+session.id()+"/board-events",event).body()).path("duplicate").asBoolean());
+  assertEquals(1,db.queryForObject("SELECT COUNT(*) FROM agent_trace_event WHERE request_id=?",Integer.class,request));assertEquals(1,db.queryForObject("SELECT COUNT(*) FROM agent_trace_event WHERE request_id=?",Integer.class,later));
+  var detail=json.valueToTree(traces.detail(owner,session.id(),request,1));assertEquals("CLIENT_REPORTED",detail.path("evidenceSource").asText());assertFalse(detail.toString().contains("must-not-store"));
+  ((tools.jackson.databind.node.ObjectNode)event).put("boardId",UUID.randomUUID().toString());assertEquals(404,send("POST","/api/agent/sessions/"+session.id()+"/board-events",event).statusCode());
+  repo.delete(owner,session.id());assertEquals(0,db.queryForObject("SELECT COUNT(*) FROM agent_trace_client_event WHERE session_id=?",Integer.class,session.id()));
+ }
+
+ @Test void interruptedRunKeepsAnAccessibleMessageAndDoesNotRetryOrConsumeQuota()throws Exception {
+  String owner=login();var session=repo.create(owner);String request=UUID.randomUUID().toString();repo.begin(owner,session.id(),request,"搭一套");traces.start(session.id(),request,List.of());
+  traces.append(request,"tool","COMPLETE","已查询衣柜",Map.of("items",List.of()));
+  assertEquals("RUNNING",repo.messages(owner,session.id()).getLast().status());
+  traces.recoverInterruptedRuns();assertEquals("FAILED",repo.messages(owner,session.id()).getLast().status());assertEquals(request,repo.messages(owner,session.id()).getLast().requestId());
+  assertEquals("INTERRUPTED",json.valueToTree(traces.list(owner,session.id(),request,0,100)).path("status").asText());assertEquals(1,repo.quota(owner).get("used"));
+  assertEquals(2,db.queryForObject("SELECT COUNT(*) FROM agent_trace_event WHERE request_id=?",Integer.class,request));repo.delete(owner,session.id());
+ }
+
 }

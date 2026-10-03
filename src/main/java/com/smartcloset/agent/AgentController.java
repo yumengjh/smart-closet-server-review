@@ -19,7 +19,8 @@ public class AgentController {
     private final AgentService service;
     private final HelpService help;
     private final AgentCanvasRuns canvasRuns;
-    public AgentController(AgentRepository repo,AgentService service,HelpService help,AgentCanvasRuns canvasRuns){this.repo=repo;this.service=service;this.help=help;this.canvasRuns=canvasRuns;}
+    private final AgentTraceService traces;
+    public AgentController(AgentRepository repo,AgentService service,HelpService help,AgentCanvasRuns canvasRuns,AgentTraceService traces){this.repo=repo;this.service=service;this.help=help;this.canvasRuns=canvasRuns;this.traces=traces;}
     @GetMapping("/models") public Object models(){return service.models();}
     @GetMapping("/quota") public Object quota(){return repo.quota(ClosetIdentity.username());}
     @GetMapping("/preferences") public Object preference(){String owner=ClosetIdentity.username();return Map.of("model",repo.preference(owner),"avatarMode",repo.avatarMode(owner));}
@@ -41,6 +42,9 @@ public class AgentController {
         });
         return ResponseEntity.ok().header("Cache-Control","no-store").header("X-Accel-Buffering","no").contentType(MediaType.TEXT_EVENT_STREAM).body(flushed);
     }
+    @GetMapping("/sessions/{session}/runs/{request}/trace") public Object trace(@PathVariable String session,@PathVariable String request,@RequestParam(defaultValue="0") long afterSeq,@RequestParam(defaultValue="100") int limit){return traces.list(ClosetIdentity.username(),session,request,afterSeq,limit);}
+    @GetMapping("/sessions/{session}/runs/{request}/trace/{seq}") public Object traceDetail(@PathVariable String session,@PathVariable String request,@PathVariable long seq){return traces.detail(ClosetIdentity.username(),session,request,seq);}
+    @PostMapping("/sessions/{session}/board-events") public Object boardEvent(@PathVariable String session,@RequestBody JsonNode input){return traces.boardEvent(ClosetIdentity.username(),session,input);}
     @GetMapping("/memories") public Object memories(){return repo.memories(ClosetIdentity.username());}
     @PostMapping("/memories") public Object memory(@RequestBody MemoryEdit edit){return repo.memory(ClosetIdentity.username(),null,edit.content(),edit.category());}
     @PutMapping("/memories/{id}") public Object memory(@PathVariable String id,@RequestBody MemoryEdit edit){return repo.memory(ClosetIdentity.username(),id,edit.content(),edit.category());}

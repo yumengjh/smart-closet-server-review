@@ -118,7 +118,7 @@ public class GarmentRepository {
     private Map<String, List<String>> effective(Recognition.Result automatic, Map<String, List<String>> overrides) {
         var values = new LinkedHashMap<String, List<String>>();
         for (var field : RecognitionSchema.FIELDS) values.put(field.key(), MetadataValues.canonical(field.key(), overrides.containsKey(field.key())
-            ? overrides.get(field.key()) : automatic == null ? List.of() : automatic.attributes().get(field.key()).values()));
+            ? overrides.get(field.key()) : automatic == null || !automatic.attributes().containsKey(field.key()) ? List.of() : automatic.attributes().get(field.key()).values()));
         return values;
     }
     public List<UUID> list(int page, int size) {

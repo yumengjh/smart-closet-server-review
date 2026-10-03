@@ -14,7 +14,7 @@ import tools.jackson.databind.*;
 @Repository
 public class AgentRepository {
     public record Session(String id, String title, String model, long createdAt, long updatedAt) {}
-    public record Message(String id, String role, String content, String status, JsonNode events, long createdAt) {}
+    public record Message(String id, String role, String content, String status, JsonNode events, long createdAt, String requestId) {}
     public record Memory(String id, String content, String category, long createdAt, long updatedAt) {}
     public record Proposal(String id, String kind, JsonNode payload, JsonNode context, boolean consumed) {}
     private final JdbcTemplate db;
@@ -62,7 +62,7 @@ public class AgentRepository {
     public List<Message> messages(String owner,String id) {
         session(owner,id);
         var list=db.query("SELECT * FROM agent_message WHERE session_id=? ORDER BY created_at DESC,id DESC LIMIT 100",
-            (r,n)->new Message(r.getString("id"),r.getString("role"),r.getString("content"),r.getString("status"),json.readTree(r.getString("events_json")),r.getLong("created_at")),id);
+            (r,n)->new Message(r.getString("id"),r.getString("role"),r.getString("content"),r.getString("status"),json.readTree(r.getString("events_json")),r.getLong("created_at"),r.getString("request_id")),id);
         Collections.reverse(list);
         for (var message : list) for (var event : message.events()) {
             if ("proposal".equals(event.path("event").asText()) && event.path("data").isObject()) {
@@ -92,14 +92,15 @@ public class AgentRepository {
             if(used.isEmpty()) db.update("INSERT INTO agent_daily_quota VALUES(?,?,1)",owner,java.sql.Date.valueOf(day));
             else db.update("UPDATE agent_daily_quota SET used=used+1 WHERE owner_username=? AND quota_date=?",owner,java.sql.Date.valueOf(day));
             long now=System.currentTimeMillis();
-            db.update("INSERT INTO agent_message VALUES(?,?,?,?,'COMPLETE','[]',?)",requestId,id,"user",content,now);
+            db.update("INSERT INTO agent_message(id,session_id,role,content,status,events_json,created_at) VALUES(?,?,?,?,'COMPLETE','[]',?)",requestId,id,"user",content,now);
+            db.update("INSERT INTO agent_message(id,session_id,role,content,status,events_json,created_at,request_id) VALUES(?,?,'assistant','','RUNNING','[]',?,?)",UUID.randomUUID().toString(),id,now+1,requestId);
             db.update("UPDATE agent_session SET active_run=?,active_at=?,updated_at=?,title=CASE WHEN title='新对话' THEN ? ELSE title END WHERE id=? AND owner_username=?",requestId,now,now,content.substring(0,Math.min(30,content.length())),id,owner);
         });
     }
     public void finish(String owner,String id,String requestId,String text,String status,List<Map<String,Object>> events) {
         tx.executeWithoutResult(t->{
             int changed=db.update("UPDATE agent_session SET active_run=NULL,active_at=NULL,updated_at=? WHERE id=? AND owner_username=? AND active_run=?",System.currentTimeMillis(),id,owner,requestId);
-            if(changed==1) db.update("INSERT INTO agent_message VALUES(?,?,?,?,?,?,?)",UUID.randomUUID().toString(),id,"assistant",text,status,json.writeValueAsString(events),System.currentTimeMillis());
+            if(changed==1) db.update("UPDATE agent_message SET content=?,status=?,events_json=?,created_at=? WHERE session_id=? AND request_id=? AND role='assistant'",text,status,json.writeValueAsString(events),System.currentTimeMillis(),id,requestId);
         });
     }
     public Map<String,Object> quota(String owner) {

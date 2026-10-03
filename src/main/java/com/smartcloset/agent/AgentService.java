@@ -24,13 +24,15 @@ import tools.jackson.databind.*;
 @Service
 public class AgentService {
     public record Request(String requestId,String content,JsonNode context,Boolean imageConsent,Boolean personalMemoryConsent) {}
-    public record ToolRequest(String name,JsonNode args) {}
+    public record ToolRequest(String name,JsonNode args,String callId) { public ToolRequest(String name,JsonNode args){this(name,args,null);} }
     private static final class CanvasChannel {
         volatile java.util.function.BiConsumer<String,Object> emit;
         void send(String event,Object data) { var target=emit;if(target==null)throw AgentRepository.invalid("浏览器执行通道已关闭。");target.accept(event,data); }
     }
     private record Grant(String owner,String session,Request request,AtomicInteger calls,long expires,CanvasChannel channel) {}
     private final ConcurrentHashMap<String,Grant> grants=new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String,Map<String,List<String>>> candidatePools=new ConcurrentHashMap<>();
+    private final AgentTraceService traces;
     private final AgentProperties config;
     private final GenerationProperties credentials;
     private final AgentRepository repo;
@@ -45,8 +47,8 @@ public class AgentService {
     private final HttpClient http=HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(3)).build();
     private final ScheduledExecutorService watchdog=Executors.newSingleThreadScheduledExecutor(r->{var t=new Thread(r,"agent-deadline");t.setDaemon(true);return t;});
     public AgentService(AgentProperties config,GenerationProperties credentials,AgentRepository repo,GarmentRepository garments,
-        OutfitRepository outfits,HelpService help,JdbcTemplate db,ObjectMapper json,WorkflowFiles files,WorkflowRepository workflows,AgentCanvasRuns canvasRuns) {
-        this.config=config;this.credentials=credentials;this.repo=repo;this.garments=garments;this.outfits=outfits;this.help=help;this.db=db;this.json=json;this.files=files;this.workflows=workflows;this.canvasRuns=canvasRuns;
+        OutfitRepository outfits,HelpService help,JdbcTemplate db,ObjectMapper json,WorkflowFiles files,WorkflowRepository workflows,AgentCanvasRuns canvasRuns,AgentTraceService traces) {
+        this.config=config;this.credentials=credentials;this.repo=repo;this.garments=garments;this.outfits=outfits;this.help=help;this.db=db;this.json=json;this.files=files;this.workflows=workflows;this.canvasRuns=canvasRuns;this.traces=traces;
     }
     @jakarta.annotation.PreDestroy public void close(){watchdog.shutdownNow();grants.clear();}
     public Map<String,Object> models() {
@@ -63,7 +65,7 @@ public class AgentService {
     private Map<String,Object> metadata(GarmentRepository.View item) {
         var fields=new LinkedHashMap<String,Object>();
         var quality=new LinkedHashMap<String,Object>();
-        for(String key:List.of("category","primaryColor","secondaryColors","styles","seasons","patterns","neckline","sleeveLength","garmentLength","texture","closure")) {
+        for(String key:List.of("category","primaryColor","secondaryColors","styles","seasons","patterns","neckline","sleeveLength","garmentLength","texture","closure","fit","thickness","wearingModes")) {
             var values=item.effective().getOrDefault(key,List.of());fields.put(key,values);
             var observed=item.automatic()==null?null:item.automatic().attributes().get(key);
             boolean edited=item.overrides().containsKey(key);
@@ -71,7 +73,19 @@ public class AgentService {
                 "evidence",edited?"用户修改的有效值":observed==null?"尚无识别依据":observed.evidence()));
         }
         return Map.of("id",item.id(),"revision",item.revision(),"status",item.status(),"fields",fields,"quality",quality,
-            "wearing",OutfitRules.profile(item.effective()));
+            "wearing",OutfitRules.profile(ruleFields(item)));
+    }
+    private Map<String,Object> candidateMetadata(GarmentRepository.View item) {
+        var all=metadata(item);var quality=new LinkedHashMap<String,Object>();
+        var statuses=(Map<String,Map<String,Object>>)all.get("quality");
+        statuses.forEach((key,value)->quality.put(key,Map.of("source",value.get("source"),"status",value.get("status"))));
+        return Map.of("id",item.id(),"revision",item.revision(),"fields",all.get("fields"),"quality",quality,
+            "wearing",Map.of("role",OutfitRules.role(item.effective()),"wearingDataConfirmed",OutfitRules.confirmed(ruleFields(item))));
+    }
+    private Map<String,List<String>> ruleFields(GarmentRepository.View item) {
+        var result=new LinkedHashMap<>(item.effective());
+        boolean confirmed=List.of("fit","thickness","wearingModes").stream().allMatch(k->item.overrides().containsKey(k)&&!item.overrides().get(k).isEmpty());
+        result.put("_layeringConfirmed",confirmed?List.of("yes"):List.of());return result;
     }
     private void validateContext(String owner,JsonNode context) {
         if(context==null || !context.isObject() || json.writeValueAsBytes(context).length>200000)throw AgentRepository.invalid("页面上下文无效或过大。");
@@ -130,17 +144,30 @@ public class AgentService {
         var channel=new CanvasChannel();
         grants.put(token,new Grant(owner,session,request,new AtomicInteger(),System.currentTimeMillis()+config.timeoutSeconds()*1000L+5000,channel));
         var payload=new LinkedHashMap<String,Object>();
-        payload.put("model",model);payload.put("baseURL",p.baseUrl());payload.put("apiKey",p.apiKey());
+        payload.put("traceEnabled",true);payload.put("model",model);payload.put("baseURL",p.baseUrl());payload.put("apiKey",p.apiKey());
         payload.put("callbackURL",config.callbackUrl().resolve("/api/agent/internal/tool").toString());payload.put("callbackToken",token);
         payload.put("maxToolCalls",config.maxToolCalls());payload.put("timeoutSeconds",config.timeoutSeconds());
         payload.put("avatarMode",repo.avatarMode(owner));
         payload.put("context",modelContext(owner,request.context()));payload.put("memories",repo.memories(owner));
-        var history=repo.messages(owner,session);payload.put("messages",history.subList(Math.max(0,history.size()-20),history.size()).stream().map(this::historyMessage).toList());
+        var history=repo.messages(owner,session).stream().filter(m->!m.status().equals("RUNNING")).toList();payload.put("messages",history.subList(Math.max(0,history.size()-20),history.size()).stream().map(this::historyMessage).toList());
         if(image!=null)payload.put("image",image);
+        var hidden=new ArrayList<String>(List.of(p.apiKey(),token,config.secret(),p.baseUrl().toString(),config.callbackUrl().toString()));
+        for(var memory:repo.memories(owner))if(memory.category().equals("PERSONAL"))hidden.add(memory.content());
+        traces.start(session,request.requestId(),hidden);
+        traces.append(request.requestId(),"input","CAPTURED","请求上下文与输入授权",Map.of("context",payload.get("context"),"messages",payload.get("messages"),"memories",payload.get("memories"),"model",model,"imageConsent",Boolean.TRUE.equals(request.imageConsent()),"imageProvided",image!=null,"personalMemoryConsent",Boolean.TRUE.equals(request.personalMemoryConsent())));
         return output->{
             var text=new StringBuilder();var events=Collections.synchronizedList(new ArrayList<Map<String,Object>>());String status="FAILED";JsonNode usage=json.nullNode();long started=System.currentTimeMillis();
             channel.emit=(event,data)->{
-                try { if(!event.equals("canvas_operation"))events.add(Map.of("event",event,"data",data));send(output,event,data); }
+                try {
+                    if(Set.of("canvas_operation","canvas_receipt","operation_result","workspace_result").contains(event)) {
+                        var node=json.valueToTree(data);
+                        var summary=traces.append(request.requestId(),"canvas",node.path("success").isBoolean()&&!node.path("success").asBoolean()?"FAILED":"CAPTURED",event,data);
+                        if(event.equals("canvas_operation")&&!node.path("boardId").asText().isBlank())traces.linkBoard(session,node.path("boardId").asText(),request.requestId());
+                        send(output,"debug_trace",summary);
+                        if(event.equals("canvas_receipt"))return;
+                    }
+                    if(!Set.of("canvas_operation","canvas_receipt","debug_trace").contains(event))events.add(Map.of("event",event,"data",data));send(output,event,data);
+                }
                 catch(IOException e){throw new UncheckedIOException(e);}
             };
             try{
@@ -164,7 +191,7 @@ public class AgentService {
                             else if(!event.equals("status")&&!event.equals("done")){
                                 if(events.size()>=256)throw new IOException("too-many-events");events.add(Map.of("event",event,"data",data));
                             }
-                            if(event.equals("done")){done=true;status="COMPLETE";usage=data.path("usage");repo.finish(owner,session,request.requestId(),text.toString(),status,events);send(output,event,Map.of("model",model,"quota",repo.quota(owner),"usage",usage));}
+                            if(event.equals("done")){done=true;status="COMPLETE";usage=data.path("usage");repo.finish(owner,session,request.requestId(),text.toString(),status,events);send(output,event,Map.of("model",model,"quota",repo.quota(owner),"usage",usage,"requestId",request.requestId()));}
                             else send(output,event,data);
                             if(event.equals("error"))throw new IOException("runtime-error");
                         }
@@ -172,9 +199,11 @@ public class AgentService {
                     }finally{deadline.cancel(false);}
                 }
             }catch(Exception e){
+                traces.append(request.requestId(),"end","FAILED","请求中断",Map.of("errorType",e.getClass().getSimpleName(),"message",Objects.toString(e.getMessage(),"请求中断")));
                 try{send(output,"error",Map.of("message","助手回复中断，请查看已返回内容后主动重试。","code","AGENT_RUN_FAILED"));}catch(IOException ignored){}
             }finally{
-                channel.emit=null;grants.remove(token);repo.finish(owner,session,request.requestId(),text.toString(),status,events);
+                traces.append(request.requestId(),"end",status,"运行结束",Map.of("model",model,"durationMs",System.currentTimeMillis()-started,"usage",usage,"toolCalls",grants.get(token).calls().get()));traces.finish(request.requestId(),status);
+                channel.emit=null;grants.remove(token);candidatePools.remove(request.requestId());repo.finish(owner,session,request.requestId(),text.toString(),status,events);
                 org.slf4j.LoggerFactory.getLogger(getClass()).info("agent request={} model={} status={} durationMs={} usage={}",request.requestId(),model,status,System.currentTimeMillis()-started,usage.isMissingNode()?"unknown":usage);
             }
         };
@@ -200,14 +229,46 @@ public class AgentService {
     public Object tool(String token,ToolRequest call) {
         var grant=grants.get(token);
         if(grant==null||grant.expires()<System.currentTimeMillis())throw new ProcessingException(HttpStatus.FORBIDDEN,"AGENT_GRANT_EXPIRED","工具授权已失效。");
-        if(grant.calls().incrementAndGet()>config.maxToolCalls())throw AgentRepository.invalid("本轮工具调用已达到上限。");
+
         if(call==null||call.name()==null||call.args()==null||!call.args().isObject())throw AgentRepository.invalid("工具参数无效。");
         String owner=grant.owner();
         if(db.queryForObject("SELECT COUNT(*) FROM closet_user WHERE username=? AND enabled=1 AND must_change_password=0",Integer.class,owner)!=1)
             throw new ProcessingException(HttpStatus.FORBIDDEN,"AGENT_GRANT_EXPIRED","账号状态已改变，工具授权已失效。");
-        var a=call.args();
+        if(call.name().equals("__trace")) {
+            String phase=call.args().path("phase").asText();
+            if(!Set.of("input","model_output","runtime_error").contains(phase)||json.writeValueAsBytes(call.args()).length>2000000)throw AgentRepository.invalid("追踪数据无效或过大。");
+            var summary=traces.append(grant.request().requestId(),phase,"CAPTURED",call.args().path("label").asText("模型调用记录"),call.args().path("detail"));
+            grant.channel().send("debug_trace",summary);return summary;
+        }
+        if(grant.calls().incrementAndGet()>config.maxToolCalls())throw AgentRepository.invalid("本轮工具调用已达到上限。");
+        String callId=call.callId()==null?UUID.randomUUID().toString():call.callId();long started=System.currentTimeMillis();
+        emitTrace(grant,"tool","STARTED","工具调用 · "+call.name(),Map.of("callId",callId,"name",call.name(),"args",call.args()));
+        try {
+            Object result=executeTool(grant,call);
+            emitTrace(grant,"tool","COMPLETE","工具返回 · "+call.name(),Map.of("callId",callId,"name",call.name(),"result",result,"durationMs",System.currentTimeMillis()-started));return result;
+        } catch(RuntimeException e) {
+            emitTrace(grant,"tool","FAILED","工具拒绝 · "+call.name(),Map.of("callId",callId,"name",call.name(),"errorType",e.getClass().getSimpleName(),"code",e instanceof ProcessingException pe?pe.code():"TOOL_FAILED","message",Objects.toString(e.getMessage(),"工具失败"),"durationMs",System.currentTimeMillis()-started));throw e;
+        }
+    }
+    private void emitTrace(Grant grant,String phase,String status,String label,Object detail) {
+        grant.channel().send("debug_trace",traces.append(grant.request().requestId(),phase,status,label,detail));
+    }
+    private Object executeTool(Grant grant,ToolRequest call) {
+        String owner=grant.owner();var a=call.args();
         return switch(call.name()) {
             case "search_help" -> {var hits=help.search(a.path("query").asText());yield Map.of("known",!hits.isEmpty(),"articles",hits,"unknownAnswer","暂时不知道，可以向平台反馈这个问题；目前尚无反馈提交入口。");}
+            case "get_outfit_candidates" -> {
+                var ids=db.query("SELECT id FROM garment WHERE owner_username=? AND closet_status='ACTIVE' ORDER BY updated_at_ms DESC,id DESC LIMIT 1001",(r,n)->r.getString(1),owner);
+                boolean truncated=ids.size()>1000;if(truncated)ids=ids.subList(0,1000);
+                var inventory=new LinkedHashMap<String,GarmentRepository.View>();for(String id:ids)inventory.put(id,garment(owner,id,true));
+                var required=new HashSet<>(pinned(grant));for(var id:a.path("requiredGarmentIds")) {garment(owner,id.asText(),true);required.add(id.asText());}
+                var options=OutfitCandidates.generate(inventory.values().stream().map(g->new OutfitCandidates.Item(g.id().toString(),ruleFields(g))).toList(),required,40);
+                var pool=new LinkedHashMap<String,List<String>>();var result=new ArrayList<Object>();
+                for(var option:options) {String id=UUID.randomUUID().toString();pool.put(id,option);result.add(Map.of("candidateId",id,"garmentIds",option));}
+                candidatePools.put(grant.request().requestId(),pool);
+                yield Map.of("candidates",result,"garments",options.stream().flatMap(List::stream).distinct().map(k->candidateMetadata(inventory.get(k))).toList(),"inventoryCount",inventory.size(),"inventoryEvidence",Map.of("truncated",truncated,"outerCount",inventory.values().stream().filter(g->OutfitRules.role(g.effective())==OutfitRules.Role.OUTER).count(),"missingWearDataCount",inventory.values().stream().filter(g->Set.of(OutfitRules.Role.TOP,OutfitRules.Role.OUTER,OutfitRules.Role.ONE_PIECE).contains(OutfitRules.role(g.effective()))&&!OutfitRules.confirmed(ruleFields(g))).count()),"candidateLimit",40,"requiredGarmentIds",required,
+                    "ruleVersion","daily-evidence-v3","note","候选已通过结构及保守叠穿筛选；非审美排名，也不是全部衣柜，未出现在候选中不代表库存不存在。只用本次 candidateId 选择，不自由拼接衣物。缺失的叠穿资料无需在每次搭配重识别，可在衣物详情核对。","emptyReason",options.isEmpty()?"指定衣物或库存无法组成可靠主体，请说明限制，不重试相同组合。":"");
+            }
             case "search_wardrobe" -> {
                 String query=a.path("query").asText("").trim();
                 var page=garments.listCloset(owner,"ACTIVE",query,"","","",Math.max(1,a.path("page").asInt(1)),50);
@@ -225,15 +286,26 @@ public class AgentService {
             case "navigate" -> {String path=validRoute(owner,a.path("path").asText());yield Map.of("path",path);}
             case "build_outfits", "propose_outfits" -> {
                 var candidates=a.path("candidates");if(!candidates.isArray()||candidates.isEmpty()||candidates.size()>5)throw AgentRepository.invalid("请给出一至五套不同搭配。");
+                var resolved=json.createArrayNode();
+                for(var candidate:candidates) {
+                    var copy=candidate.deepCopy();String candidateId=candidate.path("candidateId").asText("");
+                    if(!candidateId.isBlank()) {
+                        var option=candidatePools.getOrDefault(grant.request().requestId(),Map.of()).get(candidateId);
+                        if(option==null)throw AgentRepository.invalid("候选已过期或不是本轮生成，请先获取候选。");
+                        ((tools.jackson.databind.node.ObjectNode)copy).set("garmentIds",json.valueToTree(option));
+                    } else if(candidatePools.containsKey(grant.request().requestId()))throw AgentRepository.invalid("只能选择本轮预校验候选，不能自行组合衣物 ID。");
+                    resolved.add(copy);
+                }
+                candidates=resolved;((tools.jackson.databind.node.ObjectNode)a).set("candidates",resolved);
                 Set<String> signatures=new HashSet<>();var pinned=pinned(grant);
                 for(var candidate:candidates){
                     AgentRepository.clean(candidate.path("name").asText(),100);AgentRepository.clean(candidate.path("reason").asText(),1000);
                     var ids=candidate.path("garmentIds");if(!ids.isArray()||ids.isEmpty()||ids.size()>12)throw AgentRepository.invalid("候选衣物数量无效。");
                     var selected=new TreeSet<String>();var clothes=new ArrayList<Map<String,List<String>>>();
-                    for(var id:ids){clothes.add(garment(owner,id.asText(),true).effective());if(!selected.add(id.asText()))throw AgentRepository.invalid("同一方案不能重复衣物。");}
+                    for(var id:ids){clothes.add(ruleFields(garment(owner,id.asText(),true)));if(!selected.add(id.asText()))throw AgentRepository.invalid("同一方案不能重复衣物。");}
                     if(!selected.containsAll(pinned))throw AgentRepository.invalid("候选必须包含用户指定的当前衣物。");
                     if(!signatures.add(selected.toString()))throw AgentRepository.invalid("候选需要使用不同组合。");
-                    OutfitRules.validate(clothes,true);
+                    traceValidation(grant,call,candidate,ids,clothes,true);
                 }
                 if(call.name().equals("build_outfits"))yield canvasRuns.build(owner,grant.session(),grant.request().context(),a,false,grant.channel()::send);
                 yield repo.propose(owner,grant.session(),"OUTFITS",a,grant.request().context());
@@ -250,7 +322,7 @@ public class AgentService {
                     if(Set.of("add","replace").contains(kind))garment(owner,op.path("garmentId").asText(),true);
                     if(kind.equals("adjust")&&!Set.of("left","right","up","down","smaller","larger","flip").contains(op.path("intent").asText()))throw AgentRepository.invalid("调整意图未开放。");
                 }
-                validateEditedOutfit(owner,context,operations);
+                validateEditedOutfit(owner,context,operations,grant);
                 yield canvasRuns.build(owner,grant.session(),context,a,true,grant.channel()::send);
             }
             case "propose_edit" -> {
@@ -269,7 +341,7 @@ public class AgentService {
                             else if(!e.getValue().isNumber()||!Double.isFinite(e.getValue().asDouble())||Math.abs(e.getValue().asDouble())>2000 || (Set.of("width","height").contains(e.getKey())&&e.getValue().asDouble()<20))throw AgentRepository.invalid("贴纸数值超出范围。");});
                     }
                 }
-                validateEditedOutfit(owner,context,operations);
+                validateEditedOutfit(owner,context,operations,grant);
                 yield repo.propose(owner,grant.session(),"EDIT",a,context);
             }
             case "request_save" -> {
@@ -286,7 +358,8 @@ public class AgentService {
             default -> throw AgentRepository.invalid("工具未开放。");
         };
     }
-    private void validateEditedOutfit(String owner,JsonNode context,JsonNode operations) {
+    private void validateEditedOutfit(String owner,JsonNode context,JsonNode operations) { validateEditedOutfit(owner,context,operations,null); }
+    private void validateEditedOutfit(String owner,JsonNode context,JsonNode operations,Grant grant) {
         var items=new LinkedHashMap<String,tools.jackson.databind.node.ObjectNode>();
         for(var element:context.path("scene").path("elements"))items.put(element.path("elementId").asText(element.path("garmentId").asText()),(tools.jackson.databind.node.ObjectNode)element.deepCopy());
         boolean selectionChanged=false,layerChanged=false;int added=0;
@@ -309,13 +382,29 @@ public class AgentService {
         if(!selectionChanged&&!layerChanged)return;
         var clothes=new ArrayList<Map<String,List<String>>>();double outer=Double.POSITIVE_INFINITY,base=Double.NEGATIVE_INFINITY;
         for(var item:items.values())if(!"PERSON_PART".equals(item.path("kind").asText())) {
-            var fields=garment(owner,item.path("garmentId").asText(),true).effective();clothes.add(fields);
+            var fields=ruleFields(garment(owner,item.path("garmentId").asText(),true));clothes.add(fields);
             var role=OutfitRules.role(fields);
             if(role==OutfitRules.Role.OUTER)outer=Math.min(outer,item.path("zIndex").asDouble());
             if(role==OutfitRules.Role.TOP||role==OutfitRules.Role.ONE_PIECE)base=Math.max(base,item.path("zIndex").asDouble());
         }
-        if(selectionChanged)OutfitRules.validate(clothes,false);
+        if(selectionChanged) {
+            if(grant==null)OutfitRules.validate(clothes,false);
+            else traceValidation(grant,new ToolRequest("edit_workspace",operations),operations,json.valueToTree(items.values().stream().filter(i->!"PERSON_PART".equals(i.path("kind").asText())).map(i->i.path("garmentId").asText()).toList()),clothes,false);
+        }
+        if(layerChanged&&grant!=null) {
+            boolean comparable=Double.isFinite(outer)&&Double.isFinite(base);
+            emitTrace(grant,"validation",!comparable?"SKIPPED":outer<=base?"REJECTED":"PASSED","外搭绘制层级校验",Map.of("ruleVersion","daily-evidence-v3","outerZIndex",comparable?outer:0,"baseZIndex",comparable?base:0,"message",!comparable?"没有外搭与主体可比较。":outer<=base?"外搭层级低于主体，拒绝操作。":"外搭绘制在主体之上。","notValidated",List.of("版型","具体叠穿适配","审美")));
+        }
         if(layerChanged&&outer<=base)throw AgentRepository.invalid("外搭必须显示在内搭或连衣裙外面，请把外搭层级调到主体之上。");
+    }
+    private void traceValidation(Grant grant,ToolRequest call,JsonNode candidate,JsonNode ids,List<Map<String,List<String>>> clothes,boolean complete) {
+        var counts=new TreeMap<String,Integer>();for(var fields:clothes)counts.merge(OutfitRules.role(fields).name(),1,Integer::sum);
+        var detail=new LinkedHashMap<String,Object>();detail.put("ruleVersion","daily-evidence-v3");detail.put("callId",Objects.toString(call.callId(),""));detail.put("candidate",candidate);detail.put("roleCounts",counts);detail.put("requireComplete",complete);
+        var selected=new ArrayList<Object>();for(var id:ids)selected.add(metadata(garment(grant.owner(),id.asText(),true)));detail.put("garments",selected);
+        detail.put("checks",List.of("品类角色已知","各基础穿着位置数量限制","连体主体与上装/下装互斥","拒绝无兼容证据的主体与外搭叠穿",complete?"主体完整":"允许不完整编辑"));
+        detail.put("notValidated",List.of("厚度","版型","具体可叠穿性","审美适配"));
+        try{OutfitRules.validate(clothes,complete);detail.put("message","结构校验通过，尚未验证具体可叠穿性与审美。");emitTrace(grant,"validation","PASSED","穿着结构校验通过",detail);}
+        catch(RuntimeException e){detail.put("message",e.getMessage());emitTrace(grant,"validation","REJECTED","穿着结构校验拒绝",detail);throw e;}
     }
     private UUID uuid(String value){try{return UUID.fromString(value);}catch(Exception e){throw AgentRepository.invalid("对象 ID 无效。");}}
     private Set<String> pinned(Grant grant){
@@ -338,7 +427,7 @@ public class AgentService {
             throw new ProcessingException(HttpStatus.CONFLICT,"AGENT_CONTEXT_CHANGED","当前页面、选中项或画布已经变化，请重新生成建议。");
         if(p.kind().equals("OUTFITS"))for(var c:p.payload().path("candidates")) {
             var clothes=new ArrayList<Map<String,List<String>>>();
-            for(var garmentId:c.path("garmentIds"))clothes.add(garment(owner,garmentId.asText(),true).effective());
+            for(var garmentId:c.path("garmentIds"))clothes.add(ruleFields(garment(owner,garmentId.asText(),true)));
             OutfitRules.validate(clothes,true);
         }
         if(p.kind().equals("EDIT"))validateEditedOutfit(owner,p.context(),p.payload().path("operations"));
