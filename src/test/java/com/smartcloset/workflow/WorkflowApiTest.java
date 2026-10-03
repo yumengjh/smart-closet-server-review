@@ -54,6 +54,10 @@ class WorkflowApiTest {
                 .POST(HttpRequest.BodyPublishers.ofString("{\"currentPassword\":\"test-admin-password\",\"newPassword\":\"test-admin-password\"}")).build(),HttpResponse.BodyHandlers.ofByteArray());
         assertEquals(204,password.statusCode(),new String(password.body()));
     }
+    @Test void batchPageSupportsDirectOpenAndRefresh() throws Exception {
+        var response=client.send(HttpRequest.newBuilder(URI.create("http://127.0.0.1:"+port+"/batches/"+UUID.randomUUID())).GET().build(),HttpResponse.BodyHandlers.ofString());
+        assertEquals(200,response.statusCode());assertTrue(response.body().contains("id=\"app\""));
+    }
     @AfterAll static void stop(){provider.stop(0);}
     @LocalServerPort int port;
     CookieManager cookieManager=new CookieManager(null,CookiePolicy.ACCEPT_ALL);

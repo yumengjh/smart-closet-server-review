@@ -8,5 +8,7 @@ models/.download-*/
 *.iml
 .DS_Store
 .local/
+# Generated frontend deployment files; publish locally with build:server.
+/src/main/resources/static/assets/
 # Private photo used for ad hoc testing; retain locally.
 /samples/round2-candidates/图像.jpeg

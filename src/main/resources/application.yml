@@ -28,8 +28,8 @@ spring:
       initialize-schema: never
   servlet:
     multipart:
-      max-file-size: 15MB
-      max-request-size: 16MB
+      max-file-size: 50MB
+      max-request-size: 51MB
       file-size-threshold: 0
 closet:
   storage-dir: ${CLOSET_STORAGE_DIR:./data}

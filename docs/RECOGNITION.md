@@ -43,7 +43,7 @@
 
 状态：OBSERVED / INFERRED / UNKNOWN / NOT_APPLICABLE / CONFLICT。风格与季节有值时必须为 INFERRED；其余字段第一版只允许有直接依据的值。每项保留简短 `evidence`。品牌、尺码、成分、洗护需衣标证据；胸前文字不自动等于品牌。服务端验证字段集合、状态枚举、数量、文本长度、空值语义、建议状态及下装与领袖属性冲突；这些规则不能保证视觉判断本身正确。
 
-提示词文件：`src/main/resources/recognition/garment-v2.txt`。提交时冻结提示词全文及 SHA-256、Schema 版本、Schema、模型和服务商配置指纹。调整提示词不改变已排队任务。新任务使用 garment-v2，沿用 16 项字段与 values/status/evidence 结构，属性值不再带 enum 约束。已排队任务继续使用提交时冻结的旧提示词和 Schema，历史记录保留原值；不自动重跑旧识别。
+提示词文件：`src/main/resources/recognition/garment-v3.txt`。提交时冻结提示词全文及 SHA-256、Schema 版本、Schema、模型和服务商配置指纹。调整提示词不改变已排队任务。新任务使用 garment-v3，沿用 16 项字段与 values/status/evidence 结构及开放属性值，新增 target：主视衣物描述、是否穿着以及归一化矩形位置。支持自拍和穿着照；只识别选中的衣物，多件同样突出时要求补拍。图片整理在识别完成后使用同一目标；穿着照跳过前置本地抠图。普通账号仍只能提交服务端预设提示词。已排队任务继续使用提交时冻结的旧提示词和 Schema，历史记录保留原值；不自动重跑旧识别。
 
 ### 开放值与复用
 

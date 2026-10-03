@@ -29,11 +29,16 @@ public class WorkflowFiles {
     public Path root() { return root; }
     public Path directory(UUID id) { return root.resolve(id.toString()); }
     public Path path(UUID id, String name) {
-        if (!name.matches("input\\.png|step-[0-5]\\.png")) throw ProcessingException.invalid("无效的工作流图片名称。");
+        if (!name.matches("input\\.png|step-[0-5]\\.png|original\\.(jpg|png)")) throw ProcessingException.invalid("无效的工作流图片名称。");
         return directory(id).resolve(name);
     }
     public String url(UUID id, String name) { return "/api/workflows/" + id + "/files/" + name; }
 
+    public void keepOriginal(UUID id, byte[] bytes) throws IOException {
+        var decoded=Images.sampled(bytes,64);
+        Files.createDirectories(directory(id));
+        atomic(path(id,"original."+(decoded.format().equals("jpeg")?"jpg":"png")),bytes);
+    }
     public AssetRow write(UUID id, String name, String kind, byte[] bytes) throws IOException {
         var asset = describe(id, name, kind, bytes);
         Files.createDirectories(directory(id));
