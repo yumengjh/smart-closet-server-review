@@ -20,7 +20,7 @@ import static org.junit.jupiter.api.Assertions.*;
 
 @SpringBootTest(webEnvironment=SpringBootTest.WebEnvironment.RANDOM_PORT,properties={
  "spring.config.import=optional:file:./target/no-local-secrets.yml","closet.model-path=target/absent-agent-model.onnx",
- "agent.secret=01234567890123456789012345678901","agent.daily-limit=2",
+ "agent.secret=01234567890123456789012345678901","agent.daily-limit=2","agent.max-tool-calls=20",
  "generation.providers.yumg.protocol=OPENAI_IMAGES","generation.providers.yumg.base-url=http://127.0.0.1:1/v1","generation.providers.yumg.api-key=fake-test-key"})
 class AgentApiTest {
  @TempDir static Path storage;
@@ -108,8 +108,11 @@ class AgentApiTest {
   db.update("UPDATE workflow_job SET garment_id=? WHERE id=?",id,job);return id;
  }
  private JsonNode candidates(List<List<String>> sets){return json.valueToTree(Map.of("candidates",sets.stream().map(ids->Map.of("name","方案","reason","真实衣物","garmentIds",ids)).toList()));}
+ private String clothing(String owner,String status,String category) {
+  String id=clothing(owner,status);db.update("UPDATE garment SET overrides_json=? WHERE id=?",json.writeValueAsString(Map.of("category",List.of(category))),id);return id;
+ }
  @Test void toolsRequireOwnerActiveGarmentsPinnedSelectionAndConsent()throws Exception{
-  String owner=login();var s=repo.create(owner);String a=clothing(owner,"ACTIVE"),b=clothing(owner,"ACTIVE"),c=clothing(owner,"ACTIVE");
+  String owner=login();var s=repo.create(owner);String a=clothing(owner,"ACTIVE","衬衫"),b=clothing(owner,"ACTIVE","长裤"),c=clothing(owner,"ACTIVE","短裤"),d=clothing(owner,"ACTIVE","半身裙");
   String other="other-"+UUID.randomUUID().toString().substring(0,8);accounts.create(other,"agent-test-password","USER");String foreign=clothing(other,"ACTIVE"),pending=clothing(owner,"DRAFT");
   var token=new java.util.concurrent.atomic.AtomicReference<String>();
   runtime.createContext("/run",exchange->{
@@ -119,7 +122,7 @@ class AgentApiTest {
    assertThrows(com.smartcloset.image.ProcessingException.class,()->service.tool(token.get(),new AgentService.ToolRequest("propose_outfits",candidates(List.of(List.of(a,b),List.of(a,pending),List.of(a,c))))));
    assertThrows(com.smartcloset.image.ProcessingException.class,()->service.tool(token.get(),new AgentService.ToolRequest("propose_outfits",candidates(List.of(List.of(a,b),List.of(b,a),List.of(a,c))))));
    assertThrows(com.smartcloset.image.ProcessingException.class,()->service.tool(token.get(),new AgentService.ToolRequest("remember_preference",json.valueToTree(Map.of("category","PERSONAL","content","身高170","evidence","身高170")))));
-   var p=service.tool(token.get(),new AgentService.ToolRequest("propose_outfits",candidates(List.of(List.of(a,b),List.of(a,c),List.of(a,b,c)))));
+   var p=service.tool(token.get(),new AgentService.ToolRequest("propose_outfits",candidates(List.of(List.of(a,b),List.of(a,c),List.of(a,d)))));
    var frame=json.writeValueAsString(Map.of("event","proposal","data",p))+"\n{\"event\":\"done\",\"data\":{}}\n";
    byte[] out=frame.getBytes(StandardCharsets.UTF_8);exchange.sendResponseHeaders(200,out.length);exchange.getResponseBody().write(out);exchange.close();
   });
@@ -128,6 +131,49 @@ class AgentApiTest {
    assertEquals(200,response.statusCode());assertTrue(response.body().contains("event: proposal"),response.body());
    assertEquals(0,db.queryForObject("SELECT COUNT(*) FROM outfit WHERE owner_username=?",Integer.class,owner));assertTrue(repo.memories(owner).isEmpty());
    assertThrows(com.smartcloset.image.ProcessingException.class,()->service.tool(token.get(),new AgentService.ToolRequest("search_help",json.createObjectNode())));
+  }finally{runtime.removeContext("/run");}
+ }
+ @Test void outfitToolsRejectConflictsBeforePreviewOrCanvasAndReturnMetadataEvidence()throws Exception {
+  String owner=login();var session=repo.create(owner);
+  String top=clothing(owner,"ACTIVE","衬衫"),bottom=clothing(owner,"ACTIVE","长裤"),dress=clothing(owner,"ACTIVE","连衣裙"),
+      outer=clothing(owner,"ACTIVE","夹克"),cardigan=clothing(owner,"ACTIVE","开衫"),unknown=clothing(owner,"ACTIVE");
+  var failure=new java.util.concurrent.atomic.AtomicReference<Throwable>();
+  runtime.createContext("/run",exchange->{
+   String frame;
+   try {
+    var input=json.readTree(exchange.getRequestBody().readAllBytes());String token=input.path("callbackToken").asText();
+    var metadata=json.valueToTree(service.tool(token,new AgentService.ToolRequest("get_garment",json.valueToTree(Map.of("id",cardigan)))));
+    assertEquals("OUTER",metadata.path("wearing").path("role").asText());
+    assertEquals("USER_CONFIRMED",metadata.path("quality").path("category").path("status").asText());
+    assertEquals("UNKNOWN",metadata.path("quality").path("primaryColor").path("status").asText());
+    assertTrue(metadata.path("fields").has("closure"));assertEquals(3,input.path("context").path("garments").size());
+    var search=json.valueToTree(service.tool(token,new AgentService.ToolRequest("search_wardrobe",json.readTree("{\"query\":\"衬衫 长裤\",\"page\":9}"))));
+    assertTrue(search.path("fallbackApplied").asBoolean());assertEquals(0,search.path("matchedTotal").asInt());
+    assertEquals(6,search.path("total").asInt());assertEquals(1,search.path("page").asInt());assertEquals("",search.path("appliedQuery").asText());
+    assertFalse(search.path("hasMore").asBoolean());
+    for(String name:List.of("build_outfits","propose_outfits"))for(var ids:List.of(List.of(top,bottom,outer,cardigan),List.of(dress,top),List.of(top,unknown),List.of(outer)))
+     assertThrows(com.smartcloset.image.ProcessingException.class,()->service.tool(token,new AgentService.ToolRequest(name,candidates(List.of(ids)))));
+    for(String name:List.of("edit_workspace","propose_edit")) {
+     var operations=json.valueToTree(Map.of("summary","添加开衫","operations",List.of(Map.of("op","add","garmentId",cardigan))));
+     assertThrows(com.smartcloset.image.ProcessingException.class,()->service.tool(token,new AgentService.ToolRequest(name,operations)));
+    }
+    var inverted=json.valueToTree(Map.of("summary","错误层级","operations",List.of(Map.of("op","transform","elementId","outer","patch",Map.of("zIndex",-1)))));
+    assertThrows(com.smartcloset.image.ProcessingException.class,()->service.tool(token,new AgentService.ToolRequest("propose_edit",inverted)));
+    var proposal=service.tool(token,new AgentService.ToolRequest("propose_outfits",candidates(List.of(List.of(dress,cardigan),List.of(top,bottom,outer)))));
+    assertNotNull(proposal);
+    // A category change between preview and acceptance must invalidate the old combination.
+    db.update("UPDATE garment SET overrides_json=? WHERE id=?",json.writeValueAsString(Map.of("category",List.of("衬衫"))),cardigan);
+    String id=json.valueToTree(proposal).path("id").asText();
+    assertThrows(com.smartcloset.image.ProcessingException.class,()->service.accept(owner,id,json.readTree("{\"route\":\"/wardrobe\"}"),false));
+    frame="{\"event\":\"done\",\"data\":{}}\n";
+   } catch(Throwable e) {failure.set(e);frame="{\"event\":\"error\",\"data\":{}}\n";}
+   byte[] bytes=frame.getBytes(StandardCharsets.UTF_8);exchange.sendResponseHeaders(200,bytes.length);exchange.getResponseBody().write(bytes);exchange.close();
+  });
+  try {
+   var context=Map.of("route","/outfits/new","scene",Map.of("elements",List.of(Map.of("elementId","top","garmentId",top,"zIndex",0),Map.of("elementId","bottom","garmentId",bottom,"zIndex",1),Map.of("elementId","outer","garmentId",outer,"zIndex",2))));
+   var response=send("POST","/api/agent/sessions/"+session.id()+"/messages",Map.of("requestId",UUID.randomUUID().toString(),"content","帮我搭配","context",context));
+   if(failure.get()!=null)throw new AssertionError("Outfit callback checks failed",failure.get());
+   assertTrue(response.body().contains("event: done"),response.body());assertFalse(response.body().contains("event: canvas_operation"));
   }finally{runtime.removeContext("/run");}
  }
  @Test void helpIsSharedAndUnknownRetrievalStaysUnknown(){assertEquals(3,help.articles().size());assertFalse(help.search("组合台保存草稿").isEmpty());assertTrue(help.search("宇宙量子飞船驾驶").isEmpty());}

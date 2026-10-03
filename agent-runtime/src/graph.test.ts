@@ -17,7 +17,7 @@ async function exercise(budget = 8, navigation = false, avatarMode?: string) {
       res.setHeader('Content-Type', 'application/json'); res.end(JSON.stringify(body.name === 'navigate' ? { path: '/help' } : { known: false, articles: [], unknownAnswer: '暂时不知道' })); return
     }
     assert.equal(req.url, '/v1/chat/completions'); requests.push(body)
-    assert.equal(body.reasoning_effort, 'none'); assert.equal(body.stream, true)
+    assert.equal(body.reasoning_effort, 'low'); assert.equal(body.stream, true)
     res.setHeader('Content-Type', 'text/event-stream')
     const delta = requests.length === 1 ? { role: 'assistant', tool_calls: [{ index: 0, id: 'call_help', type: 'function', function: { name: 'search_help', arguments: '{"query":"天气预报功能"}' } }] } : navigation && requests.length === 2 ? { role: 'assistant', tool_calls: [{ index: 0, id: 'call_nav', type: 'function', function: { name: 'navigate', arguments: '{\"path\":\"/help\"}' } }] } : { role: 'assistant', content: (avatarMode==='personal'?'<avatar>{"state":"wink","expression":"happy"}</avatar>':'')+'暂时不知道，可以向平台反馈。' }
     res.write('data: ' + JSON.stringify({ id: 'chat-test', object: 'chat.completion.chunk', model: 'gpt-6-luna', choices: [{ index: 0, delta, finish_reason: null }] }) + '\n\n')
@@ -45,3 +45,32 @@ test('reused upstream completion IDs do not skip later tools', async () => { awa
 
 test("personal expression does not add requests or tool calls",async()=>{await exercise(8,false,"personal")})
 test("basic mode excludes the expression prompt",async()=>{await exercise(8,false,"basic")})
+
+test('a rejected outfit returns its cause to the model and can be corrected without ending the run', async () => {
+  const requests: any[] = []; const frames: Frame[] = []; let builds = 0
+  const ids = ['11111111-1111-4111-8111-111111111111', '22222222-2222-4222-8222-222222222222']
+  const server = createServer(async (req, res) => {
+    let raw = ''; for await (const chunk of req) raw += chunk
+    const body = JSON.parse(raw)
+    if (req.url === '/callback') {
+      res.setHeader('Content-Type', 'application/json')
+      if (++builds === 1) { res.statusCode = 400; res.end(JSON.stringify({ message: '一套日常搭配最多一件外搭' })) }
+      else res.end(JSON.stringify({ status: 'COMPLETE', message: '尚未保存' }))
+      return
+    }
+    requests.push(body)
+    if (requests.length === 2) assert.match(body.messages.find((m: any) => m.role === 'tool').content, /最多一件外搭/)
+    const delta = requests.length < 3
+      ? { role: 'assistant', tool_calls: [{ index: 0, id: `build-${requests.length}`, type: 'function', function: { name: 'build_outfits', arguments: JSON.stringify({ candidates: [{ name: '基础搭配', reason: '修正冲突', garmentIds: requests.length === 1 ? ids : ids.slice(0, 1) }] }) } }] }
+      : { role: 'assistant', content: '已修正外搭冲突，临时搭配尚未保存。' }
+    res.setHeader('Content-Type', 'text/event-stream')
+    res.end('data: ' + JSON.stringify({ id: 'outfit-test', object: 'chat.completion.chunk', choices: [{ index: 0, delta, finish_reason: null }] }) + '\n\ndata: [DONE]\n\n')
+  })
+  const url = await listen(server)
+  try {
+    await runAgent({ model: 'gpt-6-luna', apiKey: 'fake', baseURL: url + '/v1', callbackURL: url + '/callback', callbackToken: 'test', maxToolCalls: 5, timeoutSeconds: 5, context: { route: '/wardrobe' }, memories: [], messages: [{ role: 'user', content: '搭一套' }] }, frame => frames.push(frame), AbortSignal.timeout(10000))
+    assert.equal(builds, 2); assert.equal(requests.length, 3)
+    assert.equal(frames.filter(f => f.event === 'error').length, 0)
+    assert.equal(frames.at(-1)?.event, 'done')
+  } finally { server.closeAllConnections(); await new Promise<void>(resolve => server.close(() => resolve())) }
+})
