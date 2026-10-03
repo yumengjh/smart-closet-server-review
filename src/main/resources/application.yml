@@ -1,6 +1,7 @@
 server:
   address: ${SERVER_ADDRESS:127.0.0.1}
   port: ${PORT:8080}
+  forward-headers-strategy: native
   servlet:
     session:
       cookie:
@@ -9,6 +10,9 @@ server:
         same-site: lax
         max-age: ${CLOSET_SESSION_COOKIE_MAX_AGE:7d}
   tomcat:
+    remoteip:
+      # cloudflared terminates HTTPS and forwards HTTP from the local machine.
+      internal-proxies: '127\.0\.0\.1|::1|0:0:0:0:0:0:0:1'
     threads:
       max: 16
 spring:

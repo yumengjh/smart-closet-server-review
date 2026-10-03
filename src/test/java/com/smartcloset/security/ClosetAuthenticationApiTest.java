@@ -135,4 +135,53 @@ class ClosetAuthenticationApiTest {
             assertEquals(1, winners);
         }
     }
+
+    @Test void aRevokedPortableSessionCanRedeemAFreshLinkWithoutFailingTheFirstAttempt() throws Exception {
+        String owner = login(); changePassword();
+        var oldLink = portableLinks.create(owner, newPassword);
+        var browser = recipient();
+        assertEquals(200, recipientPost(browser, "/api/auth/portable-login", Map.of("token", oldLink.token())).statusCode());
+        assertTrue(portableLinks.revoke(owner, oldLink.id()));
+        var freshLink = portableLinks.create(owner, newPassword);
+        var exchange = recipientPost(browser, "/api/auth/portable-login", Map.of("token", freshLink.token()));
+        assertEquals(200, exchange.statusCode(), exchange.body());
+        assertEquals(owner, json.readTree(recipientMe(browser).body()).path("username").asText());
+    }
+
+    @Test void httpsTunnelCanRedeemALinkOverItsLoopbackHttpOrigin() throws Exception {
+        String owner = login(); changePassword();
+        var link = portableLinks.create(owner, newPassword);
+        var browser = recipient();
+        var csrf = browser.send(HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + port + "/api/auth/csrf")).GET().build(), HttpResponse.BodyHandlers.ofString());
+        String body = json.writeValueAsString(Map.of("token", link.token()));
+        var cookies = browser.cookieHandler().orElseThrow().get(URI.create("http://127.0.0.1:" + port + "/"), Map.of());
+        try (var socket = new Socket("127.0.0.1", port)) {
+            socket.setSoTimeout(10000);
+            String request = "POST /api/auth/portable-login HTTP/1.1\r\nHost: closet.example.com\r\n"
+                    + "X-Forwarded-Proto: https\r\nX-Forwarded-For: 203.0.113.10\r\n"
+                    + "Cookie: " + String.join("; ", cookies.get("Cookie")) + "\r\n"
+                    + "X-XSRF-TOKEN: " + json.readTree(csrf.body()).path("token").asText() + "\r\n"
+                    + "Content-Type: application/json\r\nConnection: close\r\nContent-Length: " + body.length() + "\r\n\r\n" + body;
+            socket.getOutputStream().write(request.getBytes(java.nio.charset.StandardCharsets.US_ASCII));
+            String response = new String(socket.getInputStream().readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
+            assertTrue(response.startsWith("HTTP/1.1 200"), response);
+            assertTrue(response.contains("\"username\":\"" + owner + "\""), response);
+            assertTrue(response.contains("Secure"), "HTTPS session cookie must be secure");
+        }
+    }
+
+    @Test void aRevokedPortableSessionDoesNotBlockPasswordLogin() throws Exception {
+        String owner = login(); changePassword();
+        var link = portableLinks.create(owner, newPassword);
+        var browser = recipient();
+        assertEquals(200, recipientPost(browser, "/api/auth/portable-login", Map.of("token", link.token())).statusCode());
+        // Keep a CSRF token so the login request itself encounters the revoked session.
+        var csrf = browser.send(HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + port + "/api/auth/csrf")).GET().build(), HttpResponse.BodyHandlers.ofString());
+        assertTrue(portableLinks.revoke(owner, link.id()));
+        var response = browser.send(HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + port + "/api/auth/login"))
+                .header("Content-Type", "application/json").header("X-XSRF-TOKEN", json.readTree(csrf.body()).path("token").asText())
+                .POST(HttpRequest.BodyPublishers.ofString(json.writeValueAsString(Map.of("username", owner, "password", newPassword)))).build(), HttpResponse.BodyHandlers.ofString());
+        assertEquals(200, response.statusCode(), response.body());
+        assertFalse(json.readTree(recipientMe(browser).body()).path("portableLogin").asBoolean());
+    }
 }

@@ -33,6 +33,8 @@ mvn spring-boot:run -Dspring-boot.run.arguments="--closet-command=claim-legacy,-
 
 默认只监听 `127.0.0.1:8080`。同一局域网内访问时设置 `SERVER_ADDRESS=0.0.0.0`，然后打开服务电脑的局域网 IP。登录会话存入现有数据库，服务重启后仍可恢复；默认保留 7 天，浏览器使用独立的 `YIXU_SESSION` HttpOnly Cookie（SameSite=Lax）与 CSRF 令牌。`CLOSET_SESSION_TIMEOUT` 控制会话空闲期限，`CLOSET_SESSION_COOKIE_MAX_AGE` 控制浏览器 Cookie 有效期，两者默认均为 `7d`。主动退出会立即删除当前会话。普通账号只能读取自己的衣物、任务和图片，每日 AI 任务上限为 20 次。原工作流测试台及底层分割接口仅管理员可用。
 
+通过 Cloudflare Tunnel 分享便携登录链接时，可使用 `cloudflared tunnel --url http://localhost:8080`，并从其 HTTPS 地址进入网站生成链接。后端默认通过 Tomcat 识别本机代理传入的 `X-Forwarded-Proto`；只信任回环地址的代理，公网 HTTP 请求仍不能使用便携登录。修改该配置后需重启后端。Quick Tunnel 每次启动可能更换域名，应从当前域名重新生成链接。
+
 两种处理方法都在 Java 服务本地运行：
 
 | 方法 | 实现 | 框选的含义 |
