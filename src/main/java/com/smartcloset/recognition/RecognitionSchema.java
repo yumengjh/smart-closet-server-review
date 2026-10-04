@@ -73,20 +73,27 @@ public class RecognitionSchema {
             var result = new LinkedHashMap<String, Attribute>();
             for (var f : FIELDS) {
                 section=f.label();
-                var a = attrs.get(f.key()); keys(a, Set.of("values", "status", "evidence"));
-                var state = State.valueOf(text(a.get("status"), 30));
-                var values = a.get("values");
-                if (!values.isArray() || values.size() > (f.multiple() ? 12 : 1)) throw new IllegalArgumentException();
-                var list = new ArrayList<String>();
-                for (var value : values) list.add(text(value, 400));
-                list = new ArrayList<>(normalizeValues(f, list));
-                boolean absent = Set.of(State.UNKNOWN, State.NOT_APPLICABLE, State.CONFLICT).contains(state);
-                if (absent != list.isEmpty()) throw new IllegalArgumentException();
-                String evidence = text(a.get("evidence"), 600);
-                if (evidence.isBlank()) throw new IllegalArgumentException();
-                if (f.suggestion() && !absent && state != State.INFERRED) throw new IllegalArgumentException();
-                if (!f.suggestion() && state == State.INFERRED) throw new IllegalArgumentException();
-                result.put(f.key(), new Attribute(List.copyOf(list), state, evidence));
+                try {
+                    var a = attrs.get(f.key()); keys(a, Set.of("values", "status", "evidence"));
+                    var state = State.valueOf(text(a.get("status"), 30));
+                    var values = a.get("values");
+                    if (!values.isArray() || values.size() > (f.multiple() ? 12 : 1)) throw new IllegalArgumentException();
+                    var list = new ArrayList<String>();
+                    for (var value : values) list.add(text(value, 400));
+                    list = new ArrayList<>(normalizeValues(f, list));
+                    boolean absent = Set.of(State.UNKNOWN, State.NOT_APPLICABLE, State.CONFLICT).contains(state);
+                    if (absent != list.isEmpty()) throw new IllegalArgumentException();
+                    String evidence = text(a.get("evidence"), 600);
+                    if (evidence.isBlank()) throw new IllegalArgumentException();
+                    if (f.suggestion() && !absent && state != State.INFERRED) throw new IllegalArgumentException();
+                    if (!f.suggestion() && state == State.INFERRED) throw new IllegalArgumentException();
+                    result.put(f.key(), new Attribute(List.copyOf(list), state, evidence));
+                } catch (IllegalArgumentException | NullPointerException | ProcessingException invalid) {
+                    if (!Set.of("fit", "thickness", "wearingModes").contains(f.key())) throw invalid;
+                    // Optional visual suggestions cannot invalidate otherwise usable recognition.
+                    // Do not repair an unsupported inference into a claimed observed fact.
+                    result.put(f.key(), new Attribute(List.of(), State.UNKNOWN, "建议格式或依据不可靠，已留空，请按实际衣物核对。"));
+                }
             }
             section="识别问题列表";
             var issues = node.get("issues"); if (!issues.isArray() || issues.size() > 12) throw new IllegalArgumentException();

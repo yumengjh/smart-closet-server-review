@@ -210,6 +210,33 @@ class RecognitionWorkflowTest {
         var other=await(upload(identify()).id());var foreign=garments.get(other.request().garmentId());
         assertThrows(ProcessingException.class,()->garments.select(view.id(),new GarmentRepository.SelectImage(fresh.revision(),foreign.sourceAssetId())));
     }
+    @Test void invalidOptionalFitDoesNotDiscardObservedGarment() {
+        var data=codec.valueToTree(fixture("READY","蓝色"));
+        ((tools.jackson.databind.node.ObjectNode)data.path("attributes")).set("fit",codec.valueToTree(Map.of("values",List.of("宽松","合体"),"status","OBSERVED","evidence","无法证明上身松量")));
+        var result=schema.validate(data,true);
+        assertEquals(List.of("蓝色"),result.attributes().get("primaryColor").values());
+        assertEquals(com.smartcloset.recognition.Recognition.State.UNKNOWN,result.attributes().get("fit").status());
+        assertTrue(result.attributes().get("fit").values().isEmpty());
+        assertNotNull(result.target());
+    }
+    @Test void successfulRecognitionCanRecoverFromEarlierUnclearTarget() throws Exception {
+        assessment="MULTIPLE_GARMENTS";
+        var old=await(upload(identify()).id());
+        var garment=garments.get(old.request().garmentId());
+        assertThrows(ProcessingException.class,()->garments.confirm(garment.id(),new GarmentRepository.Confirm(garment.revision(),garment.sourceAssetId(),Map.of(),List.of())));
+        assessment="READY";
+        await(service.rerun(garment.id(),UUID.randomUUID(),new RerunRequest(List.of(identify()))).id());
+        var fresh=garments.get(garment.id());
+        assertEquals("ACTIVE",garments.confirm(fresh.id(),new GarmentRepository.Confirm(fresh.revision(),fresh.sourceAssetId(),Map.of(),List.of())).status());
+    }
+    @Test void failedRerecognitionDoesNotClearUnresolvedTargetBlock() throws Exception {
+        assessment="MULTIPLE_GARMENTS";
+        var old=await(upload(identify()).id());
+        responseCode=502;
+        await(service.rerun(old.request().garmentId(),UUID.randomUUID(),new RerunRequest(List.of(identify()))).id());
+        var fresh=garments.get(old.request().garmentId());
+        assertThrows(ProcessingException.class,()->garments.confirm(fresh.id(),new GarmentRepository.Confirm(fresh.revision(),fresh.sourceAssetId(),Map.of(),List.of())));
+    }
     @Test void schemaRejectsFabricationAndContradictoryFields(){
         var data=codec.valueToTree(fixture("READY","蓝色"));
         ((tools.jackson.databind.node.ObjectNode)data.path("attributes").path("styles")).put("status","OBSERVED").set("values",codec.valueToTree(List.of("休闲")));

@@ -189,7 +189,9 @@ public class GarmentRepository {
         tx.executeWithoutResult(t -> {
             var current = row(id, true); checkRevision(current, request.revision());
             if ("TRASHED".equals(current.status())) throw ProcessingException.invalid("回收站中的衣物不能直接确认入柜。");
-            int blocked = jdbc.queryForObject("SELECT COUNT(*) FROM workflow_job WHERE garment_id=? AND error_json LIKE '%GARMENT_TARGET_UNCLEAR%'", Integer.class, id.toString());
+            int blocked = jdbc.queryForObject("SELECT COUNT(*) FROM workflow_job WHERE garment_id=? AND error_json LIKE '%GARMENT_TARGET_UNCLEAR%' AND created_at_ms >= COALESCE((SELECT created_at_ms FROM workflow_job WHERE id=?),0)", Integer.class, id.toString(), current.applied());
+            var assessment = current.automatic() == null ? null : json.readValue(current.automatic(), Recognition.Result.class);
+            if (assessment != null && assessment.blocksImages()) blocked++;
             if (blocked > 0) throw new ProcessingException(HttpStatus.CONFLICT, "GARMENT_TARGET_UNCLEAR", "照片中的衣物数量或清晰度不适合确认入柜，请更换照片后重新录入。");
             int active = jdbc.queryForObject("SELECT COUNT(*) FROM workflow_job WHERE garment_id=? AND status IN ('QUEUED','RUNNING','CANCEL_REQUESTED')", Integer.class, id.toString());
             if (active > 0) throw new ProcessingException(HttpStatus.CONFLICT, "WORKFLOW_ACTIVE", "图片仍在处理中，请等待完成或取消任务后再确认。");
