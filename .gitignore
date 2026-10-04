@@ -25,6 +25,9 @@ models/.download-*/
 *.heic
 *.ico
 *.svg
+# The production SPA bundle is built from ../smart-closet and deployed separately.
+/src/main/resources/static/index.html
+/src/main/resources/static/assets/
 # Browser verification snapshots and logs are local artifacts.
 /.playwright-cli/
 
