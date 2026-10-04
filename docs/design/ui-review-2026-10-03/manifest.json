@@ -1,0 +1,746 @@
+{
+  "date": "2026-10-03",
+  "page": {
+    "nodeId": "0:1",
+    "name": "其他页面 · 原有参考",
+    "sectionId": "8:7388"
+  },
+  "reviewStatus": "retained-reference-only",
+  "implementationStatus": "not-started",
+  "boards": [
+    {
+      "key": "detail",
+      "nodeId": "1:6",
+      "theme": "light",
+      "screenshot": "detail.png",
+      "controls": [
+        {
+          "nodeId": "1:723",
+          "label": "返回衣柜",
+          "state": "default",
+          "width": 136,
+          "height": 44
+        },
+        {
+          "nodeId": "1:731",
+          "label": "添加衣物",
+          "state": "default",
+          "width": 192,
+          "height": 44
+        },
+        {
+          "nodeId": "1:733",
+          "label": "我的衣柜",
+          "state": "selected",
+          "width": 192,
+          "height": 44
+        },
+        {
+          "nodeId": "1:734",
+          "label": "未入柜",
+          "state": "default",
+          "width": 192,
+          "height": 44
+        },
+        {
+          "nodeId": "1:735",
+          "label": "组合台",
+          "state": "default",
+          "width": 192,
+          "height": 44
+        },
+        {
+          "nodeId": "1:736",
+          "label": "我的",
+          "state": "default",
+          "width": 192,
+          "height": 44
+        },
+        {
+          "nodeId": "1:742",
+          "label": "",
+          "state": "default",
+          "width": 44,
+          "height": 44
+        },
+        {
+          "nodeId": "1:743",
+          "label": "",
+          "state": "default",
+          "width": 44,
+          "height": 44
+        },
+        {
+          "nodeId": "1:745",
+          "label": "任务记录",
+          "state": "default",
+          "width": 144,
+          "height": 44
+        },
+        {
+          "nodeId": "1:752",
+          "label": "查看大图",
+          "state": "default",
+          "width": 150,
+          "height": 44
+        },
+        {
+          "nodeId": "1:773",
+          "label": "更多衣物信息",
+          "state": "default",
+          "width": 252,
+          "height": 44
+        },
+        {
+          "nodeId": "1:776",
+          "label": "图片处理与历史",
+          "state": "default",
+          "width": 252,
+          "height": 44
+        },
+        {
+          "nodeId": "1:778",
+          "label": "移入回收站",
+          "state": "default",
+          "width": 172,
+          "height": 44
+        },
+        {
+          "nodeId": "1:780",
+          "label": "保存修改",
+          "state": "default",
+          "width": 180,
+          "height": 44
+        }
+      ],
+      "refs": {
+        "navAdd": "1:731",
+        "navwardrobe": "1:733",
+        "navreview": "1:734",
+        "navworkspace": "1:735",
+        "navsettings": "1:736",
+        "theme": "1:742",
+        "sound": "1:743",
+        "navTasks": "1:745",
+        "save": "1:780"
+      },
+      "name": "03 · 衣物详情 · 桌面"
+    },
+    {
+      "key": "darkDetail",
+      "nodeId": "1:11",
+      "theme": "dark",
+      "screenshot": "darkDetail.png",
+      "controls": [
+        {
+          "nodeId": "1:870",
+          "label": "返回衣柜",
+          "state": "default",
+          "width": 136,
+          "height": 44
+        },
+        {
+          "nodeId": "1:878",
+          "label": "添加衣物",
+          "state": "default",
+          "width": 192,
+          "height": 44
+        },
+        {
+          "nodeId": "1:880",
+          "label": "我的衣柜",
+          "state": "selected",
+          "width": 192,
+          "height": 44
+        },
+        {
+          "nodeId": "1:881",
+          "label": "未入柜",
+          "state": "default",
+          "width": 192,
+          "height": 44
+        },
+        {
+          "nodeId": "1:882",
+          "label": "组合台",
+          "state": "default",
+          "width": 192,
+          "height": 44
+        },
+        {
+          "nodeId": "1:883",
+          "label": "我的",
+          "state": "default",
+          "width": 192,
+          "height": 44
+        },
+        {
+          "nodeId": "1:889",
+          "label": "",
+          "state": "default",
+          "width": 44,
+          "height": 44
+        },
+        {
+          "nodeId": "1:890",
+          "label": "",
+          "state": "default",
+          "width": 44,
+          "height": 44
+        },
+        {
+          "nodeId": "1:892",
+          "label": "任务记录",
+          "state": "default",
+          "width": 144,
+          "height": 44
+        },
+        {
+          "nodeId": "1:899",
+          "label": "查看大图",
+          "state": "default",
+          "width": 150,
+          "height": 44
+        },
+        {
+          "nodeId": "1:920",
+          "label": "更多衣物信息",
+          "state": "default",
+          "width": 252,
+          "height": 44
+        },
+        {
+          "nodeId": "1:923",
+          "label": "图片处理与历史",
+          "state": "default",
+          "width": 252,
+          "height": 44
+        },
+        {
+          "nodeId": "1:925",
+          "label": "移入回收站",
+          "state": "default",
+          "width": 172,
+          "height": 44
+        },
+        {
+          "nodeId": "1:927",
+          "label": "保存修改",
+          "state": "default",
+          "width": 180,
+          "height": 44
+        }
+      ],
+      "refs": {
+        "navAdd": "1:878",
+        "navwardrobe": "1:880",
+        "navreview": "1:881",
+        "navworkspace": "1:882",
+        "navsettings": "1:883",
+        "theme": "1:889",
+        "sound": "1:890",
+        "navTasks": "1:892",
+        "save": "1:927"
+      },
+      "name": "08 · 衣物详情 · 深色"
+    },
+    {
+      "key": "wardrobe",
+      "nodeId": "1:5",
+      "theme": "light",
+      "screenshot": "wardrobe.png",
+      "controls": [
+        {
+          "nodeId": "1:1007",
+          "label": "添加衣物",
+          "state": "default",
+          "width": 144,
+          "height": 44
+        },
+        {
+          "nodeId": "1:1027",
+          "label": "最近更新",
+          "state": "default",
+          "width": 160,
+          "height": 44
+        },
+        {
+          "nodeId": "1:1031",
+          "label": "查看详情",
+          "state": "hover",
+          "width": 140,
+          "height": 44
+        },
+        {
+          "nodeId": "1:1045",
+          "label": "添加衣物",
+          "state": "default",
+          "width": 192,
+          "height": 44
+        },
+        {
+          "nodeId": "1:1047",
+          "label": "我的衣柜",
+          "state": "selected",
+          "width": 192,
+          "height": 44
+        },
+        {
+          "nodeId": "1:1048",
+          "label": "未入柜",
+          "state": "default",
+          "width": 192,
+          "height": 44
+        },
+        {
+          "nodeId": "1:1049",
+          "label": "组合台",
+          "state": "default",
+          "width": 192,
+          "height": 44
+        },
+        {
+          "nodeId": "1:1050",
+          "label": "我的",
+          "state": "default",
+          "width": 192,
+          "height": 44
+        },
+        {
+          "nodeId": "1:1056",
+          "label": "",
+          "state": "default",
+          "width": 44,
+          "height": 44
+        },
+        {
+          "nodeId": "1:1057",
+          "label": "",
+          "state": "default",
+          "width": 44,
+          "height": 44
+        },
+        {
+          "nodeId": "1:1059",
+          "label": "任务记录",
+          "state": "default",
+          "width": 144,
+          "height": 44
+        }
+      ],
+      "refs": {
+        "navAdd": "1:1045",
+        "navwardrobe": "1:1047",
+        "navreview": "1:1048",
+        "navworkspace": "1:1049",
+        "navsettings": "1:1050",
+        "theme": "1:1056",
+        "sound": "1:1057",
+        "navTasks": "1:1059",
+        "primary": "1:1007",
+        "openDetail": "1:1031"
+      },
+      "name": "02 · 我的衣柜 · 桌面"
+    },
+    {
+      "key": "tasks",
+      "nodeId": "1:9",
+      "theme": "light",
+      "screenshot": "tasks.png",
+      "controls": [
+        {
+          "nodeId": "1:1481",
+          "label": "添加衣物",
+          "state": "default",
+          "width": 192,
+          "height": 44
+        },
+        {
+          "nodeId": "1:1483",
+          "label": "我的衣柜",
+          "state": "default",
+          "width": 192,
+          "height": 44
+        },
+        {
+          "nodeId": "1:1484",
+          "label": "未入柜",
+          "state": "default",
+          "width": 192,
+          "height": 44
+        },
+        {
+          "nodeId": "1:1485",
+          "label": "组合台",
+          "state": "default",
+          "width": 192,
+          "height": 44
+        },
+        {
+          "nodeId": "1:1486",
+          "label": "我的",
+          "state": "default",
+          "width": 192,
+          "height": 44
+        },
+        {
+          "nodeId": "1:1492",
+          "label": "",
+          "state": "default",
+          "width": 44,
+          "height": 44
+        },
+        {
+          "nodeId": "1:1493",
+          "label": "",
+          "state": "default",
+          "width": 44,
+          "height": 44
+        },
+        {
+          "nodeId": "1:1495",
+          "label": "任务记录",
+          "state": "default",
+          "width": 144,
+          "height": 44
+        },
+        {
+          "nodeId": "1:1508",
+          "label": "核对并入柜",
+          "state": "default",
+          "width": 212,
+          "height": 44
+        },
+        {
+          "nodeId": "1:1516",
+          "label": "查看图片与结果",
+          "state": "default",
+          "width": 212,
+          "height": 44
+        },
+        {
+          "nodeId": "1:1524",
+          "label": "查看图片与结果",
+          "state": "default",
+          "width": 212,
+          "height": 44
+        }
+      ],
+      "refs": {
+        "navAdd": "1:1481",
+        "navwardrobe": "1:1483",
+        "navreview": "1:1484",
+        "navworkspace": "1:1485",
+        "navsettings": "1:1486",
+        "theme": "1:1492",
+        "sound": "1:1493",
+        "navTasks": "1:1495",
+        "review": "1:1508"
+      },
+      "name": "06 · 任务记录 · 桌面"
+    },
+    {
+      "key": "workspace",
+      "nodeId": "1:10",
+      "theme": "light",
+      "screenshot": "workspace.png",
+      "controls": [
+        {
+          "nodeId": "1:1572",
+          "label": "",
+          "state": "default",
+          "width": 44,
+          "height": 44
+        },
+        {
+          "nodeId": "1:1576",
+          "label": "画板 1",
+          "state": "default",
+          "width": 124,
+          "height": 44
+        },
+        {
+          "nodeId": "1:1577",
+          "label": "总览",
+          "state": "default",
+          "width": 112,
+          "height": 44
+        },
+        {
+          "nodeId": "1:1578",
+          "label": "",
+          "state": "default",
+          "width": 44,
+          "height": 44
+        },
+        {
+          "nodeId": "1:1579",
+          "label": "保存",
+          "state": "disabled",
+          "width": 120,
+          "height": 44
+        },
+        {
+          "nodeId": "1:1583",
+          "label": "",
+          "state": "default",
+          "width": 44,
+          "height": 44
+        },
+        {
+          "nodeId": "1:1584",
+          "label": "",
+          "state": "disabled",
+          "width": 44,
+          "height": 44
+        },
+        {
+          "nodeId": "1:1585",
+          "label": "",
+          "state": "selected",
+          "width": 44,
+          "height": 44
+        },
+        {
+          "nodeId": "1:1587",
+          "label": "",
+          "state": "default",
+          "width": 44,
+          "height": 44
+        },
+        {
+          "nodeId": "1:1589",
+          "label": "",
+          "state": "default",
+          "width": 44,
+          "height": 44
+        },
+        {
+          "nodeId": "1:1590",
+          "label": "",
+          "state": "default",
+          "width": 44,
+          "height": 44
+        },
+        {
+          "nodeId": "1:1636",
+          "label": "上移一层",
+          "state": "default",
+          "width": 256,
+          "height": 44
+        },
+        {
+          "nodeId": "1:1637",
+          "label": "下移一层",
+          "state": "default",
+          "width": 256,
+          "height": 44
+        },
+        {
+          "nodeId": "1:1638",
+          "label": "移除贴纸",
+          "state": "default",
+          "width": 256,
+          "height": 44
+        },
+        {
+          "nodeId": "1:1640",
+          "label": "整理穿搭",
+          "state": "default",
+          "width": 256,
+          "height": 44
+        },
+        {
+          "nodeId": "1:1671",
+          "label": "",
+          "state": "default",
+          "width": 44,
+          "height": 44
+        },
+        {
+          "nodeId": "1:1674",
+          "label": "",
+          "state": "default",
+          "width": 44,
+          "height": 44
+        },
+        {
+          "nodeId": "1:1677",
+          "label": "",
+          "state": "default",
+          "width": 44,
+          "height": 44
+        },
+        {
+          "nodeId": "1:1680",
+          "label": "",
+          "state": "default",
+          "width": 44,
+          "height": 44
+        }
+      ],
+      "refs": {
+        "overview": "1:1577",
+        "save": "1:1579"
+      },
+      "name": "07 · 穿搭组合台 · 桌面"
+    },
+    {
+      "key": "mobileDetail",
+      "nodeId": "1:12",
+      "theme": "light",
+      "screenshot": "mobileDetail.png",
+      "controls": [
+        {
+          "nodeId": "1:1716",
+          "label": "",
+          "state": "default",
+          "width": 44,
+          "height": 44
+        },
+        {
+          "nodeId": "1:1721",
+          "label": "展示图与处理记录",
+          "state": "default",
+          "width": 282,
+          "height": 44
+        },
+        {
+          "nodeId": "1:1754",
+          "label": "更多衣物信息",
+          "state": "default",
+          "width": 326,
+          "height": 44
+        },
+        {
+          "nodeId": "1:1756",
+          "label": "返回衣柜",
+          "state": "default",
+          "width": 130,
+          "height": 44
+        },
+        {
+          "nodeId": "1:1757",
+          "label": "保存修改",
+          "state": "default",
+          "width": 212,
+          "height": 44
+        }
+      ],
+      "refs": {
+        "save": "1:1757"
+      },
+      "name": "09 · 衣物详情 · 手机"
+    },
+    {
+      "key": "mobileWorkspace",
+      "nodeId": "1:15",
+      "theme": "light",
+      "screenshot": "mobileWorkspace.png",
+      "controls": [
+        {
+          "nodeId": "1:1908",
+          "label": "",
+          "state": "default",
+          "width": 44,
+          "height": 44
+        },
+        {
+          "nodeId": "1:1910",
+          "label": "保存",
+          "state": "disabled",
+          "width": 104,
+          "height": 44
+        },
+        {
+          "nodeId": "1:1911",
+          "label": "",
+          "state": "default",
+          "width": 44,
+          "height": 44
+        },
+        {
+          "nodeId": "1:1912",
+          "label": "",
+          "state": "disabled",
+          "width": 44,
+          "height": 44
+        },
+        {
+          "nodeId": "1:1914",
+          "label": "",
+          "state": "default",
+          "width": 44,
+          "height": 44
+        },
+        {
+          "nodeId": "1:1929",
+          "label": "",
+          "state": "default",
+          "width": 44,
+          "height": 44
+        }
+      ],
+      "refs": {},
+      "name": "12 · 组合台 · 手机"
+    }
+  ],
+  "prototypeLinks": [
+    {
+      "nodeId": "1:733",
+      "target": "1:5"
+    },
+    {
+      "nodeId": "1:735",
+      "target": "1:10"
+    },
+    {
+      "nodeId": "1:745",
+      "target": "1:9"
+    },
+    {
+      "nodeId": "1:880",
+      "target": "1:5"
+    },
+    {
+      "nodeId": "1:882",
+      "target": "1:10"
+    },
+    {
+      "nodeId": "1:892",
+      "target": "1:9"
+    },
+    {
+      "nodeId": "1:1049",
+      "target": "1:10"
+    },
+    {
+      "nodeId": "1:1059",
+      "target": "1:9"
+    },
+    {
+      "nodeId": "1:1483",
+      "target": "1:5"
+    },
+    {
+      "nodeId": "1:1485",
+      "target": "1:10"
+    },
+    {
+      "nodeId": "1:1031",
+      "target": "1:6"
+    },
+    {
+      "nodeId": "1:742",
+      "target": "1:11"
+    },
+    {
+      "nodeId": "1:889",
+      "target": "1:6"
+    }
+  ],
+  "verification": {
+    "retainedScreens": 7,
+    "obsoleteTargetsRemoved": true
+  }
+}

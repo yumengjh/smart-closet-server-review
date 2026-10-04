@@ -1,0 +1,37 @@
+{
+  "date": "2026-10-04",
+  "health": {
+    "status": "UP"
+  },
+  "agentHealth": {
+    "status": "ok",
+    "framework": "langgraph"
+  },
+  "runtimeAssetsMatch": true,
+  "runtimeClassesMatch": true,
+  "backendTests": 29,
+  "frontendRelatedTests": 10,
+  "frontendFullSuite": {
+    "passed": 40,
+    "failed": 1,
+    "failure": "outfit.test.ts deterministic category positions; unchanged domain/outfit.ts"
+  },
+  "browser": "Chrome extension, no ego-browser",
+  "aiSubmitted": false,
+  "quotaBefore": 18,
+  "quotaAfter": 18,
+  "overflow": {
+    "desktop1470": false,
+    "mobile390": false,
+    "mobile320": false
+  },
+  "selectionCardDesktopHeight": 128,
+  "selectionCardMobileHeight": 89.6484375,
+  "resultActionRowsAligned": true,
+  "quotaCases": {
+    "4/4": 1,
+    "4/2": 2,
+    "4/3": 2
+  },
+  "customLimitForSixTargets": "7-10 disabled"
+}
