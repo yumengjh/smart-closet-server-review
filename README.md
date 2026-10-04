@@ -256,6 +256,8 @@ POM 按当前 OS/架构选择 OpenCV 本地依赖；macOS arm64、macOS x64、Li
 
 ## Docker 部署
 
+前端使用 Nginx、浏览器跨子域调用 API 时，参见 [前后端独立部署说明](docs/INDEPENDENT_DEPLOYMENT.md) 与 [Nginx 样例](deploy/nginx/closet.conf.example)。现有同源部署继续可用；本地 HTTP 使用时将环境模板中的 `CLOSET_COOKIE_SECURE` 改为 `false`（或留空自动判断）。
+
 部署由 Java API 和 TypeScript Agent 两个容器组成。Vue 前端生产构建产物随 Java 镜像同源提供，GitHub Actions 会运行 Java 与 Agent 验证、构建两个容器并推送到 GHCR。修改前端后，在相邻前端项目运行 `npm run build:server`，将更新后的静态产物提交到本仓库。首次部署先把环境变量模板复制到仓库目录以外，并替换 Agent 密钥和管理员初始密码：
 
 ```bash

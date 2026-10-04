@@ -3,6 +3,7 @@ package com.smartcloset.security;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import java.util.Map;
+import java.util.List;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
@@ -22,9 +23,38 @@ import org.springframework.security.web.csrf.CsrfException;
 import org.springframework.security.web.header.writers.ReferrerPolicyHeaderWriter;
 import org.springframework.security.web.context.HttpSessionSecurityContextRepository;
 import org.springframework.security.web.context.SecurityContextRepository;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.web.cors.CorsConfiguration;
+import org.springframework.web.cors.CorsConfigurationSource;
+import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
 @Configuration
+@EnableConfigurationProperties(ClosetCorsProperties.class)
 public class SecurityConfiguration {
+    @Bean CorsConfigurationSource corsConfigurationSource(ClosetCorsProperties properties) {
+        var source = new UrlBasedCorsConfigurationSource();
+        var internal = new CorsConfiguration();
+        source.registerCorsConfiguration("/api/agent/internal/**", internal);
+        var cors = new CorsConfiguration();
+        cors.setAllowedOrigins(properties.allowedOrigins());
+        cors.setAllowCredentials(true);
+        cors.setAllowedMethods(List.of("GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
+        cors.setAllowedHeaders(List.of("Content-Type", "X-XSRF-TOKEN", "Idempotency-Key", "Accept"));
+        cors.setExposedHeaders(List.of("Location", "Retry-After"));
+        cors.setMaxAge(600L);
+        source.registerCorsConfiguration("/api/**", cors);
+        return source;
+    }
+
+    @Bean CookieCsrfTokenRepository csrfTokenRepository(@Value("${CLOSET_COOKIE_SECURE:#{null}}") Boolean secure) {
+        var repository = CookieCsrfTokenRepository.withHttpOnlyFalse();
+        repository.setCookieCustomizer(cookie -> {
+            cookie.sameSite("Lax");
+            if (secure != null) cookie.secure(secure);
+        });
+        return repository;
+    }
     @Bean PasswordEncoder passwordEncoder() { return new BCryptPasswordEncoder(12); }
 
     @Bean AuthenticationProvider closetAuthenticationProvider(org.springframework.jdbc.core.JdbcTemplate jdbc, PasswordEncoder encoder) {
@@ -42,10 +72,12 @@ public class SecurityConfiguration {
     @Bean SecurityContextRepository securityContextRepository() { return new HttpSessionSecurityContextRepository(); }
 
     @Bean SecurityFilterChain closetSecurity(HttpSecurity http, ClosetAccountService accounts,
-            SecurityContextRepository contexts, PortableLoginService portableLinks, tools.jackson.databind.ObjectMapper json) throws Exception {
+            SecurityContextRepository contexts, PortableLoginService portableLinks, tools.jackson.databind.ObjectMapper json,
+            CorsConfigurationSource corsConfigurationSource, CookieCsrfTokenRepository csrfTokenRepository) throws Exception {
         http
+            .cors(cors -> cors.configurationSource(corsConfigurationSource))
             .headers(headers -> headers.referrerPolicy(policy -> policy.policy(ReferrerPolicyHeaderWriter.ReferrerPolicy.NO_REFERRER)))
-            .csrf(csrf -> csrf.csrfTokenRepository(CookieCsrfTokenRepository.withHttpOnlyFalse()).ignoringRequestMatchers("/api/agent/internal/tool"))
+            .csrf(csrf -> csrf.csrfTokenRepository(csrfTokenRepository).ignoringRequestMatchers("/api/agent/internal/tool"))
             .exceptionHandling(errors -> errors
                     .authenticationEntryPoint((request, response, error) -> writeError(response, json, 401,
                             "AUTHENTICATION_REQUIRED", "登录已失效，请重新登录。"))
@@ -94,7 +126,7 @@ public class SecurityConfiguration {
                         return new org.springframework.security.authorization.AuthorizationDecision(!adminOnly || isAdmin);
                     })
                     .anyRequest().permitAll());
-        http.addFilterAfter(new PortableLoginFilter(portableLinks), org.springframework.security.web.context.SecurityContextHolderFilter.class);
+        http.addFilterAfter(new PortableLoginFilter(portableLinks), org.springframework.web.filter.CorsFilter.class);
         return http.build();
     }
 

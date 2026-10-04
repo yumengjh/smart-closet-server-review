@@ -2,6 +2,7 @@
 .github
 .idea
 .env
+.env.*
 target
 agent-runtime
 data

@@ -27,3 +27,8 @@ models/.download-*/
 *.svg
 # Browser verification snapshots and logs are local artifacts.
 /.playwright-cli/
+
+# Runtime environment files; only the sanitized template is tracked.
+.env
+.env.*
+!.env.example
