@@ -1,0 +1,378 @@
+{
+  "date": "2026-10-02",
+  "status": "PAUSED_UNKNOWN_COST",
+  "budgetTargetUsd": 5,
+  "channel": "SINGLE",
+  "strategy": "SMART",
+  "batchId": "c0ae3895-a17a-4b6b-b717-ee7e2a116af8",
+  "uploaded": 2,
+  "recognized": 2,
+  "skipped": 0,
+  "generated": 0,
+  "visuallyAccepted": null,
+  "userConfirmed": 0,
+  "targets": [
+    {
+      "completion": false,
+      "garmentId": "4ad6d2bd-c545-4967-9f0c-29cc9f2b9ec5",
+      "id": "4ad6d2bd-c545-4967-9f0c-29cc9f2b9ec5",
+      "jobId": null,
+      "keyDetailsVisible": true,
+      "outputUrl": null,
+      "reason": "单件衣物平铺展示，轮廓和领口、袖口等细节清晰；正面中央有明显大面积开口或翻折，可能影响衣身结构判断。",
+      "recognition": {
+        "assessment": "PARTIAL",
+        "attributes": {
+          "category": {
+            "values": [
+              "针织上衣"
+            ],
+            "status": "OBSERVED",
+            "evidence": "可见短袖、圆领和针织下摆，判断为针织上衣。"
+          },
+          "primaryColor": {
+            "values": [
+              "奶油白色"
+            ],
+            "status": "OBSERVED",
+            "evidence": "衣物主体呈浅奶油白色。"
+          },
+          "secondaryColors": {
+            "values": [],
+            "status": "UNKNOWN",
+            "evidence": "未见明确的第二种衣物颜色。"
+          },
+          "patterns": {
+            "values": [
+              "纯色"
+            ],
+            "status": "OBSERVED",
+            "evidence": "衣身未见明显印花或图案。"
+          },
+          "neckline": {
+            "values": [
+              "圆领"
+            ],
+            "status": "OBSERVED",
+            "evidence": "领口为圆弧形开口。"
+          },
+          "sleeveLength": {
+            "values": [
+              "短袖"
+            ],
+            "status": "OBSERVED",
+            "evidence": "两侧袖子长度约至上臂中段。"
+          },
+          "garmentLength": {
+            "values": [
+              "常规"
+            ],
+            "status": "OBSERVED",
+            "evidence": "衣身及下摆基本完整，呈常规上衣长度。"
+          },
+          "closure": {
+            "values": [
+              "套头"
+            ],
+            "status": "OBSERVED",
+            "evidence": "未见前开襟或开合结构，呈套头式上衣。"
+          },
+          "texture": {
+            "values": [
+              "针织纹理"
+            ],
+            "status": "OBSERVED",
+            "evidence": "衣身表面可见细密针织纹理。"
+          },
+          "styles": {
+            "values": [
+              "休闲"
+            ],
+            "status": "INFERRED",
+            "evidence": "简洁基础款针织上衣。"
+          },
+          "seasons": {
+            "values": [
+              "春",
+              "秋"
+            ],
+            "status": "INFERRED",
+            "evidence": "针织短袖上衣的穿着季节依据款式推断。"
+          },
+          "brand": {
+            "values": [],
+            "status": "UNKNOWN",
+            "evidence": "领口附近有小衣标，但文字无法清晰辨认。"
+          },
+          "size": {
+            "values": [],
+            "status": "UNKNOWN",
+            "evidence": "未见可读尺码标。"
+          },
+          "materialComposition": {
+            "values": [],
+            "status": "UNKNOWN",
+            "evidence": "未见清晰可读的成分标。"
+          },
+          "careInstructions": {
+            "values": [],
+            "status": "UNKNOWN",
+            "evidence": "未见可读的洗护标识。"
+          },
+          "visibleText": {
+            "values": [],
+            "status": "UNKNOWN",
+            "evidence": "领口衣标有小字，但无法可靠辨认。"
+          }
+        },
+        "issues": [
+          {
+            "code": "GARMENT_FOLDED_OR_OPENING",
+            "message": "衣身正面中央有大面积翻折或开口状区域，遮挡了部分衣身结构。",
+            "affectedFields": [
+              "category",
+              "garmentLength",
+              "visibleText"
+            ],
+            "suggestedAction": "将上衣整理平整并拍摄正面全貌，另拍清晰衣标。"
+          }
+        ],
+        "target": {
+          "description": "画面中央偏左的浅奶油白色短袖针织上衣",
+          "worn": false,
+          "bounds": {
+            "x": 0.04,
+            "y": 0.16,
+            "width": 0.9,
+            "height": 0.72
+          }
+        }
+      },
+      "slot": 0,
+      "sourceId": "f66ef7f0-e16f-412c-bdcb-36ef0189d2a4",
+      "status": "DETECTED",
+      "visibleFraction": 0.88
+    },
+    {
+      "completion": false,
+      "garmentId": "177fdb82-7701-4460-b113-b7e32f58a713",
+      "id": "177fdb82-7701-4460-b113-b7e32f58a713",
+      "jobId": null,
+      "keyDetailsVisible": true,
+      "outputUrl": null,
+      "reason": "绿色短袖T恤平铺在画面中央偏左，整体轮廓和胸前印花可见；有褶皱但关键细节可辨。",
+      "recognition": {
+        "assessment": "PARTIAL",
+        "attributes": {
+          "category": {
+            "values": [
+              "T恤"
+            ],
+            "status": "OBSERVED",
+            "evidence": "可见圆领、短袖及T恤版型。"
+          },
+          "primaryColor": {
+            "values": [
+              "绿色"
+            ],
+            "status": "OBSERVED",
+            "evidence": "衣物主体呈绿色。"
+          },
+          "secondaryColors": {
+            "values": [
+              "白色"
+            ],
+            "status": "OBSERVED",
+            "evidence": "胸前可见白色印花文字。"
+          },
+          "patterns": {
+            "values": [
+              "文字"
+            ],
+            "status": "OBSERVED",
+            "evidence": "胸前有白色文字印花。"
+          },
+          "neckline": {
+            "values": [
+              "圆领"
+            ],
+            "status": "OBSERVED",
+            "evidence": "可见圆弧形领口边缘。"
+          },
+          "sleeveLength": {
+            "values": [
+              "短袖"
+            ],
+            "status": "OBSERVED",
+            "evidence": "可见两侧短袖。"
+          },
+          "garmentLength": {
+            "values": [],
+            "status": "UNKNOWN",
+            "evidence": "衣身完整可见，但缺少合适参照，无法可靠判断长度类型。"
+          },
+          "closure": {
+            "values": [
+              "套头"
+            ],
+            "status": "OBSERVED",
+            "evidence": "可见无前开襟的圆领结构。"
+          },
+          "texture": {
+            "values": [
+              "平滑"
+            ],
+            "status": "OBSERVED",
+            "evidence": "表面可见轻微布面纹理及褶皱。"
+          },
+          "styles": {
+            "values": [
+              "休闲"
+            ],
+            "status": "INFERRED",
+            "evidence": "简洁短袖印花T恤外观偏休闲，为风格推断。"
+          },
+          "seasons": {
+            "values": [
+              "春",
+              "夏"
+            ],
+            "status": "INFERRED",
+            "evidence": "短袖轻薄外观适合温暖季节，为风格推断。"
+          },
+          "brand": {
+            "values": [],
+            "status": "UNKNOWN",
+            "evidence": "未见清晰衣标；胸前印花不作为品牌依据。"
+          },
+          "size": {
+            "values": [],
+            "status": "UNKNOWN",
+            "evidence": "未见清晰尺码衣标。"
+          },
+          "materialComposition": {
+            "values": [],
+            "status": "UNKNOWN",
+            "evidence": "未见可读成分衣标。"
+          },
+          "careInstructions": {
+            "values": [],
+            "status": "UNKNOWN",
+            "evidence": "未见护理标签。"
+          },
+          "visibleText": {
+            "values": [
+              "EUROPA",
+              "World of Sailing"
+            ],
+            "status": "OBSERVED",
+            "evidence": "胸前白色印花可辨为“EUROPA”及较小字样“World of Sailing”。"
+          }
+        },
+        "issues": [
+          {
+            "code": "WRINKLED_FABRIC",
+            "message": "衣身有明显褶皱，且无法从图中确认面料成分。",
+            "affectedFields": [
+              "garmentLength",
+              "materialComposition"
+            ],
+            "suggestedAction": "将T恤整理平整，并拍摄清晰的成分衣标及完整正面。"
+          }
+        ],
+        "target": {
+          "description": "画面中央偏左的绿色短袖圆领印花T恤",
+          "worn": false,
+          "bounds": {
+            "x": 0.31,
+            "y": 0.07,
+            "width": 0.45,
+            "height": 0.83
+          }
+        }
+      },
+      "slot": 0,
+      "sourceId": "d651486e-3c4c-4e87-859f-26435ca2ad27",
+      "status": "DETECTED",
+      "visibleFraction": 0.94
+    }
+  ],
+  "calls": [
+    {
+      "id": "08dbad37-55ee-3f3b-a108-932aa8ac7e3c",
+      "type": "RECOGNIZE",
+      "status": "SUCCEEDED",
+      "provider": "yumg",
+      "model": "gpt-6-luna",
+      "startedAtMs": 1790948182907,
+      "finishedAtMs": 1790948200769,
+      "usage": {
+        "prompt_tokens": 5889,
+        "completion_tokens": 701,
+        "total_tokens": 6590
+      },
+      "costUsd": null,
+      "error": null,
+      "targetIds": [],
+      "referenceUrl": "/api/closet/batches/c0ae3895-a17a-4b6b-b717-ee7e2a116af8/files/preview-f66ef7f0-e16f-412c-bdcb-36ef0189d2a4.png",
+      "atlasUrl": null,
+      "size": null,
+      "quality": null,
+      "referenceSide": 1600,
+      "providerRequestId": "e1a74771-5467-409e-b2ed-5b07fadada69"
+    },
+    {
+      "id": "6a8cec50-b3ae-33aa-ace5-14ff9c55c40e",
+      "type": "RECOGNIZE",
+      "status": "SUCCEEDED",
+      "provider": "yumg",
+      "model": "gpt-6-luna",
+      "startedAtMs": 1790948200784,
+      "finishedAtMs": 1790948222571,
+      "usage": {
+        "prompt_tokens": 5840,
+        "completion_tokens": 693,
+        "total_tokens": 6533
+      },
+      "costUsd": null,
+      "error": null,
+      "targetIds": [],
+      "referenceUrl": "/api/closet/batches/c0ae3895-a17a-4b6b-b717-ee7e2a116af8/files/preview-d651486e-3c4c-4e87-859f-26435ca2ad27.png",
+      "atlasUrl": null,
+      "size": null,
+      "quality": null,
+      "referenceSide": 1600,
+      "providerRequestId": "7a7ab08d-7af5-49ca-b049-a828b70a9b30"
+    }
+  ],
+  "sources": [
+    {
+      "name": "white-shirt-light.jpg",
+      "sha256": "3d0602f4c36f2e52e32ab8150dcaabd87b41c472b823fb57cc8c288dbe09adba",
+      "bytes": 112818
+    },
+    {
+      "name": "artf-240.png",
+      "sha256": "5473511bf91b26c779d89e04ed6b9788b55151b220c5c9fee2614c64b3e5b673",
+      "bytes": 3612213
+    }
+  ],
+  "config": {
+    "groupSizes": [
+      1,
+      2,
+      3
+    ],
+    "referenceSides": [
+      1024,
+      1600
+    ],
+    "sizePolicies": [
+      "FIXED",
+      "PER_ITEM"
+    ],
+    "quality": "low",
+    "generationModel": "gpt-image-2.5-flare"
+  },
+  "reason": "Prompt/completion usage returned without cached input breakdown. Exact costs unknown. No generation comparison was issued."
+}

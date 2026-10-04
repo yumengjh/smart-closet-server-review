@@ -18,7 +18,8 @@ import static com.smartcloset.workflow.Workflow.*;
 @RequestMapping("/api/closet")
 public class ClosetProcessingController {
     public record UploadOptions(String mode, Boolean restage, Boolean precut, Boolean postcut, Double rotationDegrees,
-                                String generationProvider, String generationModel, String recognitionProvider, String recognitionModel) {}
+                                String generationProvider, String generationModel, String recognitionProvider, String recognitionModel,
+                                TransparencyService.Policy transparencyPolicy) {}
     private final WorkflowService workflows;
     private final GenerationProperties generation;
     private final RecognitionProperties recognition;
@@ -53,7 +54,10 @@ public class ClosetProcessingController {
             }
             case "仅识别" -> steps.add(Step.recognize(new Recognition.Request(options.recognitionProvider(), options.recognitionModel())));
             case "本地贴纸" -> {
-                steps.add(new Step(Type.ENSURE_TRANSPARENCY, null, null, SegmentationEngine.Method.U2NET, TransparencyService.Policy.AUTO));
+                var policy = options.transparencyPolicy() == null ? TransparencyService.Policy.AUTO : options.transparencyPolicy();
+                if (policy != TransparencyService.Policy.AUTO && policy != TransparencyService.Policy.FORCE)
+                    throw com.smartcloset.image.ProcessingException.invalid("本地制作请选择重新去背景或复用已有透明背景。");
+                steps.add(new Step(Type.ENSURE_TRANSPARENCY, null, null, SegmentationEngine.Method.U2NET, policy));
                 steps.add(new Step(Type.STICKER, null, null, null));
             }
             default -> throw com.smartcloset.image.ProcessingException.invalid("未知的处理模式。");

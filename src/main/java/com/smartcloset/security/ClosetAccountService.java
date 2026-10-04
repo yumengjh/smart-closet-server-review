@@ -5,6 +5,7 @@ import java.util.List;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class ClosetAccountService {
@@ -37,25 +38,32 @@ public class ClosetAccountService {
         var hashes = jdbc.query("SELECT password_hash FROM closet_user WHERE username=? AND enabled=1", (r,n) -> r.getString(1), username);
         return !hashes.isEmpty() && passwords.matches(rawPassword, hashes.getFirst());
     }
+    @Transactional
     public void changePassword(String username, String currentPassword, String newPassword) {
         validate(username, newPassword);
         if (!mustChange(username) && !matches(username, currentPassword)) throw new IllegalArgumentException("当前密码不正确。");
         jdbc.update("UPDATE closet_user SET password_hash=?,must_change_password=0 WHERE username=?",
                 passwords.encode(newPassword), username);
+        revokePortableLinks(username);
     }
+    @Transactional
     public void resetPassword(String username, String rawPassword) {
         validate(username, rawPassword);
         if (find(username) == null) throw new IllegalArgumentException("账号不存在：" + username);
         jdbc.update("UPDATE closet_user SET password_hash=?,must_change_password=1 WHERE username=?", passwords.encode(rawPassword), username);
+        revokePortableLinks(username);
     }
+    @Transactional
     public void setEnabled(String username, boolean enabled) {
         if (find(username) == null) throw new IllegalArgumentException("账号不存在：" + username);
         jdbc.update("UPDATE closet_user SET enabled=? WHERE username=?", enabled ? 1 : 0, username);
+        if (!enabled) revokePortableLinks(username);
     }
     public boolean mustChange(String username) {
         var account = find(username);
         return account == null || account.mustChangePassword() || !account.enabled();
     }
+    private void revokePortableLinks(String username) { jdbc.update("UPDATE portable_login_link SET revoked_at_ms=? WHERE owner_username=? AND revoked_at_ms IS NULL", System.currentTimeMillis(), username); }
     private void validate(String username, String password) {
         if (username == null || !username.matches("[A-Za-z0-9_.-]{2,80}"))
             throw new IllegalArgumentException("用户名需为2到80位英文字母、数字、点、下划线或短横线。");

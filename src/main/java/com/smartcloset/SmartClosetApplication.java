@@ -5,7 +5,7 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 
 @SpringBootApplication
-@EnableConfigurationProperties({ClosetProperties.class, com.smartcloset.generation.GenerationProperties.class, com.smartcloset.recognition.RecognitionProperties.class})
+@EnableConfigurationProperties({ClosetProperties.class, com.smartcloset.recognition.RecognitionProperties.class, com.smartcloset.agent.AgentProperties.class})
 public class SmartClosetApplication {
     public static void main(String[] args) {
         if (com.smartcloset.security.ClosetAccountCli.isCommand(args)) {

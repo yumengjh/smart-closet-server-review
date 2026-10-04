@@ -75,24 +75,33 @@ public class RecognitionService {
         }
         return models;
     }
+    public record RawOutput(JsonNode raw, JsonNode usage, String requestId) {}
+    public Prepared prepareBatch(Request request, JsonNode batchSchema, String instructions) {
+        var p = prepare(request);
+        return new Prepared(p.provider(), p.model(), p.providerRevision(), p.promptVersion()+":batch-v1", "batch-v1", p.prompt()+"\n"+instructions, batchSchema);
+    }
     public Output recognize(Prepared r, byte[] png) {
+        var out = raw(r, png, "识别这张照片中的单件衣物。");
+        return new Output(schema.validate(out.raw(), RecognitionSchema.requiresTarget(r.schemaVersion())), out.raw(), out.usage(), out.requestId());
+    }
+    public RawOutput raw(Prepared r, byte[] png, String instructions) {
         if (!Objects.equals(r.providerRevision(), revision(r.provider()))) throw new ProcessingException(HttpStatus.CONFLICT, "PROVIDER_CONFIG_CHANGED", "识图服务商配置已改变，请重新提交。");
         var p = provider(r.provider()); var fields = new LinkedHashMap<String, Object>(); String path;
         String encoded = Base64.getEncoder().encodeToString(visionImage(png));
         if (p.protocol() == RecognitionProperties.Protocol.OPENAI_CHAT) {
             path = "/chat/completions";
-            fields.put("model", r.model()); fields.put("max_completion_tokens", p.maxOutputTokens());
+            fields.put("model", r.model()); fields.put("max_completion_tokens", "batch-v1".equals(r.schemaVersion()) ? 16384 : p.maxOutputTokens());
             if (p.reasoningEffort() != null) fields.put("reasoning_effort", p.reasoningEffort());
             fields.put("messages", List.of(Map.of("role", "system", "content", r.prompt()), Map.of("role", "user", "content", List.of(
-                Map.of("type", "text", "text", "识别这张照片中的单件衣物，输出 JSON。"),
+                Map.of("type", "text", "text", instructions),
                 Map.of("type", "image_url", "image_url", Map.of("url", "data:image/png;base64," + encoded))))));
             fields.put("response_format", Map.of("type", "json_schema", "json_schema", Map.of("name", "garment_metadata", "strict", true, "schema", r.schema())));
         } else {
             path = "/models/" + r.model().replaceFirst("^models/", "") + ":generateContent";
             fields.put("systemInstruction", Map.of("parts", List.of(Map.of("text", r.prompt()))));
-            fields.put("contents", List.of(Map.of("role", "user", "parts", List.of(Map.of("text", "识别这张照片中的单件衣物。"),
+            fields.put("contents", List.of(Map.of("role", "user", "parts", List.of(Map.of("text", instructions),
                 Map.of("inlineData", Map.of("mimeType", "image/png", "data", encoded))))));
-            fields.put("generationConfig", Map.of("responseMimeType", "application/json", "responseJsonSchema", r.schema(), "maxOutputTokens", p.maxOutputTokens()));
+            fields.put("generationConfig", Map.of("responseMimeType", "application/json", "responseJsonSchema", r.schema(), "maxOutputTokens", "batch-v1".equals(r.schemaVersion()) ? 16384 : p.maxOutputTokens()));
         }
         var response = http.send(builder(r.provider(), path).header("Content-Type", "application/json")
                 .POST(HttpRequest.BodyPublishers.ofByteArray(json.writeValueAsBytes(fields))).build(), 1024 * 1024);
@@ -110,7 +119,7 @@ public class RecognitionService {
         }
         JsonNode raw;
         try { raw = json.reader().with(DeserializationFeature.FAIL_ON_TRAILING_TOKENS).readTree(content); } catch (Exception e) { throw failure("RECOGNITION_INVALID_OUTPUT", "模型没有返回有效 JSON，未更新元信息。"); }
-        return new Output(schema.validate(raw), raw, body.has("usage") ? body.get("usage") : body.get("usageMetadata"),
+        return new RawOutput(raw, body.has("usage") ? body.get("usage") : body.get("usageMetadata"),
             response.headers().firstValue("x-request-id").orElse(body.path("id").asText(null)));
     }
     private byte[] visionImage(byte[] png) {

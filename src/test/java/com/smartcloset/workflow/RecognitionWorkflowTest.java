@@ -34,6 +34,7 @@ class RecognitionWorkflowTest {
     static final AtomicInteger calls = new AtomicInteger();
     static volatile int responseCode = 200;
     static volatile String assessment = "READY", color = "蓝色", finish = "stop";
+    static volatile boolean worn;
     static volatile JsonNode sent;
     static volatile CountDownLatch entered, release;
     static Path storage;
@@ -85,7 +86,7 @@ class RecognitionWorkflowTest {
     @Autowired org.springframework.jdbc.core.JdbcTemplate jdbc;
     @MockitoBean GenerationService generation;
     @BeforeEach void setup() throws Exception {
-        responseCode=200;assessment="READY";color="蓝色";finish="stop";entered=null;release=null;
+        responseCode=200;assessment="READY";color="蓝色";finish="stop";worn=false;entered=null;release=null;
         when(generation.prepare(any())).thenAnswer(i->{GenerationService.Request r=i.getArgument(0);return new GenerationService.Prepared(r.provider(),r.model(),r.prompt(),Map.of(),GenerationProperties.Protocol.OPENAI_IMAGES);});
         when(generation.frozen(any(),any())).thenAnswer(i->{GenerationService.Request r=i.getArgument(0);return new GenerationService.Prepared(r.provider(),r.model(),r.prompt(),Map.of(),GenerationProperties.Protocol.OPENAI_IMAGES);});
         when(generation.revision(any())).thenReturn("test");
@@ -99,7 +100,10 @@ class RecognitionWorkflowTest {
             attrs.put("category",Map.of("values",List.of("T恤"),"status","OBSERVED","evidence","可见圆领短袖"));
             attrs.put("primaryColor",Map.of("values",List.of(color),"status","OBSERVED","evidence","主体布料颜色"));
         }
-        return Map.of("assessment",assessment,"attributes",attrs,"issues",List.of());
+        var fixture = new LinkedHashMap<String,Object>();
+        fixture.put("assessment",assessment); fixture.put("attributes",attrs); fixture.put("issues",List.of());
+        fixture.put("target",Set.of("READY","PARTIAL").contains(assessment) ? Map.of("description", color+"T恤，画面中央", "worn",worn,"bounds",Map.of("x",.2,"y",.15,"width",.6,"height",.7)) : null);
+        return fixture;
     }
     static byte[] image(Color color)throws Exception {
         var image=new BufferedImage(100,120,BufferedImage.TYPE_INT_ARGB);var g=image.createGraphics();g.setColor(color);g.fillRect(20,20,60,80);g.dispose();
@@ -137,6 +141,48 @@ class RecognitionWorkflowTest {
         assertEquals(Status.NEEDS_REVIEW,job.status());assertEquals(Status.SKIPPED,job.steps().get(1).status());verify(generation,never()).generate(any(),any());
         assertNull(garments.get(job.request().garmentId()).automatic());assertNotNull(job.steps().getFirst().rawRecognition());
     }
+    @Test void wornTargetSkipsPrecutAndTheSameTargetReachesImageGeneration() throws Exception {
+        worn=true;
+        var preset=new Step(Type.GENERATE,Mode.IMAGE_TO_IMAGE,new GenerationService.Request("test","image",ClosetPrompts.RESTAGE,Map.of()),null);
+        var job=await(upload(identify(),new Step(Type.SEGMENT,null,null,com.smartcloset.image.SegmentationEngine.Method.U2NET),preset).id());
+        assertEquals(Status.SUCCEEDED,job.status());
+        assertEquals(Status.SKIPPED,job.steps().get(1).status(),"no local model is installed in this test; pre-cut must not run");
+        var captured=org.mockito.ArgumentCaptor.forClass(GenerationService.Prepared.class);
+        verify(generation).generate(captured.capture(),any());
+        assertTrue(captured.getValue().prompt().startsWith(ClosetPrompts.RESTAGE));
+        assertTrue(captured.getValue().prompt().contains("蓝色T恤，画面中央"));
+        assertTrue(captured.getValue().prompt().contains("\"worn\":true"));
+        assertFalse(ClosetPrompts.allowedPrompt(captured.getValue().prompt()),"clients cannot supply enriched prompts themselves");
+        assertTrue(garments.get(job.request().garmentId()).automatic().target().worn());
+    }
+    @Test void recognitionVersionTargetRequirementSurvivesUpgrade() { assertTrue(RecognitionSchema.requiresTarget("garment-v3")); assertTrue(RecognitionSchema.requiresTarget("garment-v4")); assertFalse(RecognitionSchema.requiresTarget("garment-v2")); }
+    @Test void legacyRecognitionRemainsReadableAndNewFieldsStayUnknown() throws Exception {
+        var job=await(upload(identify()).id());var id=job.request().garmentId();
+        var result=json.valueToTree(garments.get(id).automatic());
+        var attrs=(tools.jackson.databind.node.ObjectNode)result.path("attributes");
+        for(String key:List.of("fit","thickness","wearingModes"))attrs.remove(key);
+        jdbc.update("UPDATE garment SET automatic_json=? WHERE id=?",json.writeValueAsString(result),id.toString());
+        var restored=garments.get(id);
+        assertEquals(List.of("T恤"),restored.effective().get("category"));
+        for(String key:List.of("fit","thickness","wearingModes"))assertEquals(List.of(),restored.effective().get(key));
+    }
+    @Test void productPresetDoesNotSpendAnImageCallWhenRecognitionFailed() throws Exception {
+        responseCode=502;
+        var preset=new Step(Type.GENERATE,Mode.IMAGE_TO_IMAGE,new GenerationService.Request("test","image",ClosetPrompts.RESTAGE,Map.of()),null);
+        var job=await(upload(identify(),preset).id());
+        assertEquals(Status.NEEDS_REVIEW,job.status());
+        assertEquals(Status.SKIPPED,job.steps().get(1).status());
+        verify(generation,never()).generate(any(),any());
+    }
+    @Test void targetValidationRejectsInvalidBoundsAndReadsLegacyResults() {
+        var data=(tools.jackson.databind.node.ObjectNode)codec.valueToTree(fixture("READY","蓝色"));
+        assertNotNull(schema.validate(data,true).target());
+        ((tools.jackson.databind.node.ObjectNode)data.at("/target/bounds")).put("width",.99);
+        assertThrows(ProcessingException.class,()->schema.validate(data,true));
+        data.remove("target");
+        assertNull(schema.validate(data).target());
+        assertThrows(ProcessingException.class,()->schema.validate(data,true));
+    }
     @Test void invalidOrTruncatedOutputNeverReplacesPreviousMetadata()throws Exception{
         var job=await(upload(identify()).id());UUID id=job.request().garmentId();finish="length";
         var rerun=await(service.rerun(id,UUID.randomUUID(),new RerunRequest(List.of(identify()))).id());
@@ -163,6 +209,33 @@ class RecognitionWorkflowTest {
         var fresh=garments.get(view.id());assertEquals(view.sourceAssetId(),fresh.displayAssetId());
         var other=await(upload(identify()).id());var foreign=garments.get(other.request().garmentId());
         assertThrows(ProcessingException.class,()->garments.select(view.id(),new GarmentRepository.SelectImage(fresh.revision(),foreign.sourceAssetId())));
+    }
+    @Test void invalidOptionalFitDoesNotDiscardObservedGarment() {
+        var data=codec.valueToTree(fixture("READY","蓝色"));
+        ((tools.jackson.databind.node.ObjectNode)data.path("attributes")).set("fit",codec.valueToTree(Map.of("values",List.of("宽松","合体"),"status","OBSERVED","evidence","无法证明上身松量")));
+        var result=schema.validate(data,true);
+        assertEquals(List.of("蓝色"),result.attributes().get("primaryColor").values());
+        assertEquals(com.smartcloset.recognition.Recognition.State.UNKNOWN,result.attributes().get("fit").status());
+        assertTrue(result.attributes().get("fit").values().isEmpty());
+        assertNotNull(result.target());
+    }
+    @Test void successfulRecognitionCanRecoverFromEarlierUnclearTarget() throws Exception {
+        assessment="MULTIPLE_GARMENTS";
+        var old=await(upload(identify()).id());
+        var garment=garments.get(old.request().garmentId());
+        assertThrows(ProcessingException.class,()->garments.confirm(garment.id(),new GarmentRepository.Confirm(garment.revision(),garment.sourceAssetId(),Map.of(),List.of())));
+        assessment="READY";
+        await(service.rerun(garment.id(),UUID.randomUUID(),new RerunRequest(List.of(identify()))).id());
+        var fresh=garments.get(garment.id());
+        assertEquals("ACTIVE",garments.confirm(fresh.id(),new GarmentRepository.Confirm(fresh.revision(),fresh.sourceAssetId(),Map.of(),List.of())).status());
+    }
+    @Test void failedRerecognitionDoesNotClearUnresolvedTargetBlock() throws Exception {
+        assessment="MULTIPLE_GARMENTS";
+        var old=await(upload(identify()).id());
+        responseCode=502;
+        await(service.rerun(old.request().garmentId(),UUID.randomUUID(),new RerunRequest(List.of(identify()))).id());
+        var fresh=garments.get(old.request().garmentId());
+        assertThrows(ProcessingException.class,()->garments.confirm(fresh.id(),new GarmentRepository.Confirm(fresh.revision(),fresh.sourceAssetId(),Map.of(),List.of())));
     }
     @Test void schemaRejectsFabricationAndContradictoryFields(){
         var data=codec.valueToTree(fixture("READY","蓝色"));

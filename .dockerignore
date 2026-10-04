@@ -1,0 +1,12 @@
+.git
+.github
+.idea
+.env
+.env.*
+target
+agent-runtime
+data
+models/*.onnx
+reports
+samples
+docs

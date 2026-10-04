@@ -30,6 +30,14 @@ recognition:
     yumg:
       credential-provider: yumg
       protocol: OPENAI_CHAT
-      default-model: gpt-5.6-luna
+      default-model: gpt-6-luna
       max-output-tokens: 4096
       reasoning-effort: low
+
+# The same secret must be provided to Spring Boot and the Node agent runtime.
+agent:
+  secret: ${CLOSET_AGENT_SECRET:}
+  credential-provider: yumg
+  default-model: gpt-6-luna
+  allowed-models: [gpt-6-luna, gpt-5.6-luna]
+  daily-limit: 30

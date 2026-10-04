@@ -7,6 +7,7 @@ import java.awt.geom.AffineTransform;
 import java.awt.image.BufferedImage;
 import java.io.*;
 import java.util.Iterator;
+import java.util.Set;
 import javax.imageio.*;
 import javax.imageio.stream.ImageInputStream;
 
@@ -21,6 +22,31 @@ public final class Images {
 
     public static Decoded decodePreservingAlpha(byte[] bytes, long maxPixels) {
         return decode(bytes, maxPixels, true);
+    }
+
+    /** Validate the original dimensions before reading pixels; large phone photos are subsampled. */
+    public static Decoded sampled(byte[] bytes, int maxSide) {
+        if (bytes.length == 0 || bytes.length > 50L * 1024 * 1024)
+            throw ProcessingException.invalid("照片不能为空，且不能超过 50 MB。");
+        try (var stream = ImageIO.createImageInputStream(new ByteArrayInputStream(bytes))) {
+            var readers = ImageIO.getImageReaders(stream);
+            if (!readers.hasNext()) throw ProcessingException.invalid("无法读取照片，请选择 JPEG 或 PNG；HEIC 请先转换。");
+            var reader = readers.next();
+            try {
+                reader.setInput(stream, true, true);
+                String format = reader.getFormatName().toLowerCase();
+                if (!Set.of("jpeg", "png").contains(format)) throw ProcessingException.invalid("请选择 JPEG 或 PNG，HEIC 请先转换。");
+                int w = reader.getWidth(0), h = reader.getHeight(0);
+                if (w < 32 || h < 32 || w > 16384 || h > 16384 || (long) w * h > 64000000)
+                    throw ProcessingException.invalid("照片至少 32 像素，总像素不能超过 6400 万。请降低相机分辨率或导出较小的照片。");
+                var param = reader.getDefaultReadParam();
+                int sample = Math.max(1, (int) Math.ceil((double) Math.max(w, h) / maxSide));
+                param.setSourceSubsampling(sample, sample, 0, 0);
+                return new Decoded(orient(reader.read(0, param), orientation(bytes), true), format, orientation(bytes));
+            } finally { reader.dispose(); }
+        } catch (IOException | IllegalArgumentException e) {
+            throw ProcessingException.invalid("照片无法解码，请重新拍摄或导出 JPEG 后上传。");
+        }
     }
 
     private static Decoded decode(byte[] bytes, long maxPixels, boolean preserveAlpha) {

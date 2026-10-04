@@ -1,4 +1,4 @@
-# AI 数字衣柜 · 图片处理后端
+# 鱼搭 · AI 数字衣柜与图片处理后端
 
 Spring Boot 4.1.1 / Java 21。当前提供数字衣柜产品接口、账号与数据归属、真实 AI 识别/图片整理，以及本地透明背景与贴纸处理。Vue 正式界面由后端同源提供。
 
@@ -31,7 +31,9 @@ mvn spring-boot:run -Dspring-boot.run.arguments="--closet-command=claim-legacy,-
 
 首次登录先进入“设置新密码”；完成前不开放衣柜、任务、字段配置和额度页面。未登录业务请求返回 `401 AUTHENTICATION_REQUIRED`，未改初始密码返回 `403 PASSWORD_CHANGE_REQUIRED`，CSRF 校验失败返回 `403 CSRF_INVALID`。
 
-默认只监听 `127.0.0.1:8080`。同一局域网内访问时设置 `SERVER_ADDRESS=0.0.0.0`，然后打开服务电脑的局域网 IP。会话空闲 30 分钟后失效；浏览器使用 HttpOnly 会话 Cookie 与 CSRF 令牌。普通账号只能读取自己的衣物、任务和图片，每日 AI 任务上限为 20 次。原工作流测试台及底层分割接口仅管理员可用。
+默认只监听 `127.0.0.1:8080`。同一局域网内访问时设置 `SERVER_ADDRESS=0.0.0.0`，然后打开服务电脑的局域网 IP。登录会话存入现有数据库，服务重启后仍可恢复；默认保留 7 天，浏览器使用独立的 `YIXU_SESSION` HttpOnly Cookie（SameSite=Lax）与 CSRF 令牌。`CLOSET_SESSION_TIMEOUT` 控制会话空闲期限，`CLOSET_SESSION_COOKIE_MAX_AGE` 控制浏览器 Cookie 有效期，两者默认均为 `7d`。主动退出会立即删除当前会话。普通账号只能读取自己的衣物、任务和图片，每日 AI 任务上限为 20 次。原工作流测试台及底层分割接口仅管理员可用。
+
+通过 Cloudflare Tunnel 分享便携登录链接时，可使用 `cloudflared tunnel --url http://localhost:8080`，并从其 HTTPS 地址进入网站生成链接。后端默认通过 Tomcat 识别本机代理传入的 `X-Forwarded-Proto`；只信任回环地址的代理，公网 HTTP 请求仍不能使用便携登录。修改该配置后需重启后端。Quick Tunnel 每次启动可能更换域名，应从当前域名重新生成链接。
 
 两种处理方法都在 Java 服务本地运行：
 
@@ -46,7 +48,7 @@ mvn spring-boot:run -Dspring-boot.run.arguments="--closet-command=claim-legacy,-
 
 工作流页默认自动识别上传照片的品类、颜色、图案与结构，再整理展示图片。支持仅识别、替换模型、重新识别、人工编辑/清空元数据、恢复自动值及更换展示图。重新处理保留同一个衣物 ID，人工修改不会被模型覆盖。
 
-- 默认沿用现有上游的 `gpt-5.6-luna`，图片输入和结构化输出已完成少量实测；上游未公开价格，尚未确认它是最便宜的模型。
+- 助手与识图默认沿用现有上游的 `gpt-6-luna`；模型配置与验证说明见 [全局个人助手](docs/AGENT.md)。上游未公开价格。
 - 多件衣物或目标不明会暂停后续处理；识别调用失败不会阻止图片步骤继续。
 - 使用新增 H2 衣物表、现有工作流队列与调用记录，无额外本机服务。
 - [功能、接口、配置和边界](docs/RECOGNITION.md) · [实测及质量限制](reports/recognition/README.md)。
@@ -251,6 +253,22 @@ java -jar target/smart-closet-server-0.0.1-SNAPSHOT.jar
 | `CLOSET_MODEL_PATH` | `./models/u2net.onnx` | 同一 U2Net 模型文件路径，不是任意模型通用接口 |
 
 POM 按当前 OS/架构选择 OpenCV 本地依赖；macOS arm64、macOS x64、Linux x64/arm64、Windows x64 有配置，实际验证平台记录在实验报告。跨平台打包可使用 `-Dnative.platform=linux-x86_64` 等显式指定，目标平台仍需要运行验证。
+
+## Docker 部署
+
+前端使用 Nginx、浏览器跨子域调用 API 时，参见 [前后端独立部署说明](docs/INDEPENDENT_DEPLOYMENT.md) 与 [Nginx 样例](deploy/nginx/closet.conf.example)。现有同源部署继续可用；本地 HTTP 使用时将环境模板中的 `CLOSET_COOKIE_SECURE` 改为 `false`（或留空自动判断）。
+
+部署由 Java API 和 TypeScript Agent 两个容器组成。Vue 前端生产构建产物随 Java 镜像同源提供，GitHub Actions 会运行 Java 与 Agent 验证、构建两个容器并推送到 GHCR。修改前端后，在相邻前端项目运行 `npm run build:server`，将更新后的静态产物提交到本仓库。首次部署先把环境变量模板复制到仓库目录以外，并替换 Agent 密钥和管理员初始密码：
+
+```bash
+cp .env.example "$HOME/smart-closet-server.env"
+# 编辑该文件，填写随机生成的 CLOSET_AGENT_SECRET 和管理员初始密码
+docker compose --env-file "$HOME/smart-closet-server.env" up -d --build
+```
+
+服务默认通过 `http://localhost:8080` 访问。Compose 命名卷 `closet-data` 保存数据库、会话和处理图片；宿主机 `models/` 用于挂载 `u2net.onnx`，AI 供应商配置放在宿主机 `.local/generation.yml`，不会打进镜像。Agent 只在 Compose 内部网络开放。
+
+GitHub Actions 会在推送和 PR 上运行 Java/Agent 检查并构建两个容器；推送默认分支或 `v*` 标签时发布到 GHCR。发布后如需匿名拉取，请在 GitHub Packages 中分别把 `smart-closet-server` 和 `smart-closet-server-agent` 设为 Public，然后在部署主机运行 `docker compose --env-file "$HOME/smart-closet-server.env" pull && docker compose --env-file "$HOME/smart-closet-server.env" up -d --no-build`。
 
 ## 代码结构
 

@@ -1,0 +1,19 @@
+[
+  {
+    "barBottom": 760,
+    "navTop": 772,
+    "page": "result",
+    "scroll": 390,
+    "width": 390
+  },
+  {
+    "page": "result",
+    "scroll": 320,
+    "width": 320
+  },
+  {
+    "page": "metadata",
+    "scroll": 320,
+    "width": 320
+  }
+]

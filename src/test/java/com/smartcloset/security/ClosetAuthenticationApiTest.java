@@ -76,4 +76,112 @@ class ClosetAuthenticationApiTest {
         assertEquals(204, post("/api/auth/logout", Map.of(), true).statusCode());
         assertEquals(401, get("/api/closet/garments").statusCode());
     }
+
+    @Autowired PortableLoginService portableLinks;
+    @Autowired org.springframework.jdbc.core.JdbcTemplate jdbc;
+    HttpClient recipient() { return HttpClient.newBuilder().cookieHandler(new CookieManager(null, CookiePolicy.ACCEPT_ALL)).build(); }
+    HttpResponse<String> recipientPost(HttpClient browser, String path, Object body) throws Exception {
+        var csrf = browser.send(HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + port + "/api/auth/csrf")).GET().build(), HttpResponse.BodyHandlers.ofString());
+        return browser.send(HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + port + path))
+            .header("Content-Type", "application/json").header("X-XSRF-TOKEN", json.readTree(csrf.body()).path("token").asText())
+            .POST(HttpRequest.BodyPublishers.ofString(json.writeValueAsString(body))).build(), HttpResponse.BodyHandlers.ofString());
+    }
+    HttpResponse<String> recipientMe(HttpClient browser) throws Exception {
+        return browser.send(HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + port + "/api/auth/me")).GET().build(), HttpResponse.BodyHandlers.ofString());
+    }
+    @Test void portableLoginIsSingleUseAndOwnerCanRevokeAnAlreadyRedeemedSession() throws Exception {
+        String owner = login(); changePassword();
+        assertEquals(400, post("/api/auth/portable-links", Map.of("currentPassword", "wrong"), true).statusCode());
+        assertEquals(403, post("/api/auth/portable-links", Map.of("currentPassword", newPassword), false).statusCode());
+        var issued = post("/api/auth/portable-links", Map.of("currentPassword", newPassword), true);
+        assertEquals(200, issued.statusCode(), issued.body());
+        String token = json.readTree(issued.body()).path("token").asText();
+        String id = json.readTree(issued.body()).path("id").asText();
+        assertEquals(43, token.length());
+        assertNotEquals(token, jdbc.queryForObject("SELECT token_hash FROM portable_login_link WHERE id=?", String.class, id));
+        var browser = recipient();
+        var exchange = recipientPost(browser, "/api/auth/portable-login", Map.of("token", token));
+        assertEquals(200, exchange.statusCode());
+        assertEquals(owner, json.readTree(exchange.body()).path("username").asText());
+        assertTrue(json.readTree(recipientMe(browser).body()).path("portableLogin").asBoolean());
+        assertEquals(401, recipientPost(recipient(), "/api/auth/portable-login", Map.of("token", token)).statusCode());
+        assertEquals(403, recipientPost(browser, "/api/auth/password", Map.of("currentPassword", newPassword, "newPassword", initialPassword)).statusCode());
+        assertEquals(403, recipientPost(browser, "/api/auth/portable-links", Map.of("currentPassword", newPassword)).statusCode());
+        assertFalse(portableLinks.revoke("another-owner", id));
+        assertTrue(portableLinks.revoke(owner, id));
+        assertEquals(401, recipientMe(browser).statusCode());
+    }
+    @Test void passwordChangesAndAbsoluteDeadlineInvalidatePortableGrants() throws Exception {
+        String owner = login(); changePassword();
+        var link = portableLinks.create(owner, newPassword);
+        var browser = recipient();
+        assertEquals(200, recipientPost(browser, "/api/auth/portable-login", Map.of("token", link.token())).statusCode());
+        jdbc.update("UPDATE portable_login_link SET consumed_at_ms=? WHERE id=?", System.currentTimeMillis() - 25 * 60 * 60 * 1000L, link.id());
+        assertEquals(401, recipientMe(browser).statusCode());
+        var pending = portableLinks.create(owner, newPassword);
+        accounts.changePassword(owner, newPassword, initialPassword);
+        assertNull(portableLinks.consume(pending.token()));
+        var expired = portableLinks.create(owner, initialPassword);
+        jdbc.update("UPDATE portable_login_link SET expires_at_ms=0 WHERE id=?", expired.id());
+        assertNull(portableLinks.consume(expired.token()));
+    }
+    @Test void simultaneousRedemptionHasExactlyOneWinner() throws Exception {
+        String owner = login(); changePassword(); var link = portableLinks.create(owner, newPassword);
+        try (var executor = java.util.concurrent.Executors.newFixedThreadPool(6)) {
+            var ready = new java.util.concurrent.CountDownLatch(1);
+            var futures = java.util.stream.IntStream.range(0, 6).mapToObj(i -> executor.submit(() -> { ready.await(); return portableLinks.consume(link.token()); })).toList();
+            ready.countDown(); int winners = 0;
+            for (var future : futures) if (future.get() != null) winners++;
+            assertEquals(1, winners);
+        }
+    }
+
+    @Test void aRevokedPortableSessionCanRedeemAFreshLinkWithoutFailingTheFirstAttempt() throws Exception {
+        String owner = login(); changePassword();
+        var oldLink = portableLinks.create(owner, newPassword);
+        var browser = recipient();
+        assertEquals(200, recipientPost(browser, "/api/auth/portable-login", Map.of("token", oldLink.token())).statusCode());
+        assertTrue(portableLinks.revoke(owner, oldLink.id()));
+        var freshLink = portableLinks.create(owner, newPassword);
+        var exchange = recipientPost(browser, "/api/auth/portable-login", Map.of("token", freshLink.token()));
+        assertEquals(200, exchange.statusCode(), exchange.body());
+        assertEquals(owner, json.readTree(recipientMe(browser).body()).path("username").asText());
+    }
+
+    @Test void httpsTunnelCanRedeemALinkOverItsLoopbackHttpOrigin() throws Exception {
+        String owner = login(); changePassword();
+        var link = portableLinks.create(owner, newPassword);
+        var browser = recipient();
+        var csrf = browser.send(HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + port + "/api/auth/csrf")).GET().build(), HttpResponse.BodyHandlers.ofString());
+        String body = json.writeValueAsString(Map.of("token", link.token()));
+        var cookies = browser.cookieHandler().orElseThrow().get(URI.create("http://127.0.0.1:" + port + "/"), Map.of());
+        try (var socket = new Socket("127.0.0.1", port)) {
+            socket.setSoTimeout(10000);
+            String request = "POST /api/auth/portable-login HTTP/1.1\r\nHost: closet.example.com\r\n"
+                    + "X-Forwarded-Proto: https\r\nX-Forwarded-For: 203.0.113.10\r\n"
+                    + "Cookie: " + String.join("; ", cookies.get("Cookie")) + "\r\n"
+                    + "X-XSRF-TOKEN: " + json.readTree(csrf.body()).path("token").asText() + "\r\n"
+                    + "Content-Type: application/json\r\nConnection: close\r\nContent-Length: " + body.length() + "\r\n\r\n" + body;
+            socket.getOutputStream().write(request.getBytes(java.nio.charset.StandardCharsets.US_ASCII));
+            String response = new String(socket.getInputStream().readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
+            assertTrue(response.startsWith("HTTP/1.1 200"), response);
+            assertTrue(response.contains("\"username\":\"" + owner + "\""), response);
+            assertTrue(response.contains("Secure"), "HTTPS session cookie must be secure");
+        }
+    }
+
+    @Test void aRevokedPortableSessionDoesNotBlockPasswordLogin() throws Exception {
+        String owner = login(); changePassword();
+        var link = portableLinks.create(owner, newPassword);
+        var browser = recipient();
+        assertEquals(200, recipientPost(browser, "/api/auth/portable-login", Map.of("token", link.token())).statusCode());
+        // Keep a CSRF token so the login request itself encounters the revoked session.
+        var csrf = browser.send(HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + port + "/api/auth/csrf")).GET().build(), HttpResponse.BodyHandlers.ofString());
+        assertTrue(portableLinks.revoke(owner, link.id()));
+        var response = browser.send(HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + port + "/api/auth/login"))
+                .header("Content-Type", "application/json").header("X-XSRF-TOKEN", json.readTree(csrf.body()).path("token").asText())
+                .POST(HttpRequest.BodyPublishers.ofString(json.writeValueAsString(Map.of("username", owner, "password", newPassword)))).build(), HttpResponse.BodyHandlers.ofString());
+        assertEquals(200, response.statusCode(), response.body());
+        assertFalse(json.readTree(recipientMe(browser).body()).path("portableLogin").asBoolean());
+    }
 }

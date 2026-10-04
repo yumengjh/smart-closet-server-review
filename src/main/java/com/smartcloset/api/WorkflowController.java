@@ -69,7 +69,7 @@ public class WorkflowController {
     @GetMapping("/workflows/{id}/files/{name}")
     public ResponseEntity<FileSystemResource> file(@PathVariable UUID id, @PathVariable String name) throws IOException {
         ownership.workflow(id);
-        return ResponseEntity.ok().contentType(MediaType.IMAGE_PNG).header("X-Content-Type-Options", "nosniff")
+        return ResponseEntity.ok().contentType(name.endsWith(".jpg") ? MediaType.IMAGE_JPEG : MediaType.IMAGE_PNG).header("X-Content-Type-Options", "nosniff")
                 .header(HttpHeaders.CACHE_CONTROL, "private, max-age=3600")
                 .body(new FileSystemResource(workflows.file(id, name)));
     }

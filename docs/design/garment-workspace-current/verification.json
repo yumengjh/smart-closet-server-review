@@ -1,0 +1,2415 @@
+{
+  "date": "2026-10-04",
+  "scope": "multi-garment sprite selection",
+  "nativeBoards": 25,
+  "shellCount": 60,
+  "shellIssues": [],
+  "buttons": 156,
+  "buttonIssues": [],
+  "bounds": [],
+  "prototypeControlsRead": 146,
+  "invalidDest": [],
+  "reactions": [
+    {
+      "key": "photos",
+      "name": "back",
+      "id": "45:14805",
+      "reactions": []
+    },
+    {
+      "key": "photos",
+      "name": "help",
+      "id": "45:14809",
+      "reactions": [
+        {
+          "trigger": {
+            "type": "ON_CLICK"
+          },
+          "actions": [
+            {
+              "type": "NODE",
+              "destinationId": "45:16573",
+              "navigation": "OVERLAY",
+              "transition": {
+                "type": "DISSOLVE",
+                "duration": 0.15000000596046448
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "key": "photos",
+      "name": "add",
+      "id": "45:14816",
+      "reactions": []
+    },
+    {
+      "key": "photos",
+      "name": "camera",
+      "id": "45:14818",
+      "reactions": []
+    },
+    {
+      "key": "photos",
+      "name": "normal",
+      "id": "45:14824",
+      "reactions": []
+    },
+    {
+      "key": "photos",
+      "name": "trial",
+      "id": "45:14826",
+      "reactions": [
+        {
+          "trigger": {
+            "type": "ON_CLICK"
+          },
+          "actions": [
+            {
+              "type": "NODE",
+              "destinationId": "45:16573",
+              "navigation": "OVERLAY",
+              "transition": {
+                "type": "DISSOLVE",
+                "duration": 0.15000000596046448
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "key": "photos",
+      "name": "settings",
+      "id": "45:14829",
+      "reactions": []
+    },
+    {
+      "key": "photos",
+      "name": "primary",
+      "id": "45:14834",
+      "reactions": [
+        {
+          "trigger": {
+            "type": "ON_CLICK"
+          },
+          "actions": [
+            {
+              "type": "NODE",
+              "destinationId": "45:15279",
+              "navigation": "NAVIGATE",
+              "transition": {
+                "type": "DISSOLVE",
+                "duration": 0.15000000596046448
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "key": "photos",
+      "name": "secondary",
+      "id": "45:14836",
+      "reactions": []
+    },
+    {
+      "key": "mphotos",
+      "name": "back",
+      "id": "45:14879",
+      "reactions": []
+    },
+    {
+      "key": "mphotos",
+      "name": "help",
+      "id": "45:14883",
+      "reactions": [
+        {
+          "trigger": {
+            "type": "ON_CLICK"
+          },
+          "actions": [
+            {
+              "type": "NODE",
+              "destinationId": "45:16573",
+              "navigation": "OVERLAY",
+              "transition": {
+                "type": "DISSOLVE",
+                "duration": 0.15000000596046448
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "key": "mphotos",
+      "name": "add",
+      "id": "45:14890",
+      "reactions": []
+    },
+    {
+      "key": "mphotos",
+      "name": "camera",
+      "id": "45:14892",
+      "reactions": []
+    },
+    {
+      "key": "mphotos",
+      "name": "normal",
+      "id": "45:14898",
+      "reactions": []
+    },
+    {
+      "key": "mphotos",
+      "name": "trial",
+      "id": "45:14900",
+      "reactions": [
+        {
+          "trigger": {
+            "type": "ON_CLICK"
+          },
+          "actions": [
+            {
+              "type": "NODE",
+              "destinationId": "45:16573",
+              "navigation": "OVERLAY",
+              "transition": {
+                "type": "DISSOLVE",
+                "duration": 0.15000000596046448
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "key": "mphotos",
+      "name": "settings",
+      "id": "45:14903",
+      "reactions": []
+    },
+    {
+      "key": "mphotos",
+      "name": "primary",
+      "id": "45:14907",
+      "reactions": [
+        {
+          "trigger": {
+            "type": "ON_CLICK"
+          },
+          "actions": [
+            {
+              "type": "NODE",
+              "destinationId": "45:15966",
+              "navigation": "NAVIGATE",
+              "transition": {
+                "type": "DISSOLVE",
+                "duration": 0.15000000596046448
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "key": "mphotos",
+      "name": "secondary",
+      "id": "45:14909",
+      "reactions": []
+    },
+    {
+      "key": "select2",
+      "name": "back",
+      "id": "45:14289",
+      "reactions": []
+    },
+    {
+      "key": "select2",
+      "name": "help",
+      "id": "45:14293",
+      "reactions": [
+        {
+          "trigger": {
+            "type": "ON_CLICK"
+          },
+          "actions": [
+            {
+              "type": "NODE",
+              "destinationId": "45:16573",
+              "navigation": "OVERLAY",
+              "transition": {
+                "type": "DISSOLVE",
+                "duration": 0.15000000596046448
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "key": "select2",
+      "name": "modeInfo",
+      "id": "45:14300",
+      "reactions": [
+        {
+          "trigger": {
+            "type": "ON_CLICK"
+          },
+          "actions": [
+            {
+              "type": "NODE",
+              "destinationId": "45:16573",
+              "navigation": "OVERLAY",
+              "transition": {
+                "type": "DISSOLVE",
+                "duration": 0.15000000596046448
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "key": "select2",
+      "name": "group2",
+      "id": "45:14305",
+      "reactions": []
+    },
+    {
+      "key": "select2",
+      "name": "group3",
+      "id": "45:14307",
+      "reactions": [
+        {
+          "trigger": {
+            "type": "ON_CLICK"
+          },
+          "actions": [
+            {
+              "type": "NODE",
+              "destinationId": "45:15692",
+              "navigation": "NAVIGATE",
+              "transition": {
+                "type": "DISSOLVE",
+                "duration": 0.15000000596046448
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "key": "select2",
+      "name": "group4",
+      "id": "45:14309",
+      "reactions": [
+        {
+          "trigger": {
+            "type": "ON_CLICK"
+          },
+          "actions": [
+            {
+              "type": "NODE",
+              "destinationId": "45:14372",
+              "navigation": "NAVIGATE",
+              "transition": {
+                "type": "DISSOLVE",
+                "duration": 0.15000000596046448
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "key": "select2",
+      "name": "group6",
+      "id": "45:14311",
+      "reactions": [
+        {
+          "trigger": {
+            "type": "ON_CLICK"
+          },
+          "actions": [
+            {
+              "type": "NODE",
+              "destinationId": "45:15829",
+              "navigation": "NAVIGATE",
+              "transition": {
+                "type": "DISSOLVE",
+                "duration": 0.15000000596046448
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "key": "select2",
+      "name": "original",
+      "id": "45:14313",
+      "reactions": [
+        {
+          "trigger": {
+            "type": "ON_CLICK"
+          },
+          "actions": [
+            {
+              "type": "NODE",
+              "destinationId": "45:16582",
+              "navigation": "OVERLAY",
+              "transition": {
+                "type": "DISSOLVE",
+                "duration": 0.15000000596046448
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "key": "select2",
+      "name": "all",
+      "id": "45:14316",
+      "reactions": [
+        {
+          "trigger": {
+            "type": "ON_CLICK"
+          },
+          "actions": [
+            {
+              "type": "NODE",
+              "destinationId": "45:15553",
+              "navigation": "NAVIGATE",
+              "transition": {
+                "type": "DISSOLVE",
+                "duration": 0.15000000596046448
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "key": "select2",
+      "name": "cost",
+      "id": "45:14362",
+      "reactions": [
+        {
+          "trigger": {
+            "type": "ON_CLICK"
+          },
+          "actions": [
+            {
+              "type": "NODE",
+              "destinationId": "45:16573",
+              "navigation": "OVERLAY",
+              "transition": {
+                "type": "DISSOLVE",
+                "duration": 0.15000000596046448
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "key": "select2",
+      "name": "primary",
+      "id": "45:14368",
+      "reactions": [
+        {
+          "trigger": {
+            "type": "ON_CLICK"
+          },
+          "actions": [
+            {
+              "type": "NODE",
+              "destinationId": "45:14911",
+              "navigation": "NAVIGATE",
+              "transition": {
+                "type": "DISSOLVE",
+                "duration": 0.15000000596046448
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "key": "select2",
+      "name": "secondary",
+      "id": "45:14370",
+      "reactions": [
+        {
+          "trigger": {
+            "type": "ON_CLICK"
+          },
+          "actions": [
+            {
+              "type": "NODE",
+              "destinationId": "45:14751",
+              "navigation": "NAVIGATE",
+              "transition": {
+                "type": "DISSOLVE",
+                "duration": 0.15000000596046448
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "key": "select2",
+      "name": "first",
+      "id": "45:16595",
+      "reactions": [
+        {
+          "trigger": {
+            "type": "ON_CLICK"
+          },
+          "actions": [
+            {
+              "type": "NODE",
+              "destinationId": "45:15416",
+              "navigation": "NAVIGATE",
+              "transition": {
+                "type": "DISSOLVE",
+                "duration": 0.15000000596046448
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "key": "select2",
+      "name": "custom",
+      "id": "46:16905",
+      "reactions": [
+        {
+          "trigger": {
+            "type": "ON_CLICK"
+          },
+          "actions": [
+            {
+              "type": "NODE",
+              "destinationId": "46:16847",
+              "navigation": "OVERLAY",
+              "transition": {
+                "type": "DISSOLVE",
+                "duration": 0.15000000596046448
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "key": "mselect2",
+      "name": "back",
+      "id": "45:14550",
+      "reactions": []
+    },
+    {
+      "key": "mselect2",
+      "name": "help",
+      "id": "45:14554",
+      "reactions": [
+        {
+          "trigger": {
+            "type": "ON_CLICK"
+          },
+          "actions": [
+            {
+              "type": "NODE",
+              "destinationId": "45:16573",
+              "navigation": "OVERLAY",
+              "transition": {
+                "type": "DISSOLVE",
+                "duration": 0.15000000596046448
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "key": "mselect2",
+      "name": "modeInfo",
+      "id": "45:14561",
+      "reactions": [
+        {
+          "trigger": {
+            "type": "ON_CLICK"
+          },
+          "actions": [
+            {
+              "type": "NODE",
+              "destinationId": "45:16573",
+              "navigation": "OVERLAY",
+              "transition": {
+                "type": "DISSOLVE",
+                "duration": 0.15000000596046448
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "key": "mselect2",
+      "name": "group2",
+      "id": "45:14566",
+      "reactions": []
+    },
+    {
+      "key": "mselect2",
+      "name": "group3",
+      "id": "45:14568",
+      "reactions": [
+        {
+          "trigger": {
+            "type": "ON_CLICK"
+          },
+          "actions": [
+            {
+              "type": "NODE",
+              "destinationId": "45:16331",
+              "navigation": "NAVIGATE",
+              "transition": {
+                "type": "DISSOLVE",
+                "duration": 0.15000000596046448
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "key": "mselect2",
+      "name": "group4",
+      "id": "45:14570",
+      "reactions": [
+        {
+          "trigger": {
+            "type": "ON_CLICK"
+          },
+          "actions": [
+            {
+              "type": "NODE",
+              "destinationId": "45:14630",
+              "navigation": "NAVIGATE",
+              "transition": {
+                "type": "DISSOLVE",
+                "duration": 0.15000000596046448
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "key": "mselect2",
+      "name": "group6",
+      "id": "45:14572",
+      "reactions": [
+        {
+          "trigger": {
+            "type": "ON_CLICK"
+          },
+          "actions": [
+            {
+              "type": "NODE",
+              "destinationId": "45:16452",
+              "navigation": "NAVIGATE",
+              "transition": {
+                "type": "DISSOLVE",
+                "duration": 0.15000000596046448
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "key": "mselect2",
+      "name": "original",
+      "id": "45:14574",
+      "reactions": [
+        {
+          "trigger": {
+            "type": "ON_CLICK"
+          },
+          "actions": [
+            {
+              "type": "NODE",
+              "destinationId": "45:16582",
+              "navigation": "OVERLAY",
+              "transition": {
+                "type": "DISSOLVE",
+                "duration": 0.15000000596046448
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "key": "mselect2",
+      "name": "all",
+      "id": "45:14577",
+      "reactions": [
+        {
+          "trigger": {
+            "type": "ON_CLICK"
+          },
+          "actions": [
+            {
+              "type": "NODE",
+              "destinationId": "45:16208",
+              "navigation": "NAVIGATE",
+              "transition": {
+                "type": "DISSOLVE",
+                "duration": 0.15000000596046448
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "key": "mselect2",
+      "name": "cost",
+      "id": "45:14621",
+      "reactions": [
+        {
+          "trigger": {
+            "type": "ON_CLICK"
+          },
+          "actions": [
+            {
+              "type": "NODE",
+              "destinationId": "45:16573",
+              "navigation": "OVERLAY",
+              "transition": {
+                "type": "DISSOLVE",
+                "duration": 0.15000000596046448
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "key": "mselect2",
+      "name": "primary",
+      "id": "45:14626",
+      "reactions": [
+        {
+          "trigger": {
+            "type": "ON_CLICK"
+          },
+          "actions": [
+            {
+              "type": "NODE",
+              "destinationId": "45:14998",
+              "navigation": "NAVIGATE",
+              "transition": {
+                "type": "DISSOLVE",
+                "duration": 0.15000000596046448
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "key": "mselect2",
+      "name": "secondary",
+      "id": "45:14628",
+      "reactions": [
+        {
+          "trigger": {
+            "type": "ON_CLICK"
+          },
+          "actions": [
+            {
+              "type": "NODE",
+              "destinationId": "45:14838",
+              "navigation": "NAVIGATE",
+              "transition": {
+                "type": "DISSOLVE",
+                "duration": 0.15000000596046448
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "key": "mselect2",
+      "name": "first",
+      "id": "45:16621",
+      "reactions": [
+        {
+          "trigger": {
+            "type": "ON_CLICK"
+          },
+          "actions": [
+            {
+              "type": "NODE",
+              "destinationId": "45:16087",
+              "navigation": "NAVIGATE",
+              "transition": {
+                "type": "DISSOLVE",
+                "duration": 0.15000000596046448
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "key": "mselect2",
+      "name": "custom",
+      "id": "46:16913",
+      "reactions": [
+        {
+          "trigger": {
+            "type": "ON_CLICK"
+          },
+          "actions": [
+            {
+              "type": "NODE",
+              "destinationId": "46:16876",
+              "navigation": "OVERLAY",
+              "transition": {
+                "type": "DISSOLVE",
+                "duration": 0.15000000596046448
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "key": "select4",
+      "name": "back",
+      "id": "45:14426",
+      "reactions": []
+    },
+    {
+      "key": "select4",
+      "name": "help",
+      "id": "45:14430",
+      "reactions": [
+        {
+          "trigger": {
+            "type": "ON_CLICK"
+          },
+          "actions": [
+            {
+              "type": "NODE",
+              "destinationId": "45:16573",
+              "navigation": "OVERLAY",
+              "transition": {
+                "type": "DISSOLVE",
+                "duration": 0.15000000596046448
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "key": "select4",
+      "name": "modeInfo",
+      "id": "45:14437",
+      "reactions": [
+        {
+          "trigger": {
+            "type": "ON_CLICK"
+          },
+          "actions": [
+            {
+              "type": "NODE",
+              "destinationId": "45:16573",
+              "navigation": "OVERLAY",
+              "transition": {
+                "type": "DISSOLVE",
+                "duration": 0.15000000596046448
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "key": "select4",
+      "name": "group2",
+      "id": "45:14442",
+      "reactions": [
+        {
+          "trigger": {
+            "type": "ON_CLICK"
+          },
+          "actions": [
+            {
+              "type": "NODE",
+              "destinationId": "45:14235",
+              "navigation": "NAVIGATE",
+              "transition": {
+                "type": "DISSOLVE",
+                "duration": 0.15000000596046448
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "key": "select4",
+      "name": "group3",
+      "id": "45:14444",
+      "reactions": [
+        {
+          "trigger": {
+            "type": "ON_CLICK"
+          },
+          "actions": [
+            {
+              "type": "NODE",
+              "destinationId": "45:15692",
+              "navigation": "NAVIGATE",
+              "transition": {
+                "type": "DISSOLVE",
+                "duration": 0.15000000596046448
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "key": "select4",
+      "name": "group4",
+      "id": "45:14446",
+      "reactions": []
+    },
+    {
+      "key": "select4",
+      "name": "group6",
+      "id": "45:14448",
+      "reactions": [
+        {
+          "trigger": {
+            "type": "ON_CLICK"
+          },
+          "actions": [
+            {
+              "type": "NODE",
+              "destinationId": "45:15829",
+              "navigation": "NAVIGATE",
+              "transition": {
+                "type": "DISSOLVE",
+                "duration": 0.15000000596046448
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "key": "select4",
+      "name": "original",
+      "id": "45:14450",
+      "reactions": [
+        {
+          "trigger": {
+            "type": "ON_CLICK"
+          },
+          "actions": [
+            {
+              "type": "NODE",
+              "destinationId": "45:16582",
+              "navigation": "OVERLAY",
+              "transition": {
+                "type": "DISSOLVE",
+                "duration": 0.15000000596046448
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "key": "select4",
+      "name": "all",
+      "id": "45:14453",
+      "reactions": []
+    },
+    {
+      "key": "select4",
+      "name": "cost",
+      "id": "45:14499",
+      "reactions": [
+        {
+          "trigger": {
+            "type": "ON_CLICK"
+          },
+          "actions": [
+            {
+              "type": "NODE",
+              "destinationId": "45:16573",
+              "navigation": "OVERLAY",
+              "transition": {
+                "type": "DISSOLVE",
+                "duration": 0.15000000596046448
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "key": "select4",
+      "name": "primary",
+      "id": "45:14505",
+      "reactions": [
+        {
+          "trigger": {
+            "type": "ON_CLICK"
+          },
+          "actions": [
+            {
+              "type": "NODE",
+              "destinationId": "45:14911",
+              "navigation": "NAVIGATE",
+              "transition": {
+                "type": "DISSOLVE",
+                "duration": 0.15000000596046448
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "key": "select4",
+      "name": "secondary",
+      "id": "45:14507",
+      "reactions": [
+        {
+          "trigger": {
+            "type": "ON_CLICK"
+          },
+          "actions": [
+            {
+              "type": "NODE",
+              "destinationId": "45:14751",
+              "navigation": "NAVIGATE",
+              "transition": {
+                "type": "DISSOLVE",
+                "duration": 0.15000000596046448
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "key": "select4",
+      "name": "first",
+      "id": "45:16608",
+      "reactions": []
+    },
+    {
+      "key": "select4",
+      "name": "custom",
+      "id": "46:16909",
+      "reactions": [
+        {
+          "trigger": {
+            "type": "ON_CLICK"
+          },
+          "actions": [
+            {
+              "type": "NODE",
+              "destinationId": "46:16847",
+              "navigation": "OVERLAY",
+              "transition": {
+                "type": "DISSOLVE",
+                "duration": 0.15000000596046448
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "key": "mselect4",
+      "name": "back",
+      "id": "45:14671",
+      "reactions": []
+    },
+    {
+      "key": "mselect4",
+      "name": "help",
+      "id": "45:14675",
+      "reactions": [
+        {
+          "trigger": {
+            "type": "ON_CLICK"
+          },
+          "actions": [
+            {
+              "type": "NODE",
+              "destinationId": "45:16573",
+              "navigation": "OVERLAY",
+              "transition": {
+                "type": "DISSOLVE",
+                "duration": 0.15000000596046448
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "key": "mselect4",
+      "name": "modeInfo",
+      "id": "45:14682",
+      "reactions": [
+        {
+          "trigger": {
+            "type": "ON_CLICK"
+          },
+          "actions": [
+            {
+              "type": "NODE",
+              "destinationId": "45:16573",
+              "navigation": "OVERLAY",
+              "transition": {
+                "type": "DISSOLVE",
+                "duration": 0.15000000596046448
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "key": "mselect4",
+      "name": "group2",
+      "id": "45:14687",
+      "reactions": [
+        {
+          "trigger": {
+            "type": "ON_CLICK"
+          },
+          "actions": [
+            {
+              "type": "NODE",
+              "destinationId": "45:14509",
+              "navigation": "NAVIGATE",
+              "transition": {
+                "type": "DISSOLVE",
+                "duration": 0.15000000596046448
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "key": "mselect4",
+      "name": "group3",
+      "id": "45:14689",
+      "reactions": [
+        {
+          "trigger": {
+            "type": "ON_CLICK"
+          },
+          "actions": [
+            {
+              "type": "NODE",
+              "destinationId": "45:16331",
+              "navigation": "NAVIGATE",
+              "transition": {
+                "type": "DISSOLVE",
+                "duration": 0.15000000596046448
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "key": "mselect4",
+      "name": "group4",
+      "id": "45:14691",
+      "reactions": []
+    },
+    {
+      "key": "mselect4",
+      "name": "group6",
+      "id": "45:14693",
+      "reactions": [
+        {
+          "trigger": {
+            "type": "ON_CLICK"
+          },
+          "actions": [
+            {
+              "type": "NODE",
+              "destinationId": "45:16452",
+              "navigation": "NAVIGATE",
+              "transition": {
+                "type": "DISSOLVE",
+                "duration": 0.15000000596046448
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "key": "mselect4",
+      "name": "original",
+      "id": "45:14695",
+      "reactions": [
+        {
+          "trigger": {
+            "type": "ON_CLICK"
+          },
+          "actions": [
+            {
+              "type": "NODE",
+              "destinationId": "45:16582",
+              "navigation": "OVERLAY",
+              "transition": {
+                "type": "DISSOLVE",
+                "duration": 0.15000000596046448
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "key": "mselect4",
+      "name": "all",
+      "id": "45:14698",
+      "reactions": []
+    },
+    {
+      "key": "mselect4",
+      "name": "cost",
+      "id": "45:14742",
+      "reactions": [
+        {
+          "trigger": {
+            "type": "ON_CLICK"
+          },
+          "actions": [
+            {
+              "type": "NODE",
+              "destinationId": "45:16573",
+              "navigation": "OVERLAY",
+              "transition": {
+                "type": "DISSOLVE",
+                "duration": 0.15000000596046448
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "key": "mselect4",
+      "name": "primary",
+      "id": "45:14747",
+      "reactions": [
+        {
+          "trigger": {
+            "type": "ON_CLICK"
+          },
+          "actions": [
+            {
+              "type": "NODE",
+              "destinationId": "45:14998",
+              "navigation": "NAVIGATE",
+              "transition": {
+                "type": "DISSOLVE",
+                "duration": 0.15000000596046448
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "key": "mselect4",
+      "name": "secondary",
+      "id": "45:14749",
+      "reactions": [
+        {
+          "trigger": {
+            "type": "ON_CLICK"
+          },
+          "actions": [
+            {
+              "type": "NODE",
+              "destinationId": "45:14838",
+              "navigation": "NAVIGATE",
+              "transition": {
+                "type": "DISSOLVE",
+                "duration": 0.15000000596046448
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "key": "mselect4",
+      "name": "first",
+      "id": "45:16634",
+      "reactions": []
+    },
+    {
+      "key": "mselect4",
+      "name": "custom",
+      "id": "46:16917",
+      "reactions": [
+        {
+          "trigger": {
+            "type": "ON_CLICK"
+          },
+          "actions": [
+            {
+              "type": "NODE",
+              "destinationId": "46:16876",
+              "navigation": "OVERLAY",
+              "transition": {
+                "type": "DISSOLVE",
+                "duration": 0.15000000596046448
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "key": "processing",
+      "name": "back",
+      "id": "45:14965",
+      "reactions": []
+    },
+    {
+      "key": "processing",
+      "name": "help",
+      "id": "45:14969",
+      "reactions": [
+        {
+          "trigger": {
+            "type": "ON_CLICK"
+          },
+          "actions": [
+            {
+              "type": "NODE",
+              "destinationId": "45:16573",
+              "navigation": "OVERLAY",
+              "transition": {
+                "type": "DISSOLVE",
+                "duration": 0.15000000596046448
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "key": "processing",
+      "name": "primary",
+      "id": "45:14994",
+      "reactions": [
+        {
+          "trigger": {
+            "type": "ON_CLICK"
+          },
+          "actions": [
+            {
+              "type": "NODE",
+              "destinationId": "45:15071",
+              "navigation": "NAVIGATE",
+              "transition": {
+                "type": "DISSOLVE",
+                "duration": 0.15000000596046448
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "key": "processing",
+      "name": "secondary",
+      "id": "45:14996",
+      "reactions": [
+        {
+          "trigger": {
+            "type": "ON_CLICK"
+          },
+          "actions": [
+            {
+              "type": "NODE",
+              "destinationId": "45:14235",
+              "navigation": "NAVIGATE",
+              "transition": {
+                "type": "DISSOLVE",
+                "duration": 0.15000000596046448
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "key": "mprocessing",
+      "name": "back",
+      "id": "45:15039",
+      "reactions": []
+    },
+    {
+      "key": "mprocessing",
+      "name": "help",
+      "id": "45:15043",
+      "reactions": [
+        {
+          "trigger": {
+            "type": "ON_CLICK"
+          },
+          "actions": [
+            {
+              "type": "NODE",
+              "destinationId": "45:16573",
+              "navigation": "OVERLAY",
+              "transition": {
+                "type": "DISSOLVE",
+                "duration": 0.15000000596046448
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "key": "mprocessing",
+      "name": "primary",
+      "id": "45:15067",
+      "reactions": [
+        {
+          "trigger": {
+            "type": "ON_CLICK"
+          },
+          "actions": [
+            {
+              "type": "NODE",
+              "destinationId": "45:15186",
+              "navigation": "NAVIGATE",
+              "transition": {
+                "type": "DISSOLVE",
+                "duration": 0.15000000596046448
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "key": "mprocessing",
+      "name": "secondary",
+      "id": "45:15069",
+      "reactions": [
+        {
+          "trigger": {
+            "type": "ON_CLICK"
+          },
+          "actions": [
+            {
+              "type": "NODE",
+              "destinationId": "45:14509",
+              "navigation": "NAVIGATE",
+              "transition": {
+                "type": "DISSOLVE",
+                "duration": 0.15000000596046448
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "key": "results",
+      "name": "back",
+      "id": "45:15125",
+      "reactions": []
+    },
+    {
+      "key": "results",
+      "name": "help",
+      "id": "45:15129",
+      "reactions": [
+        {
+          "trigger": {
+            "type": "ON_CLICK"
+          },
+          "actions": [
+            {
+              "type": "NODE",
+              "destinationId": "45:16573",
+              "navigation": "OVERLAY",
+              "transition": {
+                "type": "DISSOLVE",
+                "duration": 0.15000000596046448
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "key": "results",
+      "name": "original",
+      "id": "45:15135",
+      "reactions": [
+        {
+          "trigger": {
+            "type": "ON_CLICK"
+          },
+          "actions": [
+            {
+              "type": "NODE",
+              "destinationId": "45:16582",
+              "navigation": "OVERLAY",
+              "transition": {
+                "type": "DISSOLVE",
+                "duration": 0.15000000596046448
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "key": "results",
+      "name": "result0",
+      "id": "45:15143",
+      "reactions": []
+    },
+    {
+      "key": "results",
+      "name": "result1",
+      "id": "45:15150",
+      "reactions": []
+    },
+    {
+      "key": "results",
+      "name": "result2",
+      "id": "45:15157",
+      "reactions": []
+    },
+    {
+      "key": "results",
+      "name": "result3",
+      "id": "45:15164",
+      "reactions": []
+    },
+    {
+      "key": "results",
+      "name": "cost",
+      "id": "45:15176",
+      "reactions": []
+    },
+    {
+      "key": "results",
+      "name": "primary",
+      "id": "45:15182",
+      "reactions": [
+        {
+          "trigger": {
+            "type": "ON_CLICK"
+          },
+          "actions": [
+            {
+              "type": "NODE",
+              "destinationId": "45:14751",
+              "navigation": "NAVIGATE",
+              "transition": {
+                "type": "DISSOLVE",
+                "duration": 0.15000000596046448
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "key": "results",
+      "name": "secondary",
+      "id": "45:15184",
+      "reactions": [
+        {
+          "trigger": {
+            "type": "ON_CLICK"
+          },
+          "actions": [
+            {
+              "type": "NODE",
+              "destinationId": "45:14235",
+              "navigation": "NAVIGATE",
+              "transition": {
+                "type": "DISSOLVE",
+                "duration": 0.15000000596046448
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "key": "mresults",
+      "name": "back",
+      "id": "45:15227",
+      "reactions": []
+    },
+    {
+      "key": "mresults",
+      "name": "help",
+      "id": "45:15231",
+      "reactions": [
+        {
+          "trigger": {
+            "type": "ON_CLICK"
+          },
+          "actions": [
+            {
+              "type": "NODE",
+              "destinationId": "45:16573",
+              "navigation": "OVERLAY",
+              "transition": {
+                "type": "DISSOLVE",
+                "duration": 0.15000000596046448
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "key": "mresults",
+      "name": "original",
+      "id": "45:15237",
+      "reactions": [
+        {
+          "trigger": {
+            "type": "ON_CLICK"
+          },
+          "actions": [
+            {
+              "type": "NODE",
+              "destinationId": "45:16582",
+              "navigation": "OVERLAY",
+              "transition": {
+                "type": "DISSOLVE",
+                "duration": 0.15000000596046448
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "key": "mresults",
+      "name": "cost",
+      "id": "45:15270",
+      "reactions": []
+    },
+    {
+      "key": "mresults",
+      "name": "primary",
+      "id": "45:15275",
+      "reactions": [
+        {
+          "trigger": {
+            "type": "ON_CLICK"
+          },
+          "actions": [
+            {
+              "type": "NODE",
+              "destinationId": "45:14838",
+              "navigation": "NAVIGATE",
+              "transition": {
+                "type": "DISSOLVE",
+                "duration": 0.15000000596046448
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "key": "mresults",
+      "name": "secondary",
+      "id": "45:15277",
+      "reactions": [
+        {
+          "trigger": {
+            "type": "ON_CLICK"
+          },
+          "actions": [
+            {
+              "type": "NODE",
+              "destinationId": "45:14509",
+              "navigation": "NAVIGATE",
+              "transition": {
+                "type": "DISSOLVE",
+                "duration": 0.15000000596046448
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "key": "zero2",
+      "name": "back",
+      "id": "45:15333",
+      "reactions": []
+    },
+    {
+      "key": "zero2",
+      "name": "help",
+      "id": "45:15337",
+      "reactions": [
+        {
+          "trigger": {
+            "type": "ON_CLICK"
+          },
+          "actions": [
+            {
+              "type": "NODE",
+              "destinationId": "45:16573",
+              "navigation": "OVERLAY",
+              "transition": {
+                "type": "DISSOLVE",
+                "duration": 0.15000000596046448
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "key": "zero2",
+      "name": "modeInfo",
+      "id": "45:15344",
+      "reactions": [
+        {
+          "trigger": {
+            "type": "ON_CLICK"
+          },
+          "actions": [
+            {
+              "type": "NODE",
+              "destinationId": "45:16573",
+              "navigation": "OVERLAY",
+              "transition": {
+                "type": "DISSOLVE",
+                "duration": 0.15000000596046448
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "key": "zero2",
+      "name": "group2",
+      "id": "45:15349",
+      "reactions": []
+    },
+    {
+      "key": "zero2",
+      "name": "group3",
+      "id": "45:15351",
+      "reactions": []
+    },
+    {
+      "key": "zero2",
+      "name": "group4",
+      "id": "45:15353",
+      "reactions": []
+    },
+    {
+      "key": "zero2",
+      "name": "group6",
+      "id": "45:15355",
+      "reactions": []
+    },
+    {
+      "key": "zero2",
+      "name": "original",
+      "id": "45:15357",
+      "reactions": [
+        {
+          "trigger": {
+            "type": "ON_CLICK"
+          },
+          "actions": [
+            {
+              "type": "NODE",
+              "destinationId": "45:16582",
+              "navigation": "OVERLAY",
+              "transition": {
+                "type": "DISSOLVE",
+                "duration": 0.15000000596046448
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "key": "zero2",
+      "name": "all",
+      "id": "45:15360",
+      "reactions": [
+        {
+          "trigger": {
+            "type": "ON_CLICK"
+          },
+          "actions": [
+            {
+              "type": "NODE",
+              "destinationId": "45:15553",
+              "navigation": "NAVIGATE",
+              "transition": {
+                "type": "DISSOLVE",
+                "duration": 0.15000000596046448
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "key": "zero2",
+      "name": "cost",
+      "id": "45:15406",
+      "reactions": [
+        {
+          "trigger": {
+            "type": "ON_CLICK"
+          },
+          "actions": [
+            {
+              "type": "NODE",
+              "destinationId": "45:16573",
+              "navigation": "OVERLAY",
+              "transition": {
+                "type": "DISSOLVE",
+                "duration": 0.15000000596046448
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "key": "zero2",
+      "name": "primary",
+      "id": "45:15412",
+      "reactions": []
+    },
+    {
+      "key": "zero2",
+      "name": "secondary",
+      "id": "45:15414",
+      "reactions": [
+        {
+          "trigger": {
+            "type": "ON_CLICK"
+          },
+          "actions": [
+            {
+              "type": "NODE",
+              "destinationId": "45:14751",
+              "navigation": "NAVIGATE",
+              "transition": {
+                "type": "DISSOLVE",
+                "duration": 0.15000000596046448
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "key": "zero2",
+      "name": "first",
+      "id": "45:16647",
+      "reactions": [
+        {
+          "trigger": {
+            "type": "ON_CLICK"
+          },
+          "actions": [
+            {
+              "type": "NODE",
+              "destinationId": "45:15416",
+              "navigation": "NAVIGATE",
+              "transition": {
+                "type": "DISSOLVE",
+                "duration": 0.15000000596046448
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "key": "zero2",
+      "name": "custom",
+      "id": "46:16921",
+      "reactions": [
+        {
+          "trigger": {
+            "type": "ON_CLICK"
+          },
+          "actions": [
+            {
+              "type": "NODE",
+              "destinationId": "46:16847",
+              "navigation": "OVERLAY",
+              "transition": {
+                "type": "DISSOLVE",
+                "duration": 0.15000000596046448
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "key": "mzero2",
+      "name": "back",
+      "id": "45:16007",
+      "reactions": []
+    },
+    {
+      "key": "mzero2",
+      "name": "help",
+      "id": "45:16011",
+      "reactions": [
+        {
+          "trigger": {
+            "type": "ON_CLICK"
+          },
+          "actions": [
+            {
+              "type": "NODE",
+              "destinationId": "45:16573",
+              "navigation": "OVERLAY",
+              "transition": {
+                "type": "DISSOLVE",
+                "duration": 0.15000000596046448
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "key": "mzero2",
+      "name": "modeInfo",
+      "id": "45:16018",
+      "reactions": [
+        {
+          "trigger": {
+            "type": "ON_CLICK"
+          },
+          "actions": [
+            {
+              "type": "NODE",
+              "destinationId": "45:16573",
+              "navigation": "OVERLAY",
+              "transition": {
+                "type": "DISSOLVE",
+                "duration": 0.15000000596046448
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "key": "mzero2",
+      "name": "group2",
+      "id": "45:16023",
+      "reactions": []
+    },
+    {
+      "key": "mzero2",
+      "name": "group3",
+      "id": "45:16025",
+      "reactions": []
+    },
+    {
+      "key": "mzero2",
+      "name": "group4",
+      "id": "45:16027",
+      "reactions": []
+    },
+    {
+      "key": "mzero2",
+      "name": "group6",
+      "id": "45:16029",
+      "reactions": []
+    },
+    {
+      "key": "mzero2",
+      "name": "original",
+      "id": "45:16031",
+      "reactions": [
+        {
+          "trigger": {
+            "type": "ON_CLICK"
+          },
+          "actions": [
+            {
+              "type": "NODE",
+              "destinationId": "45:16582",
+              "navigation": "OVERLAY",
+              "transition": {
+                "type": "DISSOLVE",
+                "duration": 0.15000000596046448
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "key": "mzero2",
+      "name": "all",
+      "id": "45:16034",
+      "reactions": [
+        {
+          "trigger": {
+            "type": "ON_CLICK"
+          },
+          "actions": [
+            {
+              "type": "NODE",
+              "destinationId": "45:16208",
+              "navigation": "NAVIGATE",
+              "transition": {
+                "type": "DISSOLVE",
+                "duration": 0.15000000596046448
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "key": "mzero2",
+      "name": "cost",
+      "id": "45:16078",
+      "reactions": [
+        {
+          "trigger": {
+            "type": "ON_CLICK"
+          },
+          "actions": [
+            {
+              "type": "NODE",
+              "destinationId": "45:16573",
+              "navigation": "OVERLAY",
+              "transition": {
+                "type": "DISSOLVE",
+                "duration": 0.15000000596046448
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "key": "mzero2",
+      "name": "primary",
+      "id": "45:16083",
+      "reactions": []
+    },
+    {
+      "key": "mzero2",
+      "name": "secondary",
+      "id": "45:16085",
+      "reactions": [
+        {
+          "trigger": {
+            "type": "ON_CLICK"
+          },
+          "actions": [
+            {
+              "type": "NODE",
+              "destinationId": "45:14838",
+              "navigation": "NAVIGATE",
+              "transition": {
+                "type": "DISSOLVE",
+                "duration": 0.15000000596046448
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "key": "mzero2",
+      "name": "first",
+      "id": "45:16750",
+      "reactions": [
+        {
+          "trigger": {
+            "type": "ON_CLICK"
+          },
+          "actions": [
+            {
+              "type": "NODE",
+              "destinationId": "45:16087",
+              "navigation": "NAVIGATE",
+              "transition": {
+                "type": "DISSOLVE",
+                "duration": 0.15000000596046448
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "key": "mzero2",
+      "name": "custom",
+      "id": "46:16941",
+      "reactions": [
+        {
+          "trigger": {
+            "type": "ON_CLICK"
+          },
+          "actions": [
+            {
+              "type": "NODE",
+              "destinationId": "46:16876",
+              "navigation": "OVERLAY",
+              "transition": {
+                "type": "DISSOLVE",
+                "duration": 0.15000000596046448
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "key": "custom",
+      "name": "close",
+      "id": "46:16849",
+      "reactions": [
+        {
+          "trigger": {
+            "type": "ON_CLICK"
+          },
+          "actions": [
+            {
+              "type": "CLOSE"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "key": "custom",
+      "name": "group2",
+      "id": "46:16854",
+      "reactions": [
+        {
+          "trigger": {
+            "type": "ON_CLICK"
+          },
+          "actions": [
+            {
+              "type": "NODE",
+              "destinationId": "45:14235",
+              "navigation": "NAVIGATE",
+              "transition": {
+                "type": "DISSOLVE",
+                "duration": 0.15000000596046448
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "key": "custom",
+      "name": "group3",
+      "id": "46:16857",
+      "reactions": [
+        {
+          "trigger": {
+            "type": "ON_CLICK"
+          },
+          "actions": [
+            {
+              "type": "NODE",
+              "destinationId": "45:15692",
+              "navigation": "NAVIGATE",
+              "transition": {
+                "type": "DISSOLVE",
+                "duration": 0.15000000596046448
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "key": "custom",
+      "name": "group4",
+      "id": "46:16860",
+      "reactions": [
+        {
+          "trigger": {
+            "type": "ON_CLICK"
+          },
+          "actions": [
+            {
+              "type": "NODE",
+              "destinationId": "45:14372",
+              "navigation": "NAVIGATE",
+              "transition": {
+                "type": "DISSOLVE",
+                "duration": 0.15000000596046448
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "key": "custom",
+      "name": "group5",
+      "id": "46:16863",
+      "reactions": []
+    },
+    {
+      "key": "custom",
+      "name": "group6",
+      "id": "46:16865",
+      "reactions": [
+        {
+          "trigger": {
+            "type": "ON_CLICK"
+          },
+          "actions": [
+            {
+              "type": "NODE",
+              "destinationId": "45:15829",
+              "navigation": "NAVIGATE",
+              "transition": {
+                "type": "DISSOLVE",
+                "duration": 0.15000000596046448
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "key": "custom",
+      "name": "group7",
+      "id": "46:16868",
+      "reactions": []
+    },
+    {
+      "key": "custom",
+      "name": "group8",
+      "id": "46:16870",
+      "reactions": []
+    },
+    {
+      "key": "custom",
+      "name": "group9",
+      "id": "46:16872",
+      "reactions": []
+    },
+    {
+      "key": "custom",
+      "name": "group10",
+      "id": "46:16874",
+      "reactions": []
+    },
+    {
+      "key": "mcustom",
+      "name": "close",
+      "id": "46:16878",
+      "reactions": [
+        {
+          "trigger": {
+            "type": "ON_CLICK"
+          },
+          "actions": [
+            {
+              "type": "CLOSE"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "key": "mcustom",
+      "name": "group2",
+      "id": "46:16883",
+      "reactions": [
+        {
+          "trigger": {
+            "type": "ON_CLICK"
+          },
+          "actions": [
+            {
+              "type": "NODE",
+              "destinationId": "45:14509",
+              "navigation": "NAVIGATE",
+              "transition": {
+                "type": "DISSOLVE",
+                "duration": 0.15000000596046448
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "key": "mcustom",
+      "name": "group3",
+      "id": "46:16886",
+      "reactions": [
+        {
+          "trigger": {
+            "type": "ON_CLICK"
+          },
+          "actions": [
+            {
+              "type": "NODE",
+              "destinationId": "45:16331",
+              "navigation": "NAVIGATE",
+              "transition": {
+                "type": "DISSOLVE",
+                "duration": 0.15000000596046448
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "key": "mcustom",
+      "name": "group4",
+      "id": "46:16889",
+      "reactions": [
+        {
+          "trigger": {
+            "type": "ON_CLICK"
+          },
+          "actions": [
+            {
+              "type": "NODE",
+              "destinationId": "45:14630",
+              "navigation": "NAVIGATE",
+              "transition": {
+                "type": "DISSOLVE",
+                "duration": 0.15000000596046448
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "key": "mcustom",
+      "name": "group5",
+      "id": "46:16892",
+      "reactions": []
+    },
+    {
+      "key": "mcustom",
+      "name": "group6",
+      "id": "46:16894",
+      "reactions": [
+        {
+          "trigger": {
+            "type": "ON_CLICK"
+          },
+          "actions": [
+            {
+              "type": "NODE",
+              "destinationId": "45:16452",
+              "navigation": "NAVIGATE",
+              "transition": {
+                "type": "DISSOLVE",
+                "duration": 0.15000000596046448
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "key": "mcustom",
+      "name": "group7",
+      "id": "46:16897",
+      "reactions": []
+    },
+    {
+      "key": "mcustom",
+      "name": "group8",
+      "id": "46:16899",
+      "reactions": []
+    },
+    {
+      "key": "mcustom",
+      "name": "group9",
+      "id": "46:16901",
+      "reactions": []
+    },
+    {
+      "key": "mcustom",
+      "name": "group10",
+      "id": "46:16903",
+      "reactions": []
+    }
+  ],
+  "localBackup": {
+    "path": "鱼搭-多件合图-20261004.fig",
+    "bytes": 6645683,
+    "zipCRC": "pass",
+    "embeddedImages": true
+  },
+  "cloudSync": "pending-offline"
+}

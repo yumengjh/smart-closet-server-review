@@ -37,11 +37,13 @@ public class WorkflowRepository {
 
     public synchronized boolean exists(UUID id) { return jobs.selectById(id.toString()) != null; }
 
-    public synchronized void insert(Job job, List<AssetRow> inputAssets) {
+    public synchronized void insert(Job job, List<AssetRow> inputAssets) { insert(job, inputAssets, true); }
+    public synchronized void insertImported(Job job, List<AssetRow> inputAssets) { insert(job, inputAssets, false); }
+    private void insert(Job job, List<AssetRow> inputAssets, boolean bill) {
         tx.executeWithoutResult(t -> {
             JobRow row = row(job); row.version = 0L;
             jobs.insert(row);
-            reserveQuota(job);
+            if (bill) reserveQuota(job);
             for (var result : job.steps()) steps.insert(step(job.id(), result));
             inputAssets.forEach(assets::insert);
             garments.submitted(job, inputAssets);
@@ -178,19 +180,20 @@ public class WorkflowRepository {
     }
 
     private void reserveQuota(Job job) {
-        String owner = ClosetIdentity.username();
-        boolean ai = job.request().steps().stream().anyMatch(s -> s.type() == Type.GENERATE || s.type() == Type.RECOGNIZE);
-        if (!ai || owner == null) return;
-        var today = java.time.LocalDate.now(java.time.ZoneId.of("Asia/Shanghai"));
-        var values = jdbc.query("SELECT used FROM ai_daily_quota WHERE owner_username=? AND quota_date=? FOR UPDATE",
-                (r,n) -> r.getInt(1), owner, java.sql.Date.valueOf(today));
-        if (values.isEmpty()) {
-            jdbc.update("INSERT INTO ai_daily_quota(owner_username,quota_date,used) VALUES(?,?,1)", owner, java.sql.Date.valueOf(today));
-        } else {
-            int count = values.getFirst();
-            if (count >= 20) throw new ProcessingException(HttpStatus.TOO_MANY_REQUESTS, "AI_DAILY_QUOTA_EXCEEDED", "今天的 AI 任务额度已用完，明天可以继续整理。");
-            jdbc.update("UPDATE ai_daily_quota SET used=? WHERE owner_username=? AND quota_date=?", count + 1, owner, java.sql.Date.valueOf(today));
-        }
+        int units=(int)job.request().steps().stream().filter(s -> s.type()==Type.GENERATE || s.type()==Type.RECOGNIZE).count();
+        reserveAiUnits(ClosetIdentity.username(),units);
+    }
+    public synchronized void reserveAiUnits(String owner, int units) {
+        if(owner==null || units==0) return;
+        tx.executeWithoutResult(t -> {
+            jdbc.query("SELECT username FROM closet_user WHERE username=? FOR UPDATE",(r,n)->r.getString(1),owner);
+            var today=java.time.LocalDate.now(java.time.ZoneId.of("Asia/Shanghai"));
+            var values=jdbc.query("SELECT used FROM ai_daily_quota WHERE owner_username=? AND quota_date=? FOR UPDATE",(r,n)->r.getInt(1),owner,java.sql.Date.valueOf(today));
+            int used=values.isEmpty()?0:values.getFirst();
+            if(used+units>20) throw new ProcessingException(HttpStatus.TOO_MANY_REQUESTS,"AI_DAILY_QUOTA_EXCEEDED","今日剩余额度不足，本次需要 "+units+" 个云端任务额度。");
+            if(values.isEmpty()) jdbc.update("INSERT INTO ai_daily_quota(owner_username,quota_date,used) VALUES(?,?,?)",owner,java.sql.Date.valueOf(today),units);
+            else jdbc.update("UPDATE ai_daily_quota SET used=? WHERE owner_username=? AND quota_date=?",used+units,owner,java.sql.Date.valueOf(today));
+        });
     }
     private StepRow step(UUID id, StepResult result) {
         var r = new StepRow(); r.id = id + ":" + result.index(); r.jobId = id.toString(); r.stepNo = result.index();

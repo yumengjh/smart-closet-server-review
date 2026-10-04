@@ -2,6 +2,8 @@
 
 本版提供受邀账号独立衣柜，覆盖单件照片录入、真实模型处理、人工核对入柜、信息编辑和回收站。Vue 工程位于同级 `smart-closet/`，正式构建由 Spring Boot 同源提供。默认使用真实 API；显式演示模式标记示例数据并禁止提交模型任务。
 
+界面支持浅色和深色主题，可在登录页及应用顶栏切换；选择保存在当前浏览器。登录页左侧展示随主题切换配色的鱼搭专属 SVG 插画，窄屏会隐藏插画以保留表单空间。主题只影响界面配色，穿搭画板和导出的图片保持白色底板。
+
 ## 启动与更新
 
 本机验证环境为 Java 21、Maven 3.9+、Node.js 24.18.0、npm 11.16.0。后端模型及服务商配置见 [配置示例](generation.example.yml) 和 [图片工作流](IMAGE_WORKFLOWS.md)。真实密钥放在忽略的 `.local/generation.yml`，上传图片及 H2 数据位于忽略的 `data/`。
@@ -34,7 +36,7 @@ java -jar .local/runtime/smart-closet-workflow.jar
 
 ## 登录与账号管理
 
-登录使用用户名、密码和同源 HttpOnly 会话 Cookie；写请求携带从 `/api/auth/csrf` 获取的 `X-XSRF-TOKEN`。会话空闲 30 分钟后需重新登录。
+登录使用用户名、密码和同源 HttpOnly 会话 Cookie；写请求携带从 `/api/auth/csrf` 获取的 `X-XSRF-TOKEN`。会话由 Spring Session JDBC 保存到现有数据库，服务重启后仍可恢复。默认空闲期限和 Cookie 有效期均为 7 天，可分别通过 `CLOSET_SESSION_TIMEOUT` 与 `CLOSET_SESSION_COOKIE_MAX_AGE` 调整。Cookie 名称为 `YIXU_SESSION`，启用 HttpOnly 和 SameSite=Lax；重新登录轮换会话 ID，主动退出或会话过期后旧 Cookie 无法恢复登录。
 
 初始或重置密码登录后，前端先进入“设置新密码”，设置成功才进入衣柜。改密前不挂载业务页面、不请求任务计数、衣柜列表、字段配置或额度；直接打开业务地址或刷新也遵守相同规则。
 

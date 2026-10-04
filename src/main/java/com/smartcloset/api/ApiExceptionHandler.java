@@ -26,7 +26,7 @@ public class ApiExceptionHandler {
     }
     @ExceptionHandler(MaxUploadSizeExceededException.class)
     public ResponseEntity<ErrorBody> tooLarge(Exception e) {
-        return ResponseEntity.status(HttpStatus.PAYLOAD_TOO_LARGE).body(new ErrorBody("IMAGE_TOO_LARGE", "图片不能超过 15 MB，请先缩小图片。"));
+        return ResponseEntity.status(HttpStatus.PAYLOAD_TOO_LARGE).body(new ErrorBody("IMAGE_TOO_LARGE", "图片不能超过 50 MB，请降低相机分辨率或导出较小照片。"));
     }
     @ExceptionHandler({MethodArgumentTypeMismatchException.class, HttpMessageNotReadableException.class,
             MethodArgumentNotValidException.class, ServletRequestBindingException.class, MultipartException.class})

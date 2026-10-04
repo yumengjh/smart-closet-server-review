@@ -1,0 +1,13 @@
+{
+  "runtimeAssetsMatch": true,
+  "httpAssetsMatch": true,
+  "serverHealth": {
+    "status": "UP"
+  },
+  "agentHealth": {
+    "status": "ok",
+    "framework": "langgraph"
+  },
+  "staticFiles": 44,
+  "frontendCommit": "9630095"
+}
