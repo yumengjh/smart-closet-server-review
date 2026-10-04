@@ -1,0 +1,21 @@
+{
+  "runtimeStaticMatches": true,
+  "httpIndexMatches": true,
+  "httpEntryAssetsMatch": true,
+  "staticFiles": 47,
+  "checkedHttpAssets": [
+    "/assets/index-BlZVVq6w.js",
+    "/assets/vue-vendor-smpUjgUD.js",
+    "/assets/vendor-DuPs4l3V.js",
+    "/assets/ui-kit-DcYL6xMk.js",
+    "/assets/ui-kit-B6snAd4S.css",
+    "/assets/index-DT5VjCV9.css"
+  ],
+  "serverHealth": {
+    "status": "UP"
+  },
+  "agentHealth": {
+    "status": "ok",
+    "framework": "langgraph"
+  }
+}
