@@ -256,7 +256,7 @@ POM 按当前 OS/架构选择 OpenCV 本地依赖；macOS arm64、macOS x64、Li
 
 ## Docker 部署
 
-后端由 Java API 和 TypeScript Agent 两个容器组成；网页仍由 Java 服务同源提供。首次部署先把环境变量模板复制到仓库目录以外，并替换 Agent 密钥和管理员初始密码：
+后端由 Java API 和 TypeScript Agent 两个容器组成。本次镜像和工作流只覆盖后端，Vue 页面构建暂不纳入；需要页面时，需后续把相邻前端项目的构建产物接入镜像发布。首次部署先把环境变量模板复制到仓库目录以外，并替换 Agent 密钥和管理员初始密码：
 
 ```bash
 cp .env.example "$HOME/smart-closet-server.env"
