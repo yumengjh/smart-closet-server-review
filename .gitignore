@@ -10,3 +10,28 @@ models/.download-*/
 .local/
 # Private photo used for ad hoc testing; retain locally.
 /samples/round2-candidates/图像.jpeg
+
+# Backend images are local samples, reports, or published frontend resources.
+*.png
+*.jpg
+*.jpeg
+*.webp
+*.gif
+*.avif
+*.bmp
+*.tif
+*.tiff
+*.heic
+*.ico
+*.svg
+# Browser verification snapshots and logs are local artifacts.
+/.playwright-cli/
+
+# Agent runtime dependencies and compiled output are recreated by npm scripts.
+/agent-runtime/node_modules/
+/agent-runtime/dist/
+
+# Runtime environment files; only the sanitized template is tracked.
+.env
+.env.*
+!.env.example
