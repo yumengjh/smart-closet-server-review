@@ -43,6 +43,11 @@ class WorkflowServiceTest {
     @Autowired TransparencyService transparency;
     @MockitoBean GenerationService generation;
     WorkflowService restarted;
+    @Autowired com.smartcloset.processing.ProcessingExecutor dispatcher;
+    @Autowired com.smartcloset.processing.ProcessingStore executionStore;
+    @Autowired com.smartcloset.processing.ProcessingResources resources;
+    @Autowired org.springframework.jdbc.core.JdbcTemplate testDb;
+    com.smartcloset.processing.ProcessingExecutor restartedDispatcher;
     @BeforeEach void configure() {
         when(generation.prepare(any())).thenAnswer(i -> {
             GenerationService.Request r = i.getArgument(0);
@@ -54,13 +59,15 @@ class WorkflowServiceTest {
         });
         when(generation.revision(any())).thenReturn("test-revision");
     }
-    @AfterEach void stopRestarted() { if (restarted != null) restarted.close(); }
+    @AfterEach void stopRestarted() { if(restartedDispatcher!=null)restartedDispatcher.close();if (restarted != null) restarted.close(); }
     Request request() { return new Request(0d, null, null, List.of(new Step(Type.GENERATE,Mode.TEXT_TO_IMAGE,
             new GenerationService.Request("test","image","shirt",Map.of()),null))); }
     WorkflowService restart() throws Exception {
-        service.close();
+        if(restartedDispatcher!=null)restartedDispatcher.close();
+        dispatcher.close();service.close();
         restarted = new WorkflowService(properties,json,generation,segmentation,stickers,transparency,repository,files,recognition,garments,modelPolicy,30,50);
-        return restarted;
+        org.springframework.test.util.ReflectionTestUtils.setField(restarted,"processingDb",testDb);
+        restartedDispatcher=new com.smartcloset.processing.ProcessingExecutor(executionStore,resources,List.of(restarted));restartedDispatcher.start();return restarted;
     }
     Job await(WorkflowService target, UUID id) throws Exception {
         for (int i=0;i<200;i++) {var job=target.get(id);if(!Set.of(Status.QUEUED,Status.RUNNING,Status.CANCEL_REQUESTED).contains(job.status()))return job;Thread.sleep(25);}
@@ -91,20 +98,20 @@ class WorkflowServiceTest {
         } finally {release.countDown();}
     }
     @Test void restartRetainsUncertainCloudAttemptWithoutResubmitting() throws Exception {
-        service.close();UUID id=UUID.randomUUID();repository.insert(stored(id,Status.RUNNING),List.of());
+        dispatcher.close();service.close();UUID id=UUID.randomUUID();repository.insert(stored(id,Status.RUNNING),List.of());
         repository.startAttempt(id,0,new GenerationService.Prepared("test","image","shirt",Map.of(),GenerationProperties.Protocol.OPENAI_IMAGES));
         var job=restart().get(id);assertEquals(Status.UNKNOWN,job.status());assertEquals("UNKNOWN",job.attempts().getFirst().status());
         verify(generation,never()).generate(any(),any());
     }
     @Test void queuedTaskSurvivesRestartAndProducesDurableAssets() throws Exception {
-        service.close();UUID id=UUID.randomUUID();repository.insert(stored(id,Status.QUEUED),List.of());
+        dispatcher.close();service.close();UUID id=UUID.randomUUID();repository.insert(stored(id,Status.QUEUED),List.of());
         when(generation.generate(any(),isNull())).thenReturn(new GenerationService.Output(image(),"test","image",GenerationProperties.Protocol.OPENAI_IMAGES,null,"remote-123"));
         var job=await(restart(),id);assertEquals(Status.SUCCEEDED,job.status());assertEquals(1,job.assets().size());
         assertEquals("remote-123",job.attempts().getFirst().providerRequestId());assertEquals("SUCCEEDED",job.attempts().getFirst().status());
         assertFalse(Files.exists(files.directory(id).resolve("job.json")));
     }
     @Test void outputReceiptRecoversCrashBeforeDatabaseCommitWithoutGeneratingAgain() throws Exception {
-        service.close();UUID id=UUID.randomUUID();var job=stored(id,Status.RUNNING);repository.insert(job,List.of());
+        dispatcher.close();service.close();UUID id=UUID.randomUUID();var job=stored(id,Status.RUNNING);repository.insert(job,List.of());
         repository.startAttempt(id,0,new GenerationService.Prepared("test","image","shirt",Map.of(),GenerationProperties.Protocol.OPENAI_IMAGES));
         var asset=files.write(id,"step-0.png","GENERATE",image());
         var result=new StepResult(0,Type.GENERATE,Status.SUCCEEDED,Instant.now(),Instant.now(),null,files.url(id,"step-0.png"),null,null,null);
@@ -113,7 +120,7 @@ class WorkflowServiceTest {
         assertEquals("remote-recovered",recovered.attempts().getFirst().providerRequestId());verify(generation,never()).generate(any(),any());
     }
     @Test void legacyImportIsIdempotentAndOriginalJsonIsPreserved() throws Exception {
-        service.close();UUID id=UUID.randomUUID();var dir=files.directory(id);Files.createDirectories(dir);
+        dispatcher.close();service.close();UUID id=UUID.randomUUID();var dir=files.directory(id);Files.createDirectories(dir);
         var request=request();var raw=json.writeValueAsBytes(request);var digest=java.security.MessageDigest.getInstance("SHA-256");digest.update(raw);digest.update((byte)0);
         var now=Instant.now();var job=new Job(id,HexFormat.of().formatHex(digest.digest()),Status.SUCCEEDED,now,now,request,null,null,true,
                 List.of(new StepResult(0,Type.GENERATE,Status.SUCCEEDED,now,now,null,null,null,null,null)),null);
@@ -122,7 +129,7 @@ class WorkflowServiceTest {
         assertArrayEquals(original,Files.readAllBytes(dir.resolve("job.json")));verify(generation,never()).generate(any(),any());
     }
     @Test void concurrentSameKeyCreatesOneTask() throws Exception {
-        service.close();UUID id=UUID.randomUUID();
+        dispatcher.close();service.close();UUID id=UUID.randomUUID();
         // Stop dispatch, while keeping submission enabled through a fresh slow-polling service.
         restarted=new WorkflowService(properties,json,generation,segmentation,stickers,transparency,repository,files,recognition,garments,modelPolicy,30,60000);
         var pool=Executors.newFixedThreadPool(4);
@@ -148,13 +155,13 @@ class WorkflowServiceTest {
         }finally{release.countDown();}
     }
     @Test void canonicalParametersDeduplicateAndQueueLimitDoesNotRejectExistingTask() throws Exception {
-        service.close();restarted=new WorkflowService(properties,json,generation,segmentation,stickers,transparency,repository,files,recognition,garments,modelPolicy,1,60000);
+        dispatcher.close();service.close();restarted=new WorkflowService(properties,json,generation,segmentation,stickers,transparency,repository,files,recognition,garments,modelPolicy,1,60000);
         var first=new LinkedHashMap<String,Object>();first.put("quality","high");first.put("size","1024x1024");
         var second=new LinkedHashMap<String,Object>();second.put("size","1024x1024");second.put("quality","high");
         var r1=new Request(0d,null,null,List.of(new Step(Type.GENERATE,Mode.TEXT_TO_IMAGE,new GenerationService.Request("test","image","shirt",first),null)));
         var r2=new Request(0d,null,null,List.of(new Step(Type.GENERATE,Mode.TEXT_TO_IMAGE,new GenerationService.Request("test","image","shirt",second),null)));
         UUID id=UUID.randomUUID();restarted.submit(id,r1,null);assertEquals(id,restarted.submit(id,r2,null).id());
-        assertEquals("WORKFLOW_QUEUE_FULL",assertThrows(ProcessingException.class,()->restarted.submit(UUID.randomUUID(),r1,null)).code());
+        var queued=restarted.submit(UUID.randomUUID(),r1,null);assertEquals(Status.QUEUED,queued.status());restarted.cancel(queued.id());
         restarted.cancel(id);
     }
 
@@ -179,7 +186,7 @@ class WorkflowServiceTest {
         return job;
     }
     @Test void recognitionReceiptRecoversMetadataWithoutCallingModelAgain() throws Exception {
-        service.close();UUID id=UUID.randomUUID();var job=storedRecognition(id,true);
+        dispatcher.close();service.close();UUID id=UUID.randomUUID();var job=storedRecognition(id,true);
         var recovered=await(restart(),id);assertEquals(Status.SUCCEEDED,recovered.status());
         assertEquals("recovered-recognition",recovered.attempts().getFirst().providerRequestId());
         var garment=garments.get(job.request().garmentId());assertEquals(List.of("蓝色"),garment.effective().get("primaryColor"));
@@ -188,7 +195,7 @@ class WorkflowServiceTest {
         restarted.close();restarted=null;restart();assertTrue(garments.get(edited.id()).overrides().containsKey("brand"));
     }
     @Test void recognitionWithoutReceiptBecomesUnknownAndIsNeverReplayed() throws Exception {
-        service.close();UUID id=UUID.randomUUID();storedRecognition(id,false);
+        dispatcher.close();service.close();UUID id=UUID.randomUUID();storedRecognition(id,false);
         var recovered=await(restart(),id);assertEquals(Status.NEEDS_REVIEW,recovered.status());
         assertEquals(Status.UNKNOWN,recovered.steps().getFirst().status());assertEquals("UNKNOWN",recovered.attempts().getFirst().status());
         verify(recognition,never()).recognize(any(),any());

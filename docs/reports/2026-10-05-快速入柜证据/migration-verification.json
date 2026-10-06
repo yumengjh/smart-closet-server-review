@@ -1,0 +1,41 @@
+{
+  "garment": {
+    "identical": true,
+    "sha256": "22ab14d6727c5f08cbd3041f3b894da13c1a01d8cda5f0eb30e27b83800a4a9a",
+    "bytes": 56245
+  },
+  "workflow_job": {
+    "identical": true,
+    "sha256": "756cf94093513ae1b9c405bb5c80b8c783cb4cbe6a1a5bd2248c7821cf972418",
+    "bytes": 165402
+  },
+  "workflow_step": {
+    "identical": true,
+    "sha256": "35932cf7b16d594719bf374896be2203e11275736f492623deeb99012bb28c8a",
+    "bytes": 221786
+  },
+  "image_asset": {
+    "identical": true,
+    "sha256": "963772ccbb1eab5c7e804f729735be53125a97a57e4dd212f07049b94382660e",
+    "bytes": 38215
+  },
+  "ai_daily_quota": {
+    "identical": true,
+    "sha256": "1337ee5feb2ac731bfaa2d938ded61e3e84a5a2685207ad24240bde5eb8d3d1f",
+    "bytes": 124
+  },
+  "clothing_batch": {
+    "identical": true,
+    "sha256": "c3b85b5c3922f0b5737f1da382157eba68c6f3bf029dbf163839cd532ba133ca",
+    "bytes": 76707
+  },
+  "batch_call": {
+    "identical": true,
+    "sha256": "3adc7636f56b909574dc182560952b211c7d18b338bff764f0bfb9fa4ec3de5b",
+    "bytes": 117396
+  },
+  "assetFiles": {
+    "identical": true,
+    "checked": 496
+  }
+}

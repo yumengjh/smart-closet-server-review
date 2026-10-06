@@ -53,6 +53,7 @@ public class AgentController {
     @PostMapping("/runs/{id}/ack") public ResponseEntity<Void> canvasAck(@PathVariable String id,@RequestBody AgentCanvasRuns.Ack ack){canvasRuns.ack(ClosetIdentity.username(),id,ack);return ResponseEntity.noContent().build();}
     @PostMapping("/runs/{id}/cancel") public ResponseEntity<Void> canvasCancel(@PathVariable String id){canvasRuns.cancel(ClosetIdentity.username(),id);return ResponseEntity.noContent().build();}
     @GetMapping("/help") public Object help(){return help.articles();}
+    @PostMapping("/internal/permits") public Object permits(@RequestHeader(value="Authorization",defaultValue="") String authorization,@RequestBody JsonNode input){return service.permit(authorization.startsWith("Bearer ")?authorization.substring(7):"",input);}
     @PostMapping("/internal/tool") public Object tool(@RequestHeader(value="Authorization",defaultValue="") String authorization,@RequestBody AgentService.ToolRequest call) {
         return service.tool(authorization.startsWith("Bearer ")?authorization.substring(7):"",call);
     }

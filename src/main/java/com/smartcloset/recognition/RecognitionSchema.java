@@ -9,8 +9,8 @@ import static com.smartcloset.recognition.Recognition.*;
 
 @Component
 public class RecognitionSchema {
-    public static final String VERSION = "garment-v4";
-    public static boolean requiresTarget(String version) { return "garment-v3".equals(version) || VERSION.equals(version); }
+    public static final String VERSION = "garment-v5";
+    public static boolean requiresTarget(String version) { return Set.of("garment-v3", "garment-v4", VERSION).contains(Objects.toString(version, "")); }
     public record Field(String key, String label, List<String> options, boolean multiple, boolean suggestion) {}
     public static final List<Field> FIELDS = List.of(
         field("category", "品类", false, false, "T恤,衬衫,卫衣,毛衣,背心,夹克,西装外套,大衣,羽绒服,连衣裙,半身裙,长裤,短裤,连体衣,运动鞋,靴子,凉鞋,帽子,棒球帽,贝雷帽,渔夫帽,手提包,斜挎包,背包,围巾,腰带,袜子,眼镜,上装,下装,其他衣物"),
@@ -118,19 +118,34 @@ public class RecognitionSchema {
                 target = new Target(description, t.get("worn").asBoolean(), new Bounds(x, y, w, h));
             }
             section="衣物判断与属性对应";
-            boolean blocked = Set.of(Assessment.NO_GARMENT, Assessment.MULTIPLE_GARMENTS, Assessment.UNUSABLE).contains(assessment);
-            if (blocked && target != null || requireTarget && !blocked && target == null) throw new IllegalArgumentException();
+            // A narrowly defined contradiction can safely be downgraded to the explicit
+            // blocking issue. Never infer an identity, synthesize a target, or retain attributes.
+            var blocking = Set.of(Assessment.NO_GARMENT, Assessment.MULTIPLE_GARMENTS, Assessment.UNUSABLE);
+            if (!blocking.contains(assessment) && target == null && result.values().stream().allMatch(a -> a.values().isEmpty())) {
+                var declared = warnings.stream().map(Issue::code).filter(code -> blocking.stream().anyMatch(a -> a.name().equals(code))).distinct().toList();
+                if (declared.size() == 1) {
+                    assessment = Assessment.valueOf(declared.getFirst());
+                    warnings.add(new Issue("ASSESSMENT_RECONCILED", "模型同时返回完成状态与无法识别原因，已按明确的无法识别原因处理；没有填入衣物属性。", List.of(), "请补充主视衣物说明或核对原图。"));
+                }
+            }
+            boolean blocked = blocking.contains(assessment);
+            if (blocked && target != null) throw invalidOutput("模型同时返回无法识别与具体衣物目标，请补充主视衣物说明后重试。");
+            if (requireTarget && !blocked && target == null) throw invalidOutput("模型声称识别完成，但没有给出衣物目标，请补充主视衣物说明后重试。");
             var output = new Result(assessment, Collections.unmodifiableMap(result), List.copyOf(warnings), target);
-            if (output.blocksImages() && result.values().stream().anyMatch(a -> !a.values().isEmpty())) throw new IllegalArgumentException();
+            if (output.blocksImages() && result.values().stream().anyMatch(a -> !a.values().isEmpty())) throw invalidOutput("模型无法确定衣物目标，却填入了衣物属性；本次未采用这些属性，请补充目标说明。");
             section="品类与领型、袖长对应";
             var category = result.get("category").values();
             if (!category.isEmpty() && Set.of("长裤", "短裤", "半身裙", "下装").contains(category.getFirst())
                     && (!result.get("sleeveLength").values().isEmpty() || !result.get("neckline").values().isEmpty())) throw new IllegalArgumentException();
             return output;
+        } catch (ProcessingException e) {
+            if ("RECOGNITION_INVALID_OUTPUT".equals(e.code())) throw e;
+            throw invalidOutput("识别返回的“" + section + "”不符合格式或语义规则，未保存本次识别结果。");
         } catch (Exception e) {
             throw new ProcessingException(HttpStatus.BAD_GATEWAY, "RECOGNITION_INVALID_OUTPUT", "识别返回的“" + section + "”不符合格式或语义规则，未保存本次识别结果。");
         }
     }
+    private ProcessingException invalidOutput(String message) { return new ProcessingException(HttpStatus.BAD_GATEWAY, "RECOGNITION_INVALID_OUTPUT", message); }
     public static void validateValues(Field f, List<String> values) {
         if (values == null || values.size() > (f.multiple() ? 12 : 1) || new HashSet<>(values).size() != values.size())
             throw ProcessingException.invalid("字段值数量无效：" + f.label());

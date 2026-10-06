@@ -1,0 +1,29 @@
+{
+  "backend": {
+    "tests": 190,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 7
+  },
+  "node": {
+    "tests": 14,
+    "pass": 14,
+    "fail": 0
+  },
+  "frontend": {
+    "tests": 46,
+    "pass": 45,
+    "fail": 1,
+    "existingFailure": "tests/outfit.test.ts:57 deterministic category positions >=150"
+  },
+  "frontendBuild": "PASS",
+  "backendPackage": "PASS",
+  "productionReplaced": true,
+  "physicalPhoneCameraValidated": false,
+  "manualSelectionDuringProcessing": {
+    "sameCurrentImageSelection": true,
+    "selectionRevision": 1,
+    "businessStatusAtSelection": "RUNNING"
+  },
+  "productionDeploymentReport": "../2026-10-05-8080部署记录.md"
+}

@@ -30,6 +30,8 @@ public class AgentService {
         void send(String event,Object data) { var target=emit;if(target==null)throw AgentRepository.invalid("浏览器执行通道已关闭。");target.accept(event,data); }
     }
     private record Grant(String owner,String session,Request request,AtomicInteger calls,long expires,CanvasChannel channel) {}
+    @org.springframework.beans.factory.annotation.Autowired private com.smartcloset.processing.ProcessingResources processingResources;
+    @org.springframework.beans.factory.annotation.Autowired private com.smartcloset.processing.ProcessingStore processingStore;
     private final ConcurrentHashMap<String,Grant> grants=new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String,Map<String,List<String>>> candidatePools=new ConcurrentHashMap<>();
     private final AgentTraceService traces;
@@ -145,6 +147,7 @@ public class AgentService {
         grants.put(token,new Grant(owner,session,request,new AtomicInteger(),System.currentTimeMillis()+config.timeoutSeconds()*1000L+5000,channel));
         var payload=new LinkedHashMap<String,Object>();
         payload.put("traceEnabled",true);payload.put("model",model);payload.put("baseURL",p.baseUrl());payload.put("apiKey",p.apiKey());
+        payload.put("permitURL",config.callbackUrl().resolve("/api/agent/internal/permits").toString());
         payload.put("callbackURL",config.callbackUrl().resolve("/api/agent/internal/tool").toString());payload.put("callbackToken",token);
         payload.put("maxToolCalls",config.maxToolCalls());payload.put("timeoutSeconds",config.timeoutSeconds());
         payload.put("avatarMode",repo.avatarMode(owner));
@@ -225,6 +228,14 @@ public class AgentService {
     }
     private void send(OutputStream output,String event,Object data) throws IOException {
         synchronized(output) { output.write(("event: "+event+"\ndata: "+json.writeValueAsString(data)+"\n\n").getBytes(StandardCharsets.UTF_8));output.flush(); }
+    }
+    public Object permit(String token,JsonNode input){
+        String action=input.path("action").asText();int iteration=input.path("iteration").asInt();if(iteration<1||iteration>100)throw AgentRepository.invalid("模型调用编号无效。");
+        String binding="agent:"+WorkflowFiles.hash(token.getBytes(java.nio.charset.StandardCharsets.UTF_8))+":"+iteration;
+        var grant=grants.get(token);String permit=input.path("permit").asText("");
+        if(action.equals("acquire")){if(grant==null||grant.expires()<System.currentTimeMillis())throw new ProcessingException(HttpStatus.FORBIDDEN,"GRANT_EXPIRED","助手运行授权已结束。");String acquired=processingResources.acquire(config.credentialProvider(),"ASSISTANT",binding,grant.expires()+10000);return acquired==null?Map.of("status","WAITING","retryAfterMs",500):Map.of("status","GRANTED","permit",acquired);}
+        if(processingStore.db().queryForObject("SELECT COUNT(*) FROM resource_permit WHERE token=? AND binding=? AND purpose='ASSISTANT'",Integer.class,permit,binding)!=1)throw new ProcessingException(HttpStatus.FORBIDDEN,"PERMIT_DENIED","模型许可不属于此运行。");
+        switch(action){case "dispatch"->{if(grant==null||grant.expires()<System.currentTimeMillis())throw new ProcessingException(HttpStatus.FORBIDDEN,"GRANT_EXPIRED","助手运行授权已结束。");processingResources.dispatch(permit);}case "heartbeat"->processingResources.heartbeat(permit);case "finish"->{if(input.path("rateLimited").asBoolean(false))processingResources.backoff(permit,input.path("retryAfterMs").asLong(1000));else processingResources.finish(permit,input.path("unknown").asBoolean(false));}default->throw AgentRepository.invalid("许可操作无效。");}return Map.of("status","OK");
     }
     public Object tool(String token,ToolRequest call) {
         var grant=grants.get(token);

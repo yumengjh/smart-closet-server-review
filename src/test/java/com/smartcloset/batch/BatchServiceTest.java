@@ -34,39 +34,41 @@ class BatchServiceTest {
         p.add("generation.providers.test.protocol",()->"OPENAI_IMAGES");p.add("generation.providers.test.base-url",()->"http://127.0.0.1:1/v1");p.add("generation.providers.test.api-key",()->"test-secret");
     }
     @Autowired BatchService batches;@Autowired ClosetAccountService accounts;@Autowired ObjectMapper json;@Autowired JdbcTemplate db;@Autowired WorkflowService workflows;
+    @Autowired com.smartcloset.processing.ProcessingResources resources;
     @MockitoBean RecognitionService recognition;@MockitoBean GenerationService generation;
     String username;AtomicInteger recognized;
     @BeforeEach void setup() throws Exception {
-        username="batch-"+UUID.randomUUID();accounts.create(username,"test-only-password", "ADMIN");login(username);recognized=new AtomicInteger();
+        username="batch-"+UUID.randomUUID();accounts.create(username,"test-only-password", "ADMIN");login(username);recognized=new AtomicInteger();when(recognition.account(any())).thenReturn("test");
         when(recognition.prepareBatch(any(),any(),anyString())).thenAnswer(i->new Recognition.Prepared("test","gpt-6-luna","revision","v1","batch-v1","prompt",i.getArgument(1)));
-        when(recognition.raw(any(),any(),anyString())).thenAnswer(i->{recognized.incrementAndGet();return new RecognitionService.RawOutput(json.valueToTree(Map.of("items",List.of(BatchRulesTest.item(.9,true,-1)))),json.valueToTree(Map.of("prompt_tokens",1000,"completion_tokens",100,"prompt_tokens_details",Map.of("cached_tokens",0))),"recognize-id");});
+        when(recognition.raw(any(),any(),anyString())).thenAnswer(i->{recognized.incrementAndGet();return sent(new RecognitionService.RawOutput(json.valueToTree(Map.of("items",List.of(BatchRulesTest.item(.9,true,-1)))),json.valueToTree(Map.of("prompt_tokens",1000,"completion_tokens",100,"prompt_tokens_details",Map.of("cached_tokens",0))),"recognize-id"));});
         when(generation.prepare(any())).thenAnswer(i->{GenerationService.Request r=i.getArgument(0);return new GenerationService.Prepared("test","gpt-image-2.5-flare",r.prompt(),r.parameters(),GenerationProperties.Protocol.OPENAI_IMAGES);});
         when(generation.revision(any())).thenReturn("frozen");when(generation.frozen(any(),any())).thenAnswer(i->{GenerationService.Request r=i.getArgument(0);return new GenerationService.Prepared(r.provider(),r.model(),r.prompt(),r.parameters(),GenerationProperties.Protocol.OPENAI_IMAGES);});
-        when(generation.generate(any(),any())).thenAnswer(i->{GenerationService.Prepared p=i.getArgument(0);String[] size=p.parameters().get("size").toString().split("x");return new GenerationService.Output(BatchImages.png(new BufferedImage(Integer.parseInt(size[0]),Integer.parseInt(size[1]),BufferedImage.TYPE_INT_RGB)),p.provider(),p.model(),p.protocol(),json.valueToTree(Map.of("input_tokens_details",Map.of("image_tokens",1000,"text_tokens",100),"output_tokens",1000)),"image-id");});
+        when(generation.generate(any(),any())).thenAnswer(i->{GenerationService.Prepared p=i.getArgument(0);String[] size=p.parameters().get("size").toString().split("x");return sent(new GenerationService.Output(BatchImages.png(new BufferedImage(Integer.parseInt(size[0]),Integer.parseInt(size[1]),BufferedImage.TYPE_INT_RGB)),p.provider(),p.model(),p.protocol(),json.valueToTree(Map.of("input_tokens_details",Map.of("image_tokens",1000,"text_tokens",100),"output_tokens",1000)),"image-id"));});
     }
+    private <T>T sent(T output){return resources.exchange("test",()->output);}
     void login(String user){SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken(user,"",List.of(new SimpleGrantedAuthority("ROLE_ADMIN"))));}
-    @AfterEach void clear(){SecurityContextHolder.clearContext();}
+    @AfterEach void clear(){db.update("UPDATE execution_task SET status='CANCELLED' WHERE status IN ('QUEUED','WAITING_QUOTA')");db.update("UPDATE batch_call SET status='CANCELLED' WHERE status IN ('QUEUED','RUNNING')");db.update("UPDATE resource_permit SET deadline_ms=0");SecurityContextHolder.clearContext();}
     MockMultipartFile photo() throws Exception {return new MockMultipartFile("file","photo.png","image/png",BatchImages.png(new BufferedImage(100,120,BufferedImage.TYPE_INT_RGB)));}
     View two(Strategy strategy)throws Exception {var v=batches.upload(UUID.randomUUID(),new Upload(Channel.SINGLE,strategy),photo());return batches.addSource(v.id,UUID.randomUUID(),photo());}
     View settled(UUID id)throws Exception {for(int i=0;i<300;i++){var v=batches.get(id);if(v.calls.stream().noneMatch(c->Set.of("QUEUED","RUNNING").contains(c.status())))return v;Thread.sleep(20);}throw new AssertionError("timeout");}
     int quota(){return db.queryForObject("SELECT COALESCE(SUM(used),0) FROM ai_daily_quota WHERE owner_username=?",Integer.class,username);}
     @Test void oneSubmissionContinuesWithoutBrowserAndWithoutKnownCosts()throws Exception {
-        when(recognition.raw(any(),any(),anyString())).thenAnswer(i->{recognized.incrementAndGet();return new RecognitionService.RawOutput(json.valueToTree(Map.of("items",List.of(BatchRulesTest.item(.9,true,-1)))),null,"id");});
+        when(recognition.raw(any(),any(),anyString())).thenAnswer(i->{recognized.incrementAndGet();return sent(new RecognitionService.RawOutput(json.valueToTree(Map.of("items",List.of(BatchRulesTest.item(.9,true,-1)))),null,"id"));});
         recognized.set(0);var v=two(Strategy.SMART);var request=new Start(new Detect(List.of(),"test","gpt-6-luna"),"test","gpt-image-2.5-flare");UUID key=UUID.randomUUID();
         batches.start(v.id,key,request);batches.start(v.id,key,request);v=settled(v.id);
-        assertEquals(2,recognized.get());assertEquals(4,quota(),v.error+" / "+v.status);assertEquals(2,v.targets.stream().filter(t->t.jobId!=null).count());
+        assertEquals(2,recognized.get());assertEquals(4,quota(),v.error+" / "+v.status+" / "+db.queryForList("SELECT kind,business_id,stage,status,error_message FROM execution_task WHERE owner_username=?",username));assertEquals(2,v.targets.stream().filter(t->t.jobId!=null).count());
         assertEquals(2,v.calls.stream().filter(c->c.type().equals("GENERATE")).count());assertNull(v.automaticGeneration);
         assertTrue(v.calls.stream().filter(c->c.type().equals("RECOGNIZE")).allMatch(c->c.costUsd()==null));
     }
     @Test void spriteReviewPausesAfterRecognitionThenSplitsEightOrderedIndependentJobs()throws Exception {
-        doAnswer(i->{recognized.incrementAndGet();return new RecognitionService.RawOutput(json.valueToTree(Map.of("items",Collections.nCopies(8,BatchRulesTest.item(.9,true,-1)))),null,"id");}).when(recognition).raw(any(),any(),anyString());
+        doAnswer(i->{recognized.incrementAndGet();return sent(new RecognitionService.RawOutput(json.valueToTree(Map.of("items",Collections.nCopies(8,BatchRulesTest.item(.9,true,-1)))),null,"id"));}).when(recognition).raw(any(),any(),anyString());
         var v=batches.upload(UUID.randomUUID(),new Upload(Channel.MULTIPLE,Strategy.SMART),photo());
         batches.start(v.id,UUID.randomUUID(),new Start(new Detect(List.of(),"test","gpt-6-luna"),"test","gpt-image-2.5-flare",true));v=settled(v.id);
         assertEquals(1,recognized.get());assertEquals(1,quota());assertEquals(8,v.targets.size());
         assertTrue(Files.exists(storage.resolve("batches").resolve(v.id.toString()).resolve("recognition-"+v.calls.getFirst().id()+".json")));verify(generation,never()).generate(any(),any());
         doAnswer(i->{var p=(GenerationService.Prepared)i.getArgument(0);assertTrue(p.prompt().contains("3行、3列"));var image=new BufferedImage(1254,1254,BufferedImage.TYPE_INT_RGB);var g=image.createGraphics();
             for(int slot=0;slot<8;slot++){g.setColor(new java.awt.Color(20+slot*20,40,80));g.fillRect(slot%3*418,slot/3*418,418,418);}g.dispose();
-            return new GenerationService.Output(BatchImages.png(image),p.provider(),p.model(),p.protocol(),null,"generated");}).when(generation).generate(any(),any());
+            return sent(new GenerationService.Output(BatchImages.png(image),p.provider(),p.model(),p.protocol(),null,"generated"));}).when(generation).generate(any(),any());
         batches.generate(v.id,UUID.randomUUID(),new Generate(v.targets.stream().map(t->t.id).toList(),8,1024,"FIXED","test","gpt-image-2.5-flare","low"));v=settled(v.id);
         assertEquals(2,quota());assertEquals(1,recognized.get());verify(generation,times(1)).generate(any(),any());
         assertEquals(8,v.targets.stream().map(t->t.jobId).distinct().count());
@@ -79,10 +81,10 @@ class BatchServiceTest {
     @Test void insufficientGenerationQuotaKeepsRecognizedTargetsForExplicitContinuation()throws Exception {
         var v=two(Strategy.SMART);db.update("INSERT INTO ai_daily_quota(owner_username,quota_date,used) VALUES(?,CURRENT_DATE,17)",username);
         batches.start(v.id,UUID.randomUUID(),new Start(new Detect(List.of(),"test","gpt-6-luna"),"test","gpt-image-2.5-flare"));v=settled(v.id);
-        assertEquals(19,quota());assertEquals(2,v.targets.size());assertTrue(v.targets.stream().allMatch(t->t.status.equals("DETECTED")));assertNotNull(v.error);assertNull(v.automaticGeneration);
-        verify(generation,never()).generate(any(),any());
-        batches.generate(v.id,UUID.randomUUID(),new Generate(List.of(v.targets.getFirst().id),1,1024,"FIXED","test","gpt-image-2.5-flare","low"));v=settled(v.id);
-        assertEquals(20,quota());assertEquals(1,v.targets.stream().filter(t->t.jobId!=null).count());assertEquals(2,recognized.get());
+        assertEquals(20,quota());assertEquals(2,v.targets.size());assertEquals(1,v.targets.stream().filter(t->t.jobId!=null).count());assertNull(v.automaticGeneration);
+        db.update("UPDATE ai_daily_quota SET used=19 WHERE owner_username=?",username);
+        batches.generate(v.id,UUID.randomUUID(),new Generate(List.of(v.targets.stream().filter(t->t.jobId==null).findFirst().orElseThrow().id),1,1024,"FIXED","test","gpt-image-2.5-flare","low"));v=settled(v.id);
+        assertEquals(20,quota());assertEquals(2,v.targets.stream().filter(t->t.jobId!=null).count());assertEquals(2,recognized.get());
     }
     @Test void repeatedSubmissionAndSingleRedoReuseRecognitionAndPreserveOriginals()throws Exception {
         var v=two(Strategy.SMART);UUID key=UUID.randomUUID();var request=new Detect(List.of(),"test","gpt-6-luna");batches.detect(v.id,key,request);batches.detect(v.id,key,request);v=settled(v.id);
@@ -110,18 +112,19 @@ class BatchServiceTest {
     }
     @Test void manualUnmarkedPhotosDoNotConsumeCloudQuota()throws Exception {
         var v=two(Strategy.MANUAL);var src=v.sources.getLast();
-        when(recognition.raw(any(),any(),anyString())).thenAnswer(i->{recognized.incrementAndGet();return new RecognitionService.RawOutput(json.valueToTree(Map.of("items",List.of(BatchRulesTest.item(.4,false,0)))),null,"id");});
+        when(recognition.raw(any(),any(),anyString())).thenAnswer(i->{recognized.incrementAndGet();return sent(new RecognitionService.RawOutput(json.valueToTree(Map.of("items",List.of(BatchRulesTest.item(.4,false,0)))),null,"id"));});
         recognized.set(0);batches.detect(v.id,UUID.randomUUID(),new Detect(List.of(new Marker(src.id(),.5,.5)),"test","gpt-6-luna"));v=settled(v.id);assertEquals(1,quota());assertEquals(1,recognized.get());assertEquals(1,v.targets.size());assertTrue(v.targets.getFirst().completion);
     }
-    @Test void atomicInsufficientQuotaCreatesNoCalls()throws Exception {
-        var v=two(Strategy.SMART);db.update("INSERT INTO ai_daily_quota(owner_username,quota_date,used) VALUES(?,CURRENT_DATE,19)",username);
-        UUID id=v.id;assertThrows(ProcessingException.class,()->batches.detect(id,UUID.randomUUID(),new Detect(List.of(),"test","gpt-6-luna")));assertTrue(batches.get(id).calls.isEmpty());assertEquals(19,quota());
+    @Test void quotaExhaustionRetainsRecognitionInPersistentQueue()throws Exception {
+        var v=two(Strategy.SMART);db.update("INSERT INTO ai_daily_quota(owner_username,quota_date,used) VALUES(?,CURRENT_DATE,20)",username);
+        batches.detect(v.id,UUID.randomUUID(),new Detect(List.of(),"test","gpt-6-luna"));
+        for(int i=0;i<100&&db.queryForObject("SELECT COUNT(*) FROM execution_task WHERE owner_username=? AND status='WAITING_QUOTA'",Integer.class,username)==0;i++)Thread.sleep(25);
+        assertTrue(db.queryForObject("SELECT COUNT(*) FROM execution_task WHERE owner_username=? AND status='WAITING_QUOTA'",Integer.class,username)>0);assertEquals(20,quota());assertEquals(0,recognized.get());assertEquals(2,batches.get(v.id).calls.size());
     }
     @Test void failedGenerationKeepsOtherResultsAndUnknownReceiptsAreNeverRequeued()throws Exception {
         var v=two(Strategy.SMART);batches.detect(v.id,UUID.randomUUID(),new Detect(List.of(),"test","gpt-6-luna"));v=settled(v.id);
         var targets=v.targets.stream().map(t->t.id).toList();
-        doThrow(new ProcessingException(org.springframework.http.HttpStatus.BAD_GATEWAY,"PROVIDER_HTTP_502","upstream uncertain"))
-            .when(generation).generate(any(),any());
+        doAnswer(i->resources.exchange("test",()->{throw new ProcessingException(org.springframework.http.HttpStatus.BAD_GATEWAY,"PROVIDER_HTTP_502","upstream uncertain");})).when(generation).generate(any(),any());
         batches.generate(v.id,UUID.randomUUID(),new Generate(targets,2,1024,"FIXED","test","gpt-image-2.5-flare","low"));v=settled(v.id);
         assertEquals("UNKNOWN",v.calls.getLast().status());assertTrue(v.targets.stream().allMatch(t->t.status.equals("UNKNOWN")));verify(generation,times(1)).generate(any(),any());
         var first=v.calls.getFirst();db.update("UPDATE batch_call SET status='UNKNOWN' WHERE id=?",first.id().toString());
@@ -132,8 +135,8 @@ class BatchServiceTest {
     @Test void partialFailureRetainsCompletedItemAndLocalStatusAdvances()throws Exception {
         var v=two(Strategy.SMART);batches.detect(v.id,UUID.randomUUID(),new Detect(List.of(),"test","gpt-6-luna"));v=settled(v.id);
         var counter=new AtomicInteger();doAnswer(i->{
-            if(counter.incrementAndGet()==2)throw new ProcessingException(org.springframework.http.HttpStatus.BAD_GATEWAY,"PROVIDER_HTTP_502","uncertain");
-            var p=(GenerationService.Prepared)i.getArgument(0);return new GenerationService.Output(BatchImages.png(new BufferedImage(1024,1024,BufferedImage.TYPE_INT_RGB)),p.provider(),p.model(),p.protocol(),null,"generated");
+            if(counter.incrementAndGet()==2)return resources.exchange("test",()->{throw new ProcessingException(org.springframework.http.HttpStatus.BAD_GATEWAY,"PROVIDER_HTTP_502","uncertain");});
+            var p=(GenerationService.Prepared)i.getArgument(0);return sent(new GenerationService.Output(BatchImages.png(new BufferedImage(1024,1024,BufferedImage.TYPE_INT_RGB)),p.provider(),p.model(),p.protocol(),null,"generated"));
         }).when(generation).generate(any(),any());
         batches.generate(v.id,UUID.randomUUID(),new Generate(v.targets.stream().map(t->t.id).toList(),1,1024,"FIXED","test","gpt-image-2.5-flare","low"));v=settled(v.id);
         assertEquals(1,v.targets.stream().filter(t->t.jobId!=null).count());assertEquals(1,v.targets.stream().filter(t->t.status.equals("UNKNOWN")).count());

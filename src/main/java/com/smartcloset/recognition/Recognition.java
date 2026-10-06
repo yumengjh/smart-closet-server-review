@@ -8,7 +8,9 @@ public final class Recognition {
     private Recognition() {}
     public enum Assessment { READY, PARTIAL, NO_GARMENT, MULTIPLE_GARMENTS, UNUSABLE }
     public enum State { OBSERVED, INFERRED, UNKNOWN, NOT_APPLICABLE, CONFLICT }
-    public record Request(String provider, String model) {}
+    public record Request(String provider, String model, String targetDescription) {
+        public Request(String provider, String model) { this(provider, model, null); }
+    }
     public record Prepared(String provider, String model, String providerRevision, String promptVersion,
                            String schemaVersion, String prompt, JsonNode schema) {}
     public record Attribute(List<String> values, State status, String evidence) {}

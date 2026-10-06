@@ -36,6 +36,7 @@ spring:
       max-request-size: 51MB
       file-size-threshold: 0
 closet:
+  quick-intake-enabled: ${CLOSET_QUICK_INTAKE_ENABLED:false}
   cors:
     allowed-origins: ${CLOSET_CORS_ALLOWED_ORIGINS:}
   storage-dir: ${CLOSET_STORAGE_DIR:./data}

@@ -12,8 +12,8 @@ import org.springframework.context.annotation.Configuration;
 public class DatabaseConfiguration {
     @Bean(initMethod = "migrate")
     Flyway workflowMigrations(DataSource dataSource,
-            @Value("${workflow.migration-location:classpath:db/migration/h2}") String location) {
-        return Flyway.configure().dataSource(dataSource).locations(location).load();
+            @Value("${workflow.migration-location:classpath:db/migration/h2}") String location, com.smartcloset.processing.ProcessingMigrationBackup backup) {
+        return Flyway.configure().dataSource(dataSource).locations(location).callbacks(backup).load();
     }
 
     @Bean

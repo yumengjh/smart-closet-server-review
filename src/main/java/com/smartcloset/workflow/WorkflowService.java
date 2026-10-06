@@ -27,7 +27,7 @@ import tools.jackson.databind.ObjectMapper;
 
 /** One process owns the image store; the database queue survives process restarts. */
 @Service
-public class WorkflowService {
+public class WorkflowService implements com.smartcloset.processing.ProcessingHandler {
     private static final Logger log = LoggerFactory.getLogger(WorkflowService.class);
     private final ClosetProperties closet;
     private final ObjectMapper json;
@@ -41,6 +41,7 @@ public class WorkflowService {
     private final GarmentRepository garments;
     private final ClosetModelPolicy modelPolicy;
     private final int maxQueued;
+    @org.springframework.beans.factory.annotation.Autowired private org.springframework.jdbc.core.JdbcTemplate processingDb;
     private final FileChannel lockChannel;
     private final FileLock storeLock;
     private final ScheduledExecutorService executor = Executors.newSingleThreadScheduledExecutor(
@@ -55,7 +56,7 @@ public class WorkflowService {
         this.closet = closet; this.json = json; this.generation = generation;
         this.segmentations = segmentations; this.stickers = stickers; this.transparency = transparency;
         this.repository = repository; this.files = files; this.recognition = recognition; this.garments = garments;
-        this.modelPolicy = modelPolicy; this.maxQueued = Math.max(1, maxQueued);
+        this.modelPolicy = modelPolicy; this.maxQueued = Integer.MAX_VALUE;
         lockChannel = FileChannel.open(files.root().resolve(".worker.lock"), StandardOpenOption.CREATE, StandardOpenOption.WRITE);
         FileLock acquired;
         try { acquired = lockChannel.tryLock(); }
@@ -64,7 +65,7 @@ public class WorkflowService {
         storeLock = acquired;
         try { importLegacy(); recoverInterrupted(); }
         catch (Exception e) { storeLock.release(); lockChannel.close(); throw e; }
-        executor.scheduleWithFixedDelay(this::dispatch, Math.max(50, pollMs), Math.max(50, pollMs), TimeUnit.MILLISECONDS);
+        // The unified executor is the only scheduling owner.
     }
 
     public synchronized Job submit(UUID key, Request request, byte[] upload) throws IOException {
@@ -192,6 +193,26 @@ public class WorkflowService {
     public synchronized Job get(UUID id) { return repository.get(id); }
     public History history(int page, int size, Status status) { return repository.history(page, size, status); }
 
+    @Override public String kind() { return "WORKFLOW"; }
+    @Override public int quotaUnits(com.smartcloset.processing.ProcessingStore.Task t){return !t.pool().equals("CPU")&&processingDb.queryForObject("SELECT legacy_prepaid FROM workflow_job WHERE id=?",Integer.class,t.businessId())==0?1:0;}
+    @Override public void quotaUnavailable(com.smartcloset.processing.ProcessingStore.Task t){if(t.pool().equals("GENERATION"))cancel(java.util.UUID.fromString(t.businessId()));}
+    @Override public List<com.smartcloset.processing.ProcessingHandler.Candidate> candidates() {
+        var rows=processingDb.query("SELECT id,owner_username FROM workflow_job WHERE processing_kind='LEGACY' AND status IN ('QUEUED','RUNNING','CANCEL_REQUESTED') AND NOT EXISTS(SELECT 1 FROM execution_task e WHERE e.kind='WORKFLOW' AND e.business_id=workflow_job.id AND e.status IN ('QUEUED','RUNNING','WAITING_QUOTA','CANCEL_REQUESTED')) ORDER BY created_at_ms LIMIT 1000",(r,n)->new String[]{r.getString(1),r.getString(2)});
+        var out=new ArrayList<com.smartcloset.processing.ProcessingHandler.Candidate>();
+        for(var row:rows){var job=get(UUID.fromString(row[0]));if(job.status()==Status.CANCEL_REQUESTED){if(processingDb.queryForObject("SELECT COUNT(*) FROM execution_task WHERE kind='WORKFLOW' AND business_id=? AND status IN ('RUNNING','CANCEL_REQUESTED')",Integer.class,row[0])==0)repository.save(stopped(job,Status.CANCELLED,null),null);continue;}if(job.steps().stream().noneMatch(s -> s.status()==Status.PENDING||s.status()==Status.RUNNING)){repository.save(update(job,completionStatus(job.steps()),job.steps(),job.outputUrl(),job.error()),null);continue;}for(var step:job.steps())if(step.status()==Status.PENDING){var spec=job.request().steps().get(step.index());String pool=spec.type()==Type.RECOGNIZE?"RECOGNITION":spec.type()==Type.GENERATE?"GENERATION":"CPU";String account=spec.type()==Type.RECOGNIZE?recognition.account(spec.preparedRecognition().provider()):spec.type()==Type.GENERATE?spec.generation().provider():null;out.add(new com.smartcloset.processing.ProcessingHandler.Candidate(kind(),row[0],step.index(),row[1],pool,account,spec.type()==Type.RECOGNIZE?50:spec.type()==Type.GENERATE?20:100));break;}}
+        return out;
+    }
+    @Override public void execute(com.smartcloset.processing.ProcessingStore.Task task){var job=get(UUID.fromString(task.businessId()));if(job.status()==Status.CANCELLED)return;execute(job);}
+    @Override public void cancel(com.smartcloset.processing.ProcessingStore.Task task){cancel(UUID.fromString(task.businessId()));}
+    @Override public synchronized void retry(com.smartcloset.processing.ProcessingStore.Task task){
+        var job=get(UUID.fromString(task.businessId()));
+        if(job.status()==Status.CANCELLED||job.status()==Status.CANCEL_REQUESTED)throw ProcessingException.invalid("此流程已取消，请从衣物页面发起新处理。");
+        var steps=new ArrayList<>(job.steps());
+        for(int i=task.stage();i<steps.size();i++)if(steps.get(i).status()!=Status.SUCCEEDED){var s=steps.get(i);steps.set(i,new StepResult(i,s.type(),Status.PENDING,null,null,null,null,null,null,null));}
+        repository.save(update(job,Status.QUEUED,steps,job.outputUrl(),null),null);
+    }
+    @Override public boolean unknownResource(com.smartcloset.processing.ProcessingStore.Task t){var error=get(UUID.fromString(t.businessId())).steps().get(t.stage()).error();return error!=null&&Set.of("PROVIDER_TIMEOUT","PROVIDER_CONNECTION_FAILED","PROVIDER_INTERRUPTED").contains(error.code());}
+    @Override public String outcome(com.smartcloset.processing.ProcessingStore.Task task){return get(UUID.fromString(task.businessId())).steps().get(task.stage()).status().name();}
     private void dispatch() {
         if (closing) return;
         try {
@@ -286,9 +307,8 @@ public class WorkflowService {
         try {
             for (; index < original.request().steps().size(); index++) {
                 if (results.get(index).type() == Type.RECOGNIZE && !Set.of(Status.PENDING, Status.RUNNING).contains(results.get(index).status())) continue;
-                if (results.get(index).status() == Status.SUCCEEDED) {
-                    currentUrl = results.get(index).outputUrl();
-                    current = files.path(original.id(), "step-" + index + ".png");
+                if (results.get(index).status() == Status.SUCCEEDED || results.get(index).status() == Status.SKIPPED) {
+                    if (results.get(index).outputUrl() != null) { currentUrl = results.get(index).outputUrl(); current = files.path(original.id(), "step-" + index + ".png"); segmentationId = results.get(index).segmentationId(); }
                     continue;
                 }
                 if (closing) return;
@@ -298,7 +318,7 @@ public class WorkflowService {
                         && original.request().steps().stream().anyMatch(s -> s.type() == Type.GENERATE && ClosetPrompts.allowedPrompt(s.generation().prompt()))) {
                     results.set(index, new StepResult(index, Type.SEGMENT, Status.SKIPPED, started, Instant.now(), currentUrl, null, null, null, null));
                     if (!advance(update(original, Status.RUNNING, results, currentUrl, null), null)) return;
-                    continue;
+                    return;
                 }
                 results.set(index, new StepResult(index, spec.type(), Status.RUNNING, started, null, currentUrl, null, null, null, null));
                 if (!advance(update(original, Status.RUNNING, results, currentUrl, null), null)) return;
@@ -314,7 +334,7 @@ public class WorkflowService {
                         return;
                     }
                     if (!advance(update(original, index == results.size() - 1 ? completionStatus(results) : Status.RUNNING, results, currentUrl, null), null)) return;
-                    continue;
+                    return;
                 }
                 byte[] output; tools.jackson.databind.JsonNode usage = null;
                 TransparencyService.Result ensured = null;
@@ -378,12 +398,18 @@ public class WorkflowService {
                 }
                 if (!advance(update(original, index == results.size() - 1 ? completionStatus(results) : Status.RUNNING,
                         results, currentUrl, null), asset)) return;
+                return;
             }
             if (get(original.id()).status() == Status.RUNNING)
                 advance(update(original, completionStatus(results), results, currentUrl, null), null);
         } catch (Exception e) {
             Failure error = e instanceof ProcessingException p ? new Failure(p.code(), p.getMessage())
                     : new Failure("WORKFLOW_PROCESSING_FAILED", "处理或保存失败；已完成图片保留，不会自动重新生图。");
+            if (Set.of("PROVIDER_HTTP_429", "RESOURCE_WAIT", "PROCESSOR_BUSY").contains(error.code())) {
+                var previous=results.get(index); results.set(index,new StepResult(index,previous.type(),Status.PENDING,null,null,previous.inputUrl(),null,null,null,null));
+                if(attemptId!=null) repository.finishAttempt(attemptId,"REJECTED",null,null,error.code());
+                repository.save(update(original,Status.RUNNING,results,currentUrl,null),null); throw (ProcessingException)e;
+            }
             boolean unknown = attemptId != null && !returned && uncertain(error.code());
             if (attemptId != null) {
                 try { repository.finishAttempt(attemptId, unknown ? "UNKNOWN" : returned ? "RESULT_NOT_SAVED" : "FAILED", null, null, error.code()); }
@@ -432,6 +458,7 @@ public class WorkflowService {
             return result;
         } catch (Exception e) {
             var error = e instanceof ProcessingException p ? new Failure(p.code(), p.getMessage()) : new Failure("RECOGNITION_PROCESSING_FAILED", "识别或保存失败，已保留照片，可以重新识别。");
+            if(Set.of("PROVIDER_HTTP_429","RESOURCE_WAIT").contains(error.code())) { if(attempt!=null) repository.finishAttempt(attempt,"REJECTED",null,null,error.code()); throw (ProcessingException)e; }
             boolean unknown = attempt != null && !returned && (uncertain(error.code()) || error.code().equals("RECOGNITION_PROCESSING_FAILED"));
             if (attempt != null) repository.finishAttempt(attempt, unknown ? "UNKNOWN" : returned ? "RESULT_NOT_SAVED" : "FAILED", null, null, error.code());
             return new StepResult(index, Type.RECOGNIZE, unknown ? Status.UNKNOWN : Status.FAILED, started, Instant.now(), job.inputUrl(), null, null, null, error);

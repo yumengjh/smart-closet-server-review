@@ -43,13 +43,14 @@ public class WorkflowRepository {
         tx.executeWithoutResult(t -> {
             JobRow row = row(job); row.version = 0L;
             jobs.insert(row);
-            if (bill) reserveQuota(job);
+            // Unified execution reserves each cloud stage immediately before dispatch.
             for (var result : job.steps()) steps.insert(step(job.id(), result));
             inputAssets.forEach(assets::insert);
             garments.submitted(job, inputAssets);
         });
     }
 
+    public synchronized void retainAsset(UUID jobId,AssetRow asset){if(asset==null)return;if(!jobId.toString().equals(asset.jobId))throw ProcessingException.invalid("资产不属于此任务。");tx.executeWithoutResult(t->{requireRow(jobId);if(assetByFile(jobId,asset.fileName)==null)assets.insert(asset);});}
     public synchronized void save(Job job, AssetRow asset) {
         tx.executeWithoutResult(t -> {
             var before = requireRow(job.id());
@@ -106,7 +107,7 @@ public class WorkflowRepository {
     }
 
     public synchronized List<UUID> unfinished() {
-        return jobs.selectList(new QueryWrapper<JobRow>().in("status", "RUNNING", "CANCEL_REQUESTED"))
+        return jobs.selectList(new QueryWrapper<JobRow>().eq("processing_kind", "LEGACY").in("status", "RUNNING", "CANCEL_REQUESTED"))
                 .stream().map(r -> UUID.fromString(r.id)).toList();
     }
 
@@ -118,7 +119,7 @@ public class WorkflowRepository {
     }
     private String startAttempt(UUID jobId, int stepNo, String provider, String model, Object prepared) {
         var row = new AttemptRow(); row.id = UUID.randomUUID().toString(); row.jobId = jobId.toString();
-        row.stepNo = stepNo; row.attemptNo = 1; row.providerId = provider; row.modelId = model;
+        row.stepNo = stepNo; row.attemptNo = jdbc.queryForObject("SELECT COALESCE(MAX(attempt_no),0)+1 FROM generation_attempt WHERE job_id=? AND step_no=?",Integer.class,jobId.toString(),stepNo); row.providerId = provider; row.modelId = model;
         row.status = "DISPATCHING"; row.requestJson = json.writeValueAsString(prepared); row.startedAtMs = System.currentTimeMillis();
         attempts.insert(row);
         return row.id;

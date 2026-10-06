@@ -1,0 +1,19 @@
+{
+  "admin": {
+    "status": 403,
+    "code": "ACCESS_DENIED"
+  },
+  "otherIntake": {
+    "status": 404,
+    "code": "INTAKE_NOT_FOUND"
+  },
+  "forgedInternal": {
+    "status": 403,
+    "code": "GRANT_EXPIRED"
+  },
+  "switchedOwnerUpload": {
+    "status": 400,
+    "code": "INVALID_IMAGE",
+    "message": "上传账户已切换，请返回原账户继续。"
+  }
+}

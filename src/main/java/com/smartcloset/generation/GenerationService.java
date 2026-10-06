@@ -31,6 +31,8 @@ public class GenerationService {
     private final ClosetProperties closet;
     private final ObjectMapper json;
     private final BoundedHttp http = new BoundedHttp();
+    @org.springframework.beans.factory.annotation.Autowired(required=false) private com.smartcloset.processing.ProcessingResources resources;
+    private <T>T limited(String account,java.util.function.Supplier<T> call){return resources==null?call.get():resources.exchange(account,call);}
     public GenerationService(GenerationProperties properties, ClosetProperties closet, ObjectMapper json) {
         this.properties = properties; this.closet = closet; this.json = json;
     }
@@ -95,7 +97,7 @@ public class GenerationService {
     public Output generate(Prepared r, byte[] input) {
         var p = provider(r.provider());
         HttpRequest request = p.protocol() == Protocol.OPENAI_IMAGES ? openai(p, r, input) : gemini(p, r, input);
-        var response = http.send(request, BODY_LIMIT);
+        var response = limited(r.provider(),()->http.send(request, BODY_LIMIT));
         JsonNode body = parse(response);
         byte[] image = null;
         if (p.protocol() == Protocol.OPENAI_IMAGES) {
@@ -112,6 +114,7 @@ public class GenerationService {
             }
         }
         if (image == null) throw failure("PROVIDER_NO_IMAGE", "服务商未返回图片，可能被过滤、只返回了文本或模型不支持生图。");
+        if(resources!=null)resources.usage(body.has("usage")?body.get("usage"):body.get("usageMetadata"));
         return new Output(normalize(image), r.provider(), r.model(), p.protocol(),
                 body.has("usage") ? body.get("usage") : body.get("usageMetadata"),
                 response.headers().firstValue("x-request-id").orElse(response.headers().firstValue("request-id").orElse(null)));
@@ -146,7 +149,7 @@ public class GenerationService {
     }
     public List<ModelInfo> models(String id) {
         var p = provider(id);
-        var body = parse(http.send(builder(p, p.endpoint("/models")).GET().build(), 2 * 1024 * 1024));
+        var body = parse(limited(id,()->http.send(builder(p, p.endpoint("/models")).GET().build(), 2 * 1024 * 1024)));
         var list = new ArrayList<ModelInfo>();
         for (var node : body.path(p.protocol() == Protocol.GEMINI ? "models" : "data")) {
             String model = node.path(p.protocol() == Protocol.GEMINI ? "name" : "id").asText("");
@@ -157,7 +160,7 @@ public class GenerationService {
     }
     private JsonNode parse(HttpResponse<byte[]> response) {
         if (response.statusCode() < 200 || response.statusCode() >= 300)
-            throw failure("PROVIDER_HTTP_" + response.statusCode(), providerErrorMessage(response.statusCode()));
+            throw failure("PROVIDER_HTTP_" + response.statusCode(), providerErrorMessage(response.statusCode())).retryAfter(response.headers().firstValue("retry-after").orElse("30"));
         try { return json.readTree(response.body()); }
         catch (Exception e) { throw failure("PROVIDER_INVALID_RESPONSE", "服务商返回了无法解析的数据。"); }
     }

@@ -1,0 +1,65 @@
+{
+  "health": true,
+  "sessionPreserved": true,
+  "initialQuickIntakeDisabled": true,
+  "servedFrontendMatches": true,
+  "legacyGarments": 46,
+  "legacyBatches": 9,
+  "historicalSourceUrlsChecked": 8,
+  "resourceDefaults": {
+    "cpu": 1,
+    "recognition": 1,
+    "generation": 1,
+    "accountConcurrency": 2,
+    "assistantReserved": 1,
+    "rpm": null,
+    "paused": []
+  },
+  "legacyLocalWorkflow": {
+    "workflowId": "8ab2f13a-98f4-4ea6-8397-77acf2b2bca2",
+    "garmentId": "00e6d465-6087-4092-8dd1-7c08c5f3ce76",
+    "processing": "SUCCEEDED",
+    "confirmed": true,
+    "testGarmentTrashed": true,
+    "cloudCalls": 0
+  },
+  "assistant": {
+    "streamingPassed": true,
+    "firstTokenSeconds": 3.0975197500083596,
+    "elapsedSeconds": 3.366888749995269,
+    "events": [
+      "event: status",
+      "event: status",
+      "event: debug_trace",
+      "event: token",
+      "event: token",
+      "event: token",
+      "event: debug_trace",
+      "event: done"
+    ]
+  },
+  "quickIntake": {
+    "enabled": true,
+    "sourceSaved": true,
+    "immediateAdmission": true,
+    "stableReplayIdentity": true,
+    "awaitMarkerPreventsCloudCalls": true,
+    "workflowId": "0d48a418-d621-4102-9b4c-c9646d3575c0",
+    "garmentId": "85b23a3f-dd6e-4c34-a155-222d1d451e24",
+    "testGarmentTrashed": true
+  },
+  "finalHealth": {
+    "server8080": true,
+    "assistant8091": true
+  },
+  "historicalUnknownWorkflowPreserved": true,
+  "finalResourceRunning": {
+    "CPU": 0
+  },
+  "serverPid": 66042,
+  "assistantPid": 66036,
+  "backupDirectory": "/Users/yaopinxin/project/smart-closet-server/.local/backups/unified-processing-20261005-212812",
+  "jar": ".local/runtime/smart-closet-unified-20261005.jar",
+  "launcher": ".local/runtime/start-ui-runtime.sh",
+  "backedUpImageFilesVerified": 564
+}

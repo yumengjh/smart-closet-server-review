@@ -24,6 +24,7 @@ import static org.junit.jupiter.api.Assertions.*;
 
 @SpringBootTest(webEnvironment=SpringBootTest.WebEnvironment.RANDOM_PORT,properties={"spring.config.import=optional:file:./target/no-local-secrets.yml","closet.model-path=target/absent.onnx"})
 class WorkflowApiTest {
+    @Autowired org.springframework.jdbc.core.JdbcTemplate processingTestDb;
     @TempDir static Path storage;
     static HttpServer provider;
     static AtomicInteger calls=new AtomicInteger();
@@ -54,6 +55,7 @@ class WorkflowApiTest {
                 .POST(HttpRequest.BodyPublishers.ofString("{\"currentPassword\":\"test-admin-password\",\"newPassword\":\"test-admin-password\"}")).build(),HttpResponse.BodyHandlers.ofByteArray());
         assertEquals(204,password.statusCode(),new String(password.body()));
     }
+    @org.junit.jupiter.api.AfterEach void releaseFixtureUnknownPermits(){processingTestDb.update("UPDATE resource_permit SET deadline_ms=0");}
     @Test void batchPageSupportsDirectOpenAndRefresh() throws Exception {
         var response=client.send(HttpRequest.newBuilder(URI.create("http://127.0.0.1:"+port+"/batches/"+UUID.randomUUID())).GET().build(),HttpResponse.BodyHandlers.ofString());
         assertEquals(200,response.statusCode());assertTrue(response.body().contains("id=\"app\""));

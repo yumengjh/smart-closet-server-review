@@ -29,7 +29,7 @@ public final class ClosetAccountCli {
             String url = System.getenv().getOrDefault("CLOSET_DB_URL", "jdbc:h2:file:" + storage.resolve("db/closet"));
             String username = System.getenv().getOrDefault("CLOSET_DB_USER", "sa");
             String password = System.getenv().getOrDefault("CLOSET_DB_PASSWORD", "");
-            Flyway.configure().dataSource(url, username, password).locations("classpath:db/migration/h2").load().migrate();
+            Flyway.configure().dataSource(url, username, password).locations("classpath:db/migration/h2").callbacks(new com.smartcloset.processing.ProcessingMigrationBackup(storage)).load().migrate();
             var source = new DriverManagerDataSource(url, username, password);
             var jdbc = new JdbcTemplate(source);
             var encoder = new BCryptPasswordEncoder(12);

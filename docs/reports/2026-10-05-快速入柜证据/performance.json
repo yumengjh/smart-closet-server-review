@@ -1,0 +1,173 @@
+{
+  "rssSamplesKiB": [
+    146064,
+    1132240,
+    1330288,
+    1331248,
+    1243328,
+    1335776,
+    1353952,
+    1304736,
+    1053952,
+    1228144,
+    1327552,
+    1250704,
+    1283440,
+    1347344,
+    230736,
+    1295712,
+    1314464,
+    1347824,
+    1317888,
+    1323312
+  ],
+  "peakObservedRssKiB": 1353952,
+  "hardware": "Apple M5",
+  "memoryBytes": 17179869184,
+  "warm": true,
+  "samples": [
+    {
+      "intakeId": "d6ab2423-24a4-4166-94fb-8e09f9baff77",
+      "sample": "f0477a6f-e7bb-46f9-9f36-d96f36977fa8",
+      "bytes": 1633555,
+      "saveSecondsIncludingTransfer": 0.05396258400287479,
+      "baseSecondsAfterSaveIncludingPoll": 4.207891375001054
+    },
+    {
+      "intakeId": "cfc5fa09-3826-4c8e-b164-33c789615c41",
+      "sample": "c6e6f36e-2f6a-4854-8196-d6094b685135",
+      "bytes": 1177844,
+      "saveSecondsIncludingTransfer": 0.023987874999875203,
+      "baseSecondsAfterSaveIncludingPoll": 1.125062250008341
+    },
+    {
+      "intakeId": "8bc887dd-52e4-4db1-8267-5bcc8d68ac36",
+      "sample": "f0477a6f-e7bb-46f9-9f36-d96f36977fa8",
+      "bytes": 1633555,
+      "saveSecondsIncludingTransfer": 0.022872290981467813,
+      "baseSecondsAfterSaveIncludingPoll": 1.5553064999985509
+    },
+    {
+      "intakeId": "98f55a22-c90e-4b56-af10-cd812157ade4",
+      "sample": "c6e6f36e-2f6a-4854-8196-d6094b685135",
+      "bytes": 1177844,
+      "saveSecondsIncludingTransfer": 0.029041249974397942,
+      "baseSecondsAfterSaveIncludingPoll": 0.9925734170246869
+    },
+    {
+      "intakeId": "1b562bc9-59c7-48c5-99e0-80142a66f979",
+      "sample": "f0477a6f-e7bb-46f9-9f36-d96f36977fa8",
+      "bytes": 1633555,
+      "saveSecondsIncludingTransfer": 0.02253483299864456,
+      "baseSecondsAfterSaveIncludingPoll": 1.2251281670178287
+    },
+    {
+      "intakeId": "6375d3c5-c16a-49fd-bb36-40f2925794c0",
+      "sample": "c6e6f36e-2f6a-4854-8196-d6094b685135",
+      "bytes": 1177844,
+      "saveSecondsIncludingTransfer": 0.016286416997900233,
+      "baseSecondsAfterSaveIncludingPoll": 0.9004029580100905
+    },
+    {
+      "intakeId": "22fe9dbb-e949-4b07-b554-4bb86c57402e",
+      "sample": "f0477a6f-e7bb-46f9-9f36-d96f36977fa8",
+      "bytes": 1633555,
+      "saveSecondsIncludingTransfer": 0.019107542000710964,
+      "baseSecondsAfterSaveIncludingPoll": 1.3084801249788143
+    },
+    {
+      "intakeId": "1f123705-3564-430e-a21e-c90e63b71052",
+      "sample": "c6e6f36e-2f6a-4854-8196-d6094b685135",
+      "bytes": 1177844,
+      "saveSecondsIncludingTransfer": 0.016144958994118497,
+      "baseSecondsAfterSaveIncludingPoll": 0.9979331659851596
+    },
+    {
+      "intakeId": "c8bdb175-a078-40a9-83d7-a0050cd8e949",
+      "sample": "f0477a6f-e7bb-46f9-9f36-d96f36977fa8",
+      "bytes": 1633555,
+      "saveSecondsIncludingTransfer": 0.02042233300744556,
+      "baseSecondsAfterSaveIncludingPoll": 1.3025984999840148
+    },
+    {
+      "intakeId": "adb0e12e-c9d1-439a-b0c2-d2420ccc9067",
+      "sample": "c6e6f36e-2f6a-4854-8196-d6094b685135",
+      "bytes": 1177844,
+      "saveSecondsIncludingTransfer": 0.03174900001613423,
+      "baseSecondsAfterSaveIncludingPoll": 0.8608629999798723
+    },
+    {
+      "intakeId": "83bb21d9-ec55-44d5-b5cb-ede1d53295e2",
+      "sample": "f0477a6f-e7bb-46f9-9f36-d96f36977fa8",
+      "bytes": 1633555,
+      "saveSecondsIncludingTransfer": 0.02414312498876825,
+      "baseSecondsAfterSaveIncludingPoll": 1.318010208022315
+    },
+    {
+      "intakeId": "af33a3f7-c4d4-49b4-b15e-8685ee1be5f9",
+      "sample": "c6e6f36e-2f6a-4854-8196-d6094b685135",
+      "bytes": 1177844,
+      "saveSecondsIncludingTransfer": 0.02931866599828936,
+      "baseSecondsAfterSaveIncludingPoll": 1.1931381670001429
+    },
+    {
+      "intakeId": "f805236d-e2b1-42db-b911-9fa91c920758",
+      "sample": "f0477a6f-e7bb-46f9-9f36-d96f36977fa8",
+      "bytes": 1633555,
+      "saveSecondsIncludingTransfer": 0.020111207995796576,
+      "baseSecondsAfterSaveIncludingPoll": 1.2112824590003584
+    },
+    {
+      "intakeId": "b2029871-39ec-4621-9729-bb24d0cecefe",
+      "sample": "c6e6f36e-2f6a-4854-8196-d6094b685135",
+      "bytes": 1177844,
+      "saveSecondsIncludingTransfer": 0.020451541990041733,
+      "baseSecondsAfterSaveIncludingPoll": 1.7939460419875104
+    },
+    {
+      "intakeId": "09d8fa89-24b9-4f82-9876-f24ed46c64c5",
+      "sample": "f0477a6f-e7bb-46f9-9f36-d96f36977fa8",
+      "bytes": 1633555,
+      "saveSecondsIncludingTransfer": 0.03573879197938368,
+      "baseSecondsAfterSaveIncludingPoll": 1.543197916005738
+    },
+    {
+      "intakeId": "1d3ba5fd-412d-4584-a4b3-a43f461c1a6c",
+      "sample": "c6e6f36e-2f6a-4854-8196-d6094b685135",
+      "bytes": 1177844,
+      "saveSecondsIncludingTransfer": 0.017036625009495765,
+      "baseSecondsAfterSaveIncludingPoll": 0.754394166986458
+    },
+    {
+      "intakeId": "e97a5a50-b601-48b3-b3bd-24e5b2a8e925",
+      "sample": "f0477a6f-e7bb-46f9-9f36-d96f36977fa8",
+      "bytes": 1633555,
+      "saveSecondsIncludingTransfer": 0.017708375002257526,
+      "baseSecondsAfterSaveIncludingPoll": 0.9906654579972383
+    },
+    {
+      "intakeId": "0507cc15-31c9-4f75-a436-b10659e4e9c4",
+      "sample": "c6e6f36e-2f6a-4854-8196-d6094b685135",
+      "bytes": 1177844,
+      "saveSecondsIncludingTransfer": 0.0153933749825228,
+      "baseSecondsAfterSaveIncludingPoll": 0.8796544170181733
+    },
+    {
+      "intakeId": "ab2c72ed-c164-4d6c-aedd-41ca0798e42b",
+      "sample": "f0477a6f-e7bb-46f9-9f36-d96f36977fa8",
+      "bytes": 1633555,
+      "saveSecondsIncludingTransfer": 0.019928500027162954,
+      "baseSecondsAfterSaveIncludingPoll": 1.204284874984296
+    },
+    {
+      "intakeId": "8fbac5dd-1834-4ae0-8c9d-4eafe56af6d4",
+      "sample": "c6e6f36e-2f6a-4854-8196-d6094b685135",
+      "bytes": 1177844,
+      "saveSecondsIncludingTransfer": 0.03248637498472817,
+      "baseSecondsAfterSaveIncludingPoll": 1.2157444580225274
+    }
+  ],
+  "saveP95SecondsIncludingTransfer": 0.03573879197938368,
+  "baseP95SecondsAfterSaveIncludingPoll": 1.7939460419875104,
+  "notes": "Sequential warm samples, CPU1, recognition+generation paused, local loopback transfer. Cloud tasks canceled before resuming providers. Repeated two real source photos; not a diverse population estimate."
+}

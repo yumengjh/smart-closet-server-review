@@ -115,6 +115,7 @@ class RecognitionWorkflowTest {
     Job await(UUID id)throws Exception{
         for(int i=0;i<240;i++){var job=service.get(id);if(!Set.of(Status.QUEUED,Status.RUNNING,Status.CANCEL_REQUESTED).contains(job.status()))return job;Thread.sleep(25);}throw new AssertionError("timeout");
     }
+    @org.junit.jupiter.api.AfterEach void releaseFixtureUnknownPermits(){jdbc.update("UPDATE resource_permit SET deadline_ms=0");}
     @Test void integratedRecognitionUsesOriginalAndProducesAnEditableGarment()throws Exception{
         var job=await(upload(identify(),generate()).id());assertEquals(Status.SUCCEEDED,job.status());
         assertNull(job.steps().getFirst().outputUrl());assertNotNull(job.steps().getFirst().recognition());assertEquals(2,job.assets().size());assertEquals(2,job.attempts().size());

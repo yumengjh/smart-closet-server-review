@@ -1,0 +1,45 @@
+{
+  "intakeId": "c2b6f8a8-5174-4718-b20f-a08ca257721d",
+  "parent": "853617f4-c1f8-4056-8137-330f9154fc8e",
+  "feedback": "只保留外层格纹衬衫，彻底移除里面的白色T恤；开襟处呈现衬衫自身内侧或透明空间，不能留下第二件衣物。保留原图的格纹、纽扣、口袋位置和宽松版型，不要复制基础图的白描边、阴影或圆点。",
+  "sameIdempotentAttempt": true,
+  "humanLaterSelectionPreserved": true,
+  "noPostRecognition": true,
+  "peakSharedAccountCalls": 2,
+  "assistant": {
+    "sessionId": "956ca165-8320-4208-abe9-b42a3ad443b6",
+    "firstTokenSeconds": 4.121863083011704,
+    "elapsedSeconds": 4.823307457991177,
+    "events": [
+      "event: status",
+      "event: status",
+      "event: debug_trace",
+      "event: token",
+      "event: token",
+      "event: token",
+      "event: token",
+      "event: token",
+      "event: token",
+      "event: token",
+      "event: token",
+      "event: token",
+      "event: token",
+      "event: token",
+      "event: token",
+      "event: token",
+      "event: token",
+      "event: token",
+      "event: token",
+      "event: token",
+      "event: token",
+      "event: debug_trace",
+      "event: done"
+    ]
+  },
+  "visualReview": {
+    "mainGarment": "外层格纹衬衫",
+    "innerWhiteTShirtRemoved": true,
+    "visiblePlaidPocketsButtonsRetained": true,
+    "semanticGuaranteeForAllInputs": false
+  }
+}

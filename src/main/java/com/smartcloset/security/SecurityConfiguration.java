@@ -77,7 +77,7 @@ public class SecurityConfiguration {
         http
             .cors(cors -> cors.configurationSource(corsConfigurationSource))
             .headers(headers -> headers.referrerPolicy(policy -> policy.policy(ReferrerPolicyHeaderWriter.ReferrerPolicy.NO_REFERRER)))
-            .csrf(csrf -> csrf.csrfTokenRepository(csrfTokenRepository).ignoringRequestMatchers("/api/agent/internal/tool"))
+            .csrf(csrf -> csrf.csrfTokenRepository(csrfTokenRepository).ignoringRequestMatchers("/api/agent/internal/tool", "/api/agent/internal/permits"))
             .exceptionHandling(errors -> errors
                     .authenticationEntryPoint((request, response, error) -> writeError(response, json, 401,
                             "AUTHENTICATION_REQUIRED", "登录已失效，请重新登录。"))
@@ -99,7 +99,7 @@ public class SecurityConfiguration {
             .logout(logout -> logout.disable())
             .authorizeHttpRequests(auth -> auth
                     .dispatcherTypeMatchers(jakarta.servlet.DispatcherType.ASYNC).permitAll()
-                    .requestMatchers(HttpMethod.POST, "/api/agent/internal/tool").permitAll()
+                    .requestMatchers(HttpMethod.POST, "/api/agent/internal/tool", "/api/agent/internal/permits").permitAll()
                     .requestMatchers(HttpMethod.GET, "/api/auth/csrf").permitAll()
                     .requestMatchers(HttpMethod.POST, "/api/auth/login").permitAll()
                     .requestMatchers(HttpMethod.POST, "/api/auth/portable-login").permitAll()
@@ -118,7 +118,7 @@ public class SecurityConfiguration {
                         if (accounts.mustChange(current.getName())) return new org.springframework.security.authorization.AuthorizationDecision(false);
                         var request = context.getRequest();
                         String method = request.getMethod();
-                        boolean adminOnly = ("POST".equals(method) && ("/api/workflows".equals(uri) || "/api/recognitions".equals(uri)
+                        boolean adminOnly = uri.startsWith("/api/admin/") || ("POST".equals(method) && ("/api/workflows".equals(uri) || "/api/recognitions".equals(uri)
                                         || (uri.startsWith("/api/garments/") && uri.endsWith("/workflows"))))
                                 || uri.equals("/api/garments") || uri.startsWith("/api/segmentations/") || uri.equals("/api/segmentations")
                                 || uri.equals("/api/segmentation-methods");

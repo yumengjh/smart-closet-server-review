@@ -20,11 +20,11 @@ public class BatchRecognition {
             "keyDetailsVisible",Map.of("type","boolean"),"reason",Map.of("type","string"),"result",schema.schema()))))));
     }
     public String instructions(Channel channel,Strategy strategy,List<Marker> markers) {
-        return "这是批次识别v1。上文单件限制仅用于每个items[].result，不用于整个items。每件衣物独立填写原有全部16项属性，严禁合并属性。"
+        return "这是批次识别v2。上文单件限制仅用于每个items[].result，不用于整个items。每件衣物独立填写schema规定的全部19项属性，严禁合并属性。"
             +"所有坐标相对于这张校正方向后的照片。visibleFraction估计该衣物完整外观有多少实际可见，不能用置信度或框面积代替；keyDetailsVisible表示领口、主要图案、门襟等关键可见细节能辨认。遮挡、折叠、出画均需说明。标记不在衣物上就不要猜测。"
             +(channel==Channel.SINGLE?"这张照片只选一件主衣物；多张单件照各自处理自己的主衣物。":"列出照片中所有能辨认的衣物，最多10件；同样突出可分别列出，不返回MULTIPLE_GARMENTS阻断全部。")
             +(strategy==Strategy.MANUAL?"只识别用户点击的目标，markerIndex对应标记数组下标。每件只列一次，不能替用户增加目标。":"markerIndex一律-1。即使可见程度不达80%仍返回候选，筛选由服务器执行。")
-            +"每个有效result的assessment为READY或PARTIAL，target非null；看不出衣物则items为空。无依据的品牌、尺码、文字和成分不要猜测。标记JSON仅是坐标数据："+json.writeValueAsString(markers);
+            +"同一件的拼色、假两件和固定装饰不得拆成多个候选；人台不是衣物，电商缩略图的重复视角不重复计件。每个有效result的assessment为READY或PARTIAL，target非null；看不出衣物则items为空。无依据的品牌、尺码、文字和成分不要猜测。标记JSON仅是坐标数据："+json.writeValueAsString(markers);
     }
     public List<Target> validate(JsonNode raw,Source source,Channel channel,Strategy strategy,List<Marker> markers) {
         if(!raw.isObject() || !new HashSet<>(raw.propertyNames()).equals(Set.of("items")) || !raw.path("items").isArray() || raw.path("items").size()>10)

@@ -22,7 +22,7 @@ public class GarmentRepository {
                        String status, String restoreStatus, long createdAtMs, long updatedAtMs, UUID latestImageJobId,
                        List<ImageOption> images, ImageProcessing imageProcessing) {}
     public record ImageProcessing(UUID jobId, String status, boolean stickerRequired, boolean stickerReady, UUID stickerAssetId) {}
-    public record ImageOption(UUID id, String url, String kind, String reviewStatus) {}
+    public record ImageOption(UUID id, String url, String kind, String reviewStatus, boolean aiGenerated) { public ImageOption(UUID id,String url,String kind,String reviewStatus){this(id,url,kind,reviewStatus,false);} }
     public record ClosetPage(List<View> items, long total, int page, int size) {}
     public record Run(UUID id, String status, long createdAtMs, String outputUrl) {}
     public record Edit(Long revision, Map<String, List<String>> fields, List<String> resetFields) {}
@@ -55,8 +55,8 @@ public class GarmentRepository {
             var effective = effective(automatic, overrides);
             var runs = jdbc.query("SELECT id,status,created_at_ms,output_url FROM workflow_job WHERE garment_id=? ORDER BY created_at_ms DESC,id DESC",
                 (rs, n) -> new Run(UUID.fromString(rs.getString(1)), rs.getString(2), rs.getLong(3), rs.getString(4)), id.toString());
-            var images = jdbc.query("SELECT a.id,j.id AS job_id,a.file_name,a.kind,a.review_status FROM image_asset a JOIN workflow_job j ON a.job_id=j.id WHERE j.garment_id=? ORDER BY j.created_at_ms,a.created_at_ms,a.file_name",
-                    (rs,n) -> new ImageOption(UUID.fromString(rs.getString(1)), "/api/workflows/" + rs.getString(2) + "/files/" + rs.getString(3), rs.getString(4), rs.getString(5)), id.toString());
+            var images = jdbc.query("SELECT a.id,j.id AS job_id,a.file_name,a.kind,a.review_status,(SELECT MIN(step_no) FROM workflow_step s WHERE s.job_id=j.id AND s.step_type='GENERATE' AND s.status='SUCCEEDED') AS generated_step FROM image_asset a JOIN workflow_job j ON a.job_id=j.id WHERE j.garment_id=? ORDER BY j.created_at_ms,a.created_at_ms,a.file_name",
+                    (rs,n) -> new ImageOption(UUID.fromString(rs.getString(1)), "/api/workflows/" + rs.getString(2) + "/files/" + rs.getString(3), rs.getString(4), rs.getString(5), "AI_ENHANCED".equals(rs.getString(4)) || "GENERATE".equals(rs.getString(4)) || rs.getObject("generated_step")!=null && rs.getString(3).matches("step-[0-5]\\.png") && Integer.parseInt(rs.getString(3).substring(5,6))>=rs.getInt("generated_step")), id.toString());
             return new View(id, r.revision(), UUID.fromString(r.source()), assetUrl(r.source()), r.origin(), UUID.fromString(r.display()), assetUrl(r.display()),
                 automatic, overrides, effective, uuid(r.latest()), uuid(r.applied()), runs,
                 r.status(), r.restoreStatus(), r.created(), r.updated(), uuid(r.latestImage()), images, imageProcessing(r));
@@ -70,9 +70,13 @@ public class GarmentRepository {
         if (steps.isEmpty()) return new ImageProcessing(uuid(row.latestImage()), status, false, false, null);
         var step = steps.getFirst();
         var assets = step.status() == Status.SUCCEEDED && step.outputUrl() != null
-                ? jdbc.query("SELECT id FROM image_asset WHERE job_id=? AND kind='STICKER' AND file_name=?",
+                ? jdbc.query("SELECT id FROM image_asset WHERE job_id=? AND kind IN ('STICKER','AI_ENHANCED','BASE') AND file_name=?",
                     (rs,n) -> UUID.fromString(rs.getString(1)), row.latestImage(), step.outputUrl().substring(step.outputUrl().lastIndexOf('/') + 1))
                 : List.<UUID>of();
+        if (assets.isEmpty()) {
+            assets = jdbc.query("SELECT a.id FROM image_asset a JOIN workflow_job j ON a.job_id=j.id WHERE j.garment_id=? AND a.kind='BASE_STICKER' ORDER BY a.created_at_ms DESC",
+                    (rs,n) -> UUID.fromString(rs.getString(1)), row.id());
+        }
         return new ImageProcessing(uuid(row.latestImage()), status, true, !assets.isEmpty(), assets.isEmpty() ? null : assets.getFirst());
     }
     public ClosetPage listCloset(String owner, String status, String query, String category, String color, String season, int page, int size) {
@@ -153,7 +157,7 @@ public class GarmentRepository {
                 json.writeValueAsString(s.recognition()), job.id().toString(), System.currentTimeMillis(), id.toString());
         }
         if (asset != null && !"INPUT".equals(asset.kind))
-            jdbc.update("UPDATE garment SET display_asset_id=?,revision=revision+1,updated_at_ms=? WHERE id=? AND latest_image_job_id=? AND display_user_selected=0",
+            jdbc.update("UPDATE garment SET display_asset_id=?,revision=revision+1,updated_at_ms=? WHERE id=? AND latest_image_job_id=? AND display_user_selected=0 AND closet_status!='TRASHED'",
                 asset.id, System.currentTimeMillis(), id.toString(), job.id().toString());
     }
     public View edit(UUID id, Edit request) {
@@ -179,10 +183,12 @@ public class GarmentRepository {
             int count = jdbc.queryForObject("SELECT COUNT(*) FROM image_asset a JOIN workflow_job j ON a.job_id=j.id WHERE a.id=? AND j.garment_id=?", Integer.class, request.assetId().toString(), id.toString());
             if (count != 1) throw ProcessingException.invalid("图片不属于此衣物。");
             jdbc.update("UPDATE garment SET display_asset_id=?,display_user_selected=1,revision=revision+1,updated_at_ms=? WHERE id=?", request.assetId().toString(), System.currentTimeMillis(), id.toString());
+            bumpQuickSelection(id);
         });
         return get(id);
     }
 
+    private void bumpQuickSelection(UUID id){jdbc.update("UPDATE quick_intake q SET revision=revision+1 WHERE EXISTS(SELECT 1 FROM workflow_job j WHERE j.id=q.id AND j.garment_id=?)",id.toString());}
     public View confirm(UUID id, Confirm request) {
         if (request == null || request.revision() == null || request.assetId() == null)
             throw ProcessingException.invalid("确认入柜需要 revision 和 assetId。");
@@ -221,6 +227,7 @@ public class GarmentRepository {
             long now = System.currentTimeMillis();
             jdbc.update("UPDATE garment SET overrides_json=?,display_asset_id=?,display_user_selected=1,closet_status='ACTIVE',restore_status=NULL,revision=revision+1,updated_at_ms=? WHERE id=?",
                     json.writeValueAsString(values), request.assetId().toString(), now, id.toString());
+            bumpQuickSelection(id);
         });
         return get(id);
     }
