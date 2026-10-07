@@ -60,5 +60,9 @@ class ProcessingInfrastructureTest {
   var restarted=new ProcessingResources(store);assertNull(restarted.acquire(account,"BACKGROUND",UUID.randomUUID().toString(),System.currentTimeMillis()+10000));
   store.db().update("UPDATE resource_permit SET deadline_ms=0 WHERE token=?",token);assertNotNull(restarted.acquire(account,"BACKGROUND",UUID.randomUUID().toString(),System.currentTimeMillis()+10000));
  }
+ @Test void waitingQuotaTaskResumesImmediatelyOnlyFromWaitingState(){
+  var t=task(user());store.claim(t);store.defer(t,"WAITING_QUOTA",store.tomorrow(),"等待次日识别额度");
+  assertTrue(store.resume(t.id()));var resumed=store.get(t.id());assertEquals("QUEUED",resumed.status());assertTrue(resumed.nextRunAt()<=System.currentTimeMillis());assertFalse(store.resume(t.id()));
+ }
  int quota(String owner){return store.db().queryForObject("SELECT COALESCE(SUM(used),0) FROM ai_daily_quota WHERE owner_username=?",Integer.class,owner);}
 }
