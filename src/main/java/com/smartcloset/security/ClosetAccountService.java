@@ -12,7 +12,10 @@ public class ClosetAccountService {
     public record Account(String username, String role, boolean mustChangePassword, boolean enabled) {}
     private final JdbcTemplate jdbc;
     private final PasswordEncoder passwords;
-    public ClosetAccountService(JdbcTemplate jdbc, PasswordEncoder passwords) { this.jdbc = jdbc; this.passwords = passwords; }
+    private final ClosetSessionRevoker sessions;
+    public ClosetAccountService(JdbcTemplate jdbc, PasswordEncoder passwords, ClosetSessionRevoker sessions) {
+        this.jdbc = jdbc; this.passwords = passwords; this.sessions = sessions;
+    }
 
     public Account find(String username) {
         var rows = jdbc.query("SELECT username,role,must_change_password,enabled FROM closet_user WHERE username=?",
@@ -46,18 +49,48 @@ public class ClosetAccountService {
                 passwords.encode(newPassword), username);
         revokePortableLinks(username);
     }
+    /** Requires a password change at next login and signs the account out everywhere. Returns revoked sessions. */
     @Transactional
-    public void resetPassword(String username, String rawPassword) {
+    public int resetPassword(String username, String rawPassword) {
         validate(username, rawPassword);
         if (find(username) == null) throw new IllegalArgumentException("账号不存在：" + username);
         jdbc.update("UPDATE closet_user SET password_hash=?,must_change_password=1 WHERE username=?", passwords.encode(rawPassword), username);
         revokePortableLinks(username);
+        return sessions.revokeAll(username);
     }
+    /** Disabling revokes portable links and every persisted session. Returns revoked sessions. */
     @Transactional
-    public void setEnabled(String username, boolean enabled) {
-        if (find(username) == null) throw new IllegalArgumentException("账号不存在：" + username);
+    public int setEnabled(String username, boolean enabled) {
+        var account = find(username);
+        if (account == null) throw new IllegalArgumentException("账号不存在：" + username);
+        if (!enabled && account.enabled() && "ADMIN".equals(account.role()) && enabledAdmins() <= 1)
+            throw new LastAdminException();
         jdbc.update("UPDATE closet_user SET enabled=? WHERE username=?", enabled ? 1 : 0, username);
-        if (!enabled) revokePortableLinks(username);
+        if (enabled) return 0;
+        revokePortableLinks(username);
+        return sessions.revokeAll(username);
+    }
+    /** Role changes sign the account out because authorities are cached in the session. Returns revoked sessions. */
+    @Transactional
+    public int changeRole(String username, String role) {
+        if (!List.of("ADMIN", "USER").contains(role)) throw new IllegalArgumentException("role must be ADMIN or USER");
+        var account = find(username);
+        if (account == null) throw new IllegalArgumentException("账号不存在：" + username);
+        if (account.role().equals(role)) return 0;
+        if ("ADMIN".equals(account.role()) && account.enabled() && enabledAdmins() <= 1) throw new LastAdminException();
+        jdbc.update("UPDATE closet_user SET role=? WHERE username=?", role, username);
+        return sessions.revokeAll(username);
+    }
+    public int revokeSessions(String username) {
+        if (find(username) == null) throw new IllegalArgumentException("账号不存在：" + username);
+        return sessions.revokeAll(username);
+    }
+    private int enabledAdmins() {
+        return jdbc.queryForObject("SELECT COUNT(*) FROM closet_user WHERE role='ADMIN' AND enabled=1", Integer.class);
+    }
+    /** The last enabled administrator cannot be disabled or demoted. */
+    public static class LastAdminException extends IllegalStateException {
+        public LastAdminException() { super("不能禁用或降级最后一个启用的管理员。"); }
     }
     public boolean mustChange(String username) {
         var account = find(username);

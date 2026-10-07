@@ -4,6 +4,8 @@ Spring Boot 4.1.1 / Java 21。当前提供数字衣柜产品接口、账号与�
 
 [首版启动、账号管理、接口与交付说明](docs/CLOSET_PRODUCT.md) · [2026-09-30 验证记录](reports/closet/README.md)。
 
+可选的后台管理平台通过中立的服务端管理接口接入（默认关闭）：[管理接口接入指南](docs/MANAGEMENT_API.md) · [部署拓扑](docs/DEPLOYMENT_TOPOLOGY.md)。
+
 ## 数字衣柜前端与账号
 
 完整的 Vue 产品界面位于同级项目 [smart-closet](../smart-closet/README.md)。生产构建由 Spring Boot 同源提供，先在前端目录运行 `npm install && npm run build:server`，再启动此服务。Vite 开发页面默认使用真实 API。只有显式设置 `VITE_USE_MOCKS=true` 才启用示例演示，演示模式禁止提交 AI 任务。
@@ -31,7 +33,7 @@ mvn spring-boot:run -Dspring-boot.run.arguments="--closet-command=claim-legacy,-
 
 首次登录先进入“设置新密码”；完成前不开放衣柜、任务、字段配置和额度页面。未登录业务请求返回 `401 AUTHENTICATION_REQUIRED`，未改初始密码返回 `403 PASSWORD_CHANGE_REQUIRED`，CSRF 校验失败返回 `403 CSRF_INVALID`。
 
-默认只监听 `127.0.0.1:8080`。同一局域网内访问时设置 `SERVER_ADDRESS=0.0.0.0`，然后打开服务电脑的局域网 IP。登录会话存入现有数据库，服务重启后仍可恢复；默认保留 7 天，浏览器使用独立的 `YIXU_SESSION` HttpOnly Cookie（SameSite=Lax）与 CSRF 令牌。`CLOSET_SESSION_TIMEOUT` 控制会话空闲期限，`CLOSET_SESSION_COOKIE_MAX_AGE` 控制浏览器 Cookie 有效期，两者默认均为 `7d`。主动退出会立即删除当前会话。普通账号只能读取自己的衣物、任务和图片，每日 AI 任务上限为 20 次。原工作流测试台及底层分割接口仅管理员可用。
+默认只监听 `127.0.0.1:8080`。同一局域网内访问时设置 `SERVER_ADDRESS=0.0.0.0`，然后打开服务电脑的局域网 IP。登录会话存入现有数据库，服务重启后仍可恢复；默认保留 7 天，浏览器使用独立的 `YIXU_SESSION` HttpOnly Cookie（SameSite=Lax）与 CSRF 令牌。`CLOSET_SESSION_TIMEOUT` 控制会话空闲期限，`CLOSET_SESSION_COOKIE_MAX_AGE` 控制浏览器 Cookie 有效期，两者默认均为 `7d`。主动退出会立即删除当前会话。普通账号只能读取自己的衣物、任务和图片，每日 AI 任务上限默认为 20 次（开启管理接口后可按用户调整）。原工作流测试台及底层分割接口仅管理员可用。
 
 通过 Cloudflare Tunnel 分享便携登录链接时，可使用 `cloudflared tunnel --url http://localhost:8080`，并从其 HTTPS 地址进入网站生成链接。后端默认通过 Tomcat 识别本机代理传入的 `X-Forwarded-Proto`；只信任回环地址的代理，公网 HTTP 请求仍不能使用便携登录。修改该配置后需重启后端。Quick Tunnel 每次启动可能更换域名，应从当前域名重新生成链接。
 

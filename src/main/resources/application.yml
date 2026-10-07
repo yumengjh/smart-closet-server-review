@@ -44,6 +44,18 @@ closet:
   max-pixels: 12000000
   grabcut-max-side: 1000
   inference-threads: 2
+  management:
+    # Optional neutral management API (/api/manage/v1). See docs/management-api.yaml.
+    enabled: ${CLOSET_MANAGEMENT_ENABLED:false}
+    auth:
+      mode: hmac
+      clock-skew: 300s
+      nonce-ttl: 600s
+      keys:
+        - id: ${CLOSET_MANAGEMENT_KEY_ID:primary}
+          secret: ${CLOSET_MANAGEMENT_SECRET:}
+    max-body-bytes: 65536
+    insights-cache-ttl: 60s
 workflow:
   max-queued: 30
   poll-ms: 300

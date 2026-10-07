@@ -19,7 +19,8 @@ public class ProcessingStore {
     public JdbcTemplate db(){return db;}
     private final ObjectMapper json;
     private final TransactionTemplate tx;
-    public ProcessingStore(JdbcTemplate db,ObjectMapper json,PlatformTransactionManager manager,Flyway workflowMigrations) {this.db=db;this.json=json;tx=new TransactionTemplate(manager);}
+    private final com.smartcloset.security.QuotaPolicy quotas;
+    public ProcessingStore(JdbcTemplate db,ObjectMapper json,PlatformTransactionManager manager,Flyway workflowMigrations,com.smartcloset.security.QuotaPolicy quotas) {this.db=db;this.json=json;this.quotas=quotas;tx=new TransactionTemplate(manager);}
     public Config config() {
         var rows=db.query("SELECT value_json FROM processing_config WHERE id='limits'",(r,n)->r.getString(1));
         return rows.isEmpty()?new Config(1,1,1,2,1,null,Set.of()):json.readValue(rows.getFirst(),Config.class);
@@ -52,7 +53,7 @@ public class ProcessingStore {
         // A rejected request retry retains the original logical-task charge, never charges twice.
         if(units>0&&db.queryForObject("SELECT COUNT(*) FROM execution_attempt WHERE task_id=? AND dispatched=1 AND quota_units>0",Integer.class,t.id())>0) units=0;
         var day=LocalDate.now(ZoneId.of("Asia/Shanghai"));
-        if(units>0&&t.owner()!=null){db.query("SELECT username FROM closet_user WHERE username=? FOR UPDATE",(r,n)->r.getString(1),t.owner());var q=db.query("SELECT used FROM ai_daily_quota WHERE owner_username=? AND quota_date=? FOR UPDATE",(r,n)->r.getInt(1),t.owner(),java.sql.Date.valueOf(day));int used=q.isEmpty()?0:q.getFirst();if(used+units>20)return null;if(q.isEmpty())db.update("INSERT INTO ai_daily_quota VALUES(?,?,?)",t.owner(),java.sql.Date.valueOf(day),units);else db.update("UPDATE ai_daily_quota SET used=used+? WHERE owner_username=? AND quota_date=?",units,t.owner(),java.sql.Date.valueOf(day));}
+        if(units>0&&t.owner()!=null){db.query("SELECT username FROM closet_user WHERE username=? FOR UPDATE",(r,n)->r.getString(1),t.owner());var q=db.query("SELECT used FROM ai_daily_quota WHERE owner_username=? AND quota_date=? FOR UPDATE",(r,n)->r.getInt(1),t.owner(),java.sql.Date.valueOf(day));int used=q.isEmpty()?0:q.getFirst();if(used+units>quotas.imageDailyLimit(t.owner()))return null;if(q.isEmpty())db.update("INSERT INTO ai_daily_quota VALUES(?,?,?)",t.owner(),java.sql.Date.valueOf(day),units);else db.update("UPDATE ai_daily_quota SET used=used+? WHERE owner_username=? AND quota_date=?",units,t.owner(),java.sql.Date.valueOf(day));}
         String id=UUID.randomUUID().toString();int no=db.queryForObject("SELECT COALESCE(MAX(attempt_no),0)+1 FROM execution_attempt WHERE task_id=?",Integer.class,t.id());db.update("INSERT INTO execution_attempt(id,task_id,attempt_no,status,quota_date,quota_units,started_at_ms) VALUES(?,?,?,'GRANTED',?,?,?)",id,t.id(),no,java.sql.Date.valueOf(day),units,System.currentTimeMillis());return id;
     });}
     public void dispatched(String attempt){if(attempt!=null)db.update("UPDATE execution_attempt SET dispatched=1,status='DISPATCHED' WHERE id=?",attempt);}

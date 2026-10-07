@@ -22,7 +22,9 @@ public class AgentRepository {
     private final ObjectMapper json;
     private final TransactionTemplate tx;
     private final AgentProperties config;
-    public AgentRepository(JdbcTemplate db, ObjectMapper json, PlatformTransactionManager manager, AgentProperties config, Flyway workflowMigrations) {
+    private final com.smartcloset.security.QuotaPolicy quotas;
+    public AgentRepository(JdbcTemplate db, ObjectMapper json, PlatformTransactionManager manager, AgentProperties config, Flyway workflowMigrations, com.smartcloset.security.QuotaPolicy quotas) {
+        this.quotas = quotas;
         this.db=db; this.json=json; this.tx=new TransactionTemplate(manager); this.config=config;
     }
     public List<Session> sessions(String owner) {
@@ -89,7 +91,7 @@ public class AgentRepository {
                 throw new ProcessingException(HttpStatus.CONFLICT,"AGENT_ALREADY_SUBMITTED","这条消息已经提交，请查看会话结果，不要重复扣费。");
             LocalDate day=LocalDate.now(ZoneId.of("Asia/Shanghai"));
             var used=db.query("SELECT used FROM agent_daily_quota WHERE owner_username=? AND quota_date=?",(r,n)->r.getInt(1),owner,java.sql.Date.valueOf(day));
-            if(!used.isEmpty() && used.getFirst()>=config.dailyLimit()) throw new ProcessingException(HttpStatus.TOO_MANY_REQUESTS,"AGENT_QUOTA_EXCEEDED","今天的助手消息额度已用完，明天再来。");
+            if(!used.isEmpty() && used.getFirst()>=quotas.agentDailyLimit(owner)) throw new ProcessingException(HttpStatus.TOO_MANY_REQUESTS,"AGENT_QUOTA_EXCEEDED","今天的助手消息额度已用完，明天再来。");
             if(used.isEmpty()) db.update("INSERT INTO agent_daily_quota VALUES(?,?,1)",owner,java.sql.Date.valueOf(day));
             else db.update("UPDATE agent_daily_quota SET used=used+1 WHERE owner_username=? AND quota_date=?",owner,java.sql.Date.valueOf(day));
             long now=System.currentTimeMillis();
@@ -108,7 +110,7 @@ public class AgentRepository {
     public Map<String,Object> quota(String owner) {
         var day=LocalDate.now(ZoneId.of("Asia/Shanghai"));
         var used=db.query("SELECT used FROM agent_daily_quota WHERE owner_username=? AND quota_date=?",(r,n)->r.getInt(1),owner,java.sql.Date.valueOf(day));
-        return Map.of("limit",config.dailyLimit(),"used",used.isEmpty()?0:used.getFirst(),"resetAt",day.plusDays(1).atStartOfDay(ZoneId.of("Asia/Shanghai")).toInstant().toString());
+        return Map.of("limit",quotas.agentDailyLimit(owner),"used",used.isEmpty()?0:used.getFirst(),"resetAt",day.plusDays(1).atStartOfDay(ZoneId.of("Asia/Shanghai")).toInstant().toString());
     }
     public String preference(String owner) {
         return db.query("SELECT model FROM agent_preference WHERE owner_username=?",(r,n)->r.getString(1),owner).stream().findFirst().orElse(config.defaultModel());

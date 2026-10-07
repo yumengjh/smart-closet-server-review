@@ -27,10 +27,13 @@ public class WorkflowRepository {
     private final TransactionTemplate tx;
     private final com.smartcloset.garment.GarmentRepository garments;
     private final JdbcTemplate jdbc;
+    private final com.smartcloset.security.QuotaPolicy quotas;
 
     public WorkflowRepository(JobMapper jobs, StepMapper steps, AttemptMapper attempts, AssetMapper assets,
             ObjectMapper json, PlatformTransactionManager manager, Flyway workflowMigrations,
-            com.smartcloset.garment.GarmentRepository garments, JdbcTemplate jdbc) {
+            com.smartcloset.garment.GarmentRepository garments, JdbcTemplate jdbc,
+            com.smartcloset.security.QuotaPolicy quotas) {
+        this.quotas = quotas;
         this.jobs = jobs; this.steps = steps; this.attempts = attempts; this.assets = assets;
         this.json = json; this.tx = new TransactionTemplate(manager); this.garments = garments; this.jdbc = jdbc;
     }
@@ -191,7 +194,7 @@ public class WorkflowRepository {
             var today=java.time.LocalDate.now(java.time.ZoneId.of("Asia/Shanghai"));
             var values=jdbc.query("SELECT used FROM ai_daily_quota WHERE owner_username=? AND quota_date=? FOR UPDATE",(r,n)->r.getInt(1),owner,java.sql.Date.valueOf(today));
             int used=values.isEmpty()?0:values.getFirst();
-            if(used+units>20) throw new ProcessingException(HttpStatus.TOO_MANY_REQUESTS,"AI_DAILY_QUOTA_EXCEEDED","今日剩余额度不足，本次需要 "+units+" 个云端任务额度。");
+            if(used+units>quotas.imageDailyLimit(owner)) throw new ProcessingException(HttpStatus.TOO_MANY_REQUESTS,"AI_DAILY_QUOTA_EXCEEDED","今日剩余额度不足，本次需要 "+units+" 个云端任务额度。");
             if(values.isEmpty()) jdbc.update("INSERT INTO ai_daily_quota(owner_username,quota_date,used) VALUES(?,?,?)",owner,java.sql.Date.valueOf(today),units);
             else jdbc.update("UPDATE ai_daily_quota SET used=? WHERE owner_username=? AND quota_date=?",used+units,owner,java.sql.Date.valueOf(today));
         });
