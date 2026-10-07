@@ -9,3 +9,5 @@
 现有waiting.ts变化展示全部并行running步骤，语义与统一执行器一致，纳入本次清理提交。现有.planning/platform-agent-ootd三份Markdown保留并提交，活动指针和archify/output留本地并忽略。Docker本机守护进程未运行，镜像构建和GHCR发布以GitHub实测为准。
 
 首次干净检出全量验证消除了三个SPA404，但暴露QuickIntake恢复测试中后台扫描器与人工回执重放的竞争：读取资料revision后扫描器再次发布回执，导致select按旧版本被正确拒绝。该测试显式停止扫描器并在结束后重建Spring上下文；不更改生产CAS或增加盲重试。
+
+实际GitHub结果证明修复：backend37593470203 success，包括Test Java and Agent、Build backend container images、Publish GHCR images；frontend37593221710 success。本机Docker缺失不再是镜像结论来源，整条远端已验证。

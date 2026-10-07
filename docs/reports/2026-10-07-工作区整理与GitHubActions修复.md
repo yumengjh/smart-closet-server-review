@@ -39,8 +39,10 @@
 | Agent npm ci／测试／构建 | 16／16 通过，构建成功 |
 | 前端 npm ci／测试／类型检查／构建 | 55／55 通过，构建成功 |
 | 前端第一次 GitHub Action | [37592782235](https://github.com/yumengjh/smart-closet/actions/runs/37592782235) 全部成功 |
-| 后端修复后 GitHub Action | 修复提交推送后等待远端测试、两种镜像构建及 GHCR 发布，完成后补充 |
+| 后端修复后 GitHub Action | [37593470203](https://github.com/yumengjh/smart-closet-server/actions/runs/37593470203) 全部成功：Java／Agent 验证、两种镜像构建、GHCR 发布 |
 
 此前提交前报告的“226 项”聚合包含 `target/surefire-reports/TEST-com.smartcloset.workflow.ParallelHttpWorkflowTest.xml` 旧残留。该测试源已不在当前版本；本次干净检出的实际数为 225，历史提交不重写，通过本记录更正。7 项跳过仍为 1 项可选真实识别和 6 项样本／图片检查。
 
-本机 Docker 守护进程未运行，因此镜像不宣称本地构建通过，以 GitHub 实际结果为准。本次没有真实 AI 调用，也没有更改 8080 运行服务。
+机器可读证据见 [validation.json](workspace-ci-20261007/validation.json)。前端最新文档提交 `f527ebb` 的 [37593221710](https://github.com/yumengjh/smart-closet/actions/runs/37593221710) 也已通过。后端修复源码提交 `79a17b5` 已在 Linux GitHub runner 完成整条流水线；本次归档提交只更新文档和证据。
+
+本机 Docker 守护进程未运行，镜像的成功结论来自 GitHub 实際构建及发布。本次没有真实 AI 调用，也没有更改 8080 运行服务。

@@ -1,0 +1,54 @@
+{
+  "backendClean": {
+    "tests": 225,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 7
+  },
+  "frontend": {
+    "passed": 55
+  },
+  "agent": {
+    "passed": 16
+  },
+  "backendOnlyPackage": true,
+  "realAiCalls": 0,
+  "frontendRun": "https://github.com/yumengjh/smart-closet/actions/runs/37592782235",
+  "frontendCi": "success",
+  "backendGithub": {
+    "headSha": "79a17b5a60ce0a3b3689428560a408e11c7f6c5c",
+    "url": "https://github.com/yumengjh/smart-closet-server/actions/runs/37593470203",
+    "conclusion": "success",
+    "jobs": [
+      {
+        "name": "Test Java and Agent",
+        "conclusion": "success"
+      },
+      {
+        "name": "Build backend container images",
+        "conclusion": "success"
+      },
+      {
+        "name": "Publish GHCR images",
+        "conclusion": "success"
+      }
+    ],
+    "testCounts": {
+      "tests": 225,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 7
+    }
+  },
+  "frontendGithub": {
+    "headSha": "f527ebbb998362b9731d26259098c6f1cac03926",
+    "url": "https://github.com/yumengjh/smart-closet/actions/runs/37593221710",
+    "conclusion": "success",
+    "jobs": [
+      {
+        "name": "Test and build Vue frontend",
+        "conclusion": "success"
+      }
+    ]
+  }
+}
