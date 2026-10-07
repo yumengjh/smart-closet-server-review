@@ -18,7 +18,7 @@ import tools.jackson.databind.json.JsonMapper;
 import static org.junit.jupiter.api.Assertions.*;
 
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
-        properties = {"spring.config.import=optional:file:./target/no-local-secrets.yml", "closet.model-path=target/absent-outfit-model.onnx"})
+        properties = {"spring.config.import=optional:file:./target/no-local-secrets.yml", "closet.model-path=target/absent-outfit-model.onnx", "spring.web.resources.static-locations=classpath:/spa-test/,classpath:/static/"})
 class OutfitApiTest {
     @TempDir static Path storage;
     @DynamicPropertySource static void configure(DynamicPropertyRegistry registry) {
@@ -38,6 +38,7 @@ class OutfitApiTest {
             var response = get(path);
             assertEquals(200, response.statusCode(), path);
             assertTrue(response.body().contains("id=\"app\""), path);
+            assertTrue(response.body().contains("data-test-fixture=\"spa-routing\""), path);
         }
     }
 

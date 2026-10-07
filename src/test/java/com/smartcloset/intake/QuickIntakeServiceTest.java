@@ -28,6 +28,7 @@ class QuickIntakeServiceTest {
  @DynamicPropertySource static void properties(DynamicPropertyRegistry r){r.add("closet.storage-dir",()->root.toString());}
  @Autowired QuickIntakeService quick;@Autowired ClosetAccountService accounts;@Autowired GarmentRepository garments;@Autowired ProcessingStore store;@Autowired com.smartcloset.workflow.WorkflowFiles files;@Autowired com.smartcloset.workflow.persistence.WorkflowRepository jobs;@Autowired tools.jackson.databind.ObjectMapper json;
  @MockitoBean SegmentationService segmentation;
+ @Autowired ProcessingExecutor executor;
  String owner;
  @BeforeEach void prepare()throws Exception{owner="quick-"+UUID.randomUUID();accounts.create(owner,"test-password","USER");login(owner);var rev=((Number)store.configView().get("revision")).longValue();store.setConfig(new ProcessingStore.Config(1,1,1,2,1,null,Set.of("RECOGNITION","GENERATION")),rev,owner);when(segmentation.uploadBytes(any(),any(),any(),anyDouble())).thenThrow(ProcessingException.invalid("Injected local failure"));}
  @AfterEach void clear(){SecurityContextHolder.clearContext();}
@@ -67,7 +68,11 @@ class QuickIntakeServiceTest {
   var v=quick.create(UUID.randomUUID(),new QuickIntakeService.Options("UPLOAD_READY",null,null,false),photo());var first=garments.select(v.garmentId(),new GarmentRepository.SelectImage(v.garment().revision(),v.garment().displayAssetId()));assertEquals(v.revision()+1,quick.get(v.intakeId()).revision());
   garments.select(v.garmentId(),new GarmentRepository.SelectImage(first.revision(),first.displayAssetId()));assertEquals(v.revision()+2,quick.get(v.intakeId()).revision());assertEquals(v.garment().displayAssetId(),garments.get(v.garmentId()).displayAssetId());
  }
- @Test void localStickerIsPublishedBeforeRecognitionAndCleanReferenceSurvivesRecovery()throws Exception{
+ @Test @DirtiesContext(methodMode=DirtiesContext.MethodMode.AFTER_METHOD)
+ void localStickerIsPublishedBeforeRecognitionAndCleanReferenceSurvivesRecovery()throws Exception{
+  // This test drives crash/replay manually. Stop the background scanner so it
+  // cannot replay the same receipt between our snapshot and display selection.
+  executor.close();
   store.setConfig(new ProcessingStore.Config(1,1,1,2,1,null,Set.of("CPU","RECOGNITION","GENERATION")),((Number)store.configView().get("revision")).longValue(),owner);
   var cutout=new BufferedImage(80,100,BufferedImage.TYPE_INT_ARGB);var g=cutout.createGraphics();g.setColor(Color.BLUE);g.fillRect(20,15,40,70);g.dispose();var bytes=new ByteArrayOutputStream();ImageIO.write(cutout,"png",bytes);
   var path=Files.createTempFile(root,"cutout-",".png");Files.write(path,bytes.toByteArray());var segmentationId=UUID.randomUUID();

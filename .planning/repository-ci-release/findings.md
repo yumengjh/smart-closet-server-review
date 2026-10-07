@@ -1,0 +1,11 @@
+# 已核实信息
+
+后端远程yumengjh/smart-closet-server为PRIVATE，main仅领先一个平台重大功能提交，无远端分叉。前端已有完整本地Git历史，未配置远程，yumengjh/smart-closet不存在；以相同私有范围创建。
+
+最近失败run37459486771（28264f5，196项）和37206675149（e1d25a0，174项）均有三个404断言：OutfitApiTest.outfitHistoryLinksServeTheVueShell、WorkflowApiTest.batchPageSupportsDirectOpenAndRefresh、WorkflowApiTest.productionVueBundleAndHistoryRoutesAreServedBySpring。本机static/index.html/assets为忽略构建输出，干净检出缺少SPA，与后端独立容器部署约定不符。
+
+使用仅测试资源spa-test明确验证Spring history转发与静态JS传递，不伪装生产Vue包；真实前端独立CI测试、类型检查、构建。CI追加后端包无测试fixture／SPA输出门禁。
+
+现有waiting.ts变化展示全部并行running步骤，语义与统一执行器一致，纳入本次清理提交。现有.planning/platform-agent-ootd三份Markdown保留并提交，活动指针和archify/output留本地并忽略。Docker本机守护进程未运行，镜像构建和GHCR发布以GitHub实测为准。
+
+首次干净检出全量验证消除了三个SPA404，但暴露QuickIntake恢复测试中后台扫描器与人工回执重放的竞争：读取资料revision后扫描器再次发布回执，导致select按旧版本被正确拒绝。该测试显式停止扫描器并在结束后重建Spring上下文；不更改生产CAS或增加盲重试。

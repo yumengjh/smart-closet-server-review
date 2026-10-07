@@ -22,7 +22,7 @@ import tools.jackson.databind.*;
 import tools.jackson.databind.json.JsonMapper;
 import static org.junit.jupiter.api.Assertions.*;
 
-@SpringBootTest(webEnvironment=SpringBootTest.WebEnvironment.RANDOM_PORT,properties={"spring.config.import=optional:file:./target/no-local-secrets.yml","closet.model-path=target/absent.onnx"})
+@SpringBootTest(webEnvironment=SpringBootTest.WebEnvironment.RANDOM_PORT,properties={"spring.config.import=optional:file:./target/no-local-secrets.yml","closet.model-path=target/absent.onnx","spring.web.resources.static-locations=classpath:/spa-test/,classpath:/static/"})
 class WorkflowApiTest {
     @Autowired org.springframework.jdbc.core.JdbcTemplate processingTestDb;
     @TempDir static Path storage;
@@ -201,11 +201,12 @@ class WorkflowApiTest {
         assertEquals(404,other.send(HttpRequest.newBuilder(URI.create("http://127.0.0.1:"+port+"/api/garments/"+garmentId)).GET().build(),HttpResponse.BodyHandlers.ofByteArray()).statusCode());
         assertEquals(404,productUpload(other,otherCsrf,taskId).statusCode());
     }
-    @Test void productionVueBundleAndHistoryRoutesAreServedBySpring() throws Exception {
+    @Test void spaHistoryRoutesAndStaticResourcesAreServedBySpring() throws Exception {
         for (String path : java.util.List.of("/", "/login", "/wardrobe", "/pending", "/tasks", "/settings", "/add", "/trash", "/garment/00000000-0000-0000-0000-000000000000")) {
             var page=get(path);
             assertEquals(200,page.statusCode(),path);
             assertTrue(new String(page.body()).contains("id=\"app\""),path);
+            assertTrue(new String(page.body()).contains("data-test-fixture=\"spa-routing\""),path);
         }
         String html=new String(get("/").body());
         var script=java.util.regex.Pattern.compile("src=\"([^\"]+\\.js)\"").matcher(html);

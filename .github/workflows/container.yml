@@ -34,6 +34,21 @@ jobs:
           cache-dependency-path: agent-runtime/package-lock.json
       - name: Verify Java backend
         run: mvn -B verify
+      - name: Verify backend-only packaging
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          from zipfile import ZipFile
+          jar = next(Path('target').glob('*.jar'))
+          with ZipFile(jar) as archive:
+              forbidden = [name for name in archive.namelist() if
+                  name.startswith('BOOT-INF/classes/spa-test/') or
+                  name == 'BOOT-INF/classes/static/index.html' or
+                  name.startswith('BOOT-INF/classes/static/assets/')]
+          if forbidden:
+              raise SystemExit(f'Test fixtures or local SPA output leaked into backend package: {forbidden}')
+          print('Backend-only package verified; test fixtures and local SPA output are absent.')
+          PY
       - name: Test and build TypeScript Agent
         working-directory: agent-runtime
         run: |

@@ -8,7 +8,6 @@ models/.download-*/
 *.iml
 .DS_Store
 .local/
-# Production frontend bundle is committed so the backend image serves the full app.
 # Private photo used for ad hoc testing; retain locally.
 /samples/round2-candidates/图像.jpeg
 
@@ -39,3 +38,12 @@ models/.download-*/
 .env
 .env.*
 !.env.example
+
+# Local tool workspaces, browser artifacts and transient planning state.
+/.archify/
+/output/
+/tmp/
+/.cache/
+/.planning/.active_plan
+/.planning/*/.attestation
+*.log

@@ -10,3 +10,13 @@ models/*.onnx
 reports
 samples
 docs
+.local
+.archify
+.planning
+output
+tmp
+.cache
+.playwright-cli
+*.log
+src/main/resources/static/index.html
+src/main/resources/static/assets
