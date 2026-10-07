@@ -30,10 +30,24 @@ public class AgentService {
         void send(String event,Object data) { var target=emit;if(target==null)throw AgentRepository.invalid("浏览器执行通道已关闭。");target.accept(event,data); }
     }
     private record Grant(String owner,String session,Request request,AtomicInteger calls,long expires,CanvasChannel channel) {}
+    @org.springframework.beans.factory.annotation.Autowired private AgentMemoryDocuments memoryDocuments;
+    @org.springframework.beans.factory.annotation.Autowired private com.smartcloset.garment.ClosetSummaryService closetSummary;
+    private final Set<String> contextClosed=ConcurrentHashMap.newKeySet();
+    private final ConcurrentHashMap<String,Long> memoryEpochs=new ConcurrentHashMap<>();
     @org.springframework.beans.factory.annotation.Autowired private com.smartcloset.processing.ProcessingResources processingResources;
     @org.springframework.beans.factory.annotation.Autowired private com.smartcloset.processing.ProcessingStore processingStore;
     private final ConcurrentHashMap<String,Grant> grants=new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String,JsonNode> liveContexts=new ConcurrentHashMap<>();
+    private JsonNode contextFor(Grant grant){return liveContexts.getOrDefault(grant.request().requestId(),grant.request().context());}
     private final ConcurrentHashMap<String,Map<String,List<String>>> candidatePools=new ConcurrentHashMap<>();
+    @org.springframework.beans.factory.annotation.Autowired private AgentCommands commands;
+    @org.springframework.beans.factory.annotation.Autowired private CompositionReviews reviews;
+    @org.springframework.beans.factory.annotation.Autowired private com.smartcloset.person.PersonalRenders renders;
+    @org.springframework.beans.factory.annotation.Autowired private AgentRenderCommands renderCommands;
+    @org.springframework.beans.factory.annotation.Autowired private AgentPlatformCommands platformCommands;
+    @org.springframework.beans.factory.annotation.Autowired private com.smartcloset.person.WearerProfiles wearerProfiles;
+    @org.springframework.beans.factory.annotation.Autowired private com.smartcloset.recognition.RecognitionService recognitionService;
+    @org.springframework.beans.factory.annotation.Autowired private com.smartcloset.generation.GenerationService generationService;
     private final AgentTraceService traces;
     private final AgentProperties config;
     private final GenerationProperties credentials;
@@ -74,7 +88,7 @@ public class AgentService {
             quality.put(key,Map.of("source",edited?"USER":"RECOGNITION","status",edited?(values.isEmpty()?"UNKNOWN":"USER_CONFIRMED"):observed==null?"UNKNOWN":observed.status().name(),
                 "evidence",edited?"用户修改的有效值":observed==null?"尚无识别依据":observed.evidence()));
         }
-        return Map.of("id",item.id(),"revision",item.revision(),"status",item.status(),"fields",fields,"quality",quality,
+        return Map.of("id",item.id(),"revision",item.revision(),"status",item.status(),"fields",fields,"quality",quality,"name",Objects.toString(item.name(),""),"favorite",item.favorite(),
             "wearing",OutfitRules.profile(ruleFields(item)));
     }
     private Map<String,Object> candidateMetadata(GarmentRepository.View item) {
@@ -151,11 +165,14 @@ public class AgentService {
         payload.put("callbackURL",config.callbackUrl().resolve("/api/agent/internal/tool").toString());payload.put("callbackToken",token);
         payload.put("maxToolCalls",config.maxToolCalls());payload.put("timeoutSeconds",config.timeoutSeconds());
         payload.put("avatarMode",repo.avatarMode(owner));
-        payload.put("context",modelContext(owner,request.context()));payload.put("memories",repo.memories(owner));
-        var history=repo.messages(owner,session).stream().filter(m->!m.status().equals("RUNNING")).toList();payload.put("messages",history.subList(Math.max(0,history.size()-20),history.size()).stream().map(this::historyMessage).toList());
+        var turn=AgentIntentPolicy.classify(request.content());payload.put("allowedTools",turn.tools());payload.put("maxModelCalls",config.maxToolCalls()+2);payload.put("maxInputCharacters",120000);
+        long epoch=memoryDocuments.epoch(owner,session);memoryEpochs.put(token,epoch);
+        payload.put("context",modelContext(owner,request.context()));payload.put("memories",memoryDocuments.modelInput(owner,turn.purposes()));
+        var history=repo.messages(owner,session).stream().filter(m->!m.status().equals("RUNNING")&&db.queryForObject("SELECT context_epoch FROM agent_message WHERE id=?",Long.class,m.id())==epoch).toList();payload.put("messages",history.subList(Math.max(0,history.size()-20),history.size()).stream().map(this::historyMessage).toList());
         if(image!=null)payload.put("image",image);
         var hidden=new ArrayList<String>(List.of(p.apiKey(),token,config.secret(),p.baseUrl().toString(),config.callbackUrl().toString()));
         for(var memory:repo.memories(owner))if(memory.category().equals("PERSONAL"))hidden.add(memory.content());
+        var authorizedFragments=json.valueToTree(payload.get("memories")).path("sensitiveFragments");for(var fragment:authorizedFragments.properties())if(!fragment.getValue().asText().isBlank())hidden.add(fragment.getValue().asText());
         traces.start(session,request.requestId(),hidden);
         traces.append(request.requestId(),"input","CAPTURED","请求上下文与输入授权",Map.of("context",payload.get("context"),"messages",payload.get("messages"),"memories",payload.get("memories"),"model",model,"imageConsent",Boolean.TRUE.equals(request.imageConsent()),"imageProvided",image!=null,"personalMemoryConsent",Boolean.TRUE.equals(request.personalMemoryConsent())));
         return output->{
@@ -174,6 +191,7 @@ public class AgentService {
                 catch(IOException e){throw new UncheckedIOException(e);}
             };
             try{
+                if(!memoryDocuments.current(owner,session,epoch))throw new IOException("memory-context-revoked");
                 send(output,"status",Map.of("text","正在理解你的请求","phase","thinking","requestId",request.requestId()));
                 var upstream=http.send(HttpRequest.newBuilder(config.runtimeUrl().resolve("/run")).timeout(Duration.ofSeconds(config.timeoutSeconds()))
                     .header("Content-Type","application/json").header("X-Agent-Secret",config.secret()).POST(HttpRequest.BodyPublishers.ofByteArray(json.writeValueAsBytes(payload))).build(),HttpResponse.BodyHandlers.ofInputStream());
@@ -190,6 +208,7 @@ public class AgentService {
                                 avatarSent=true;send(output,"avatar",Map.of("requestId",request.requestId(),"state",data.path("state").asText(),"expression",data.path("expression").asText()));continue;
                             }
                             if(!Set.of("token","status","proposal","memory","navigation","sources","done","error").contains(event))continue;
+                            if(!memoryDocuments.current(owner,session,memoryEpochs.getOrDefault(token,epoch)))throw new IOException("memory-context-revoked");
                             if(event.equals("token")){text.append(data.path("text").asText());if(text.length()>24000)throw new IOException("output-too-large");}
                             else if(!event.equals("status")&&!event.equals("done")){
                                 if(events.size()>=256)throw new IOException("too-many-events");events.add(Map.of("event",event,"data",data));
@@ -206,7 +225,7 @@ public class AgentService {
                 try{send(output,"error",Map.of("message","助手回复中断，请查看已返回内容后主动重试。","code","AGENT_RUN_FAILED"));}catch(IOException ignored){}
             }finally{
                 traces.append(request.requestId(),"end",status,"运行结束",Map.of("model",model,"durationMs",System.currentTimeMillis()-started,"usage",usage,"toolCalls",grants.get(token).calls().get()));traces.finish(request.requestId(),status);
-                channel.emit=null;grants.remove(token);candidatePools.remove(request.requestId());repo.finish(owner,session,request.requestId(),text.toString(),status,events);
+                channel.emit=null;grants.remove(token);memoryEpochs.remove(token);contextClosed.remove(token);candidatePools.remove(request.requestId());liveContexts.remove(request.requestId());repo.finish(owner,session,request.requestId(),text.toString(),status,events);
                 org.slf4j.LoggerFactory.getLogger(getClass()).info("agent request={} model={} status={} durationMs={} usage={}",request.requestId(),model,status,System.currentTimeMillis()-started,usage.isMissingNode()?"unknown":usage);
             }
         };
@@ -217,7 +236,7 @@ public class AgentService {
         for(var event:message.events()) {
             String type=event.path("event").asText();var data=event.path("data");var safe=json.createObjectNode();safe.put("event",type);
             if(type.equals("proposal")){for(String key:List.of("id","kind","payload","consumed"))if(data.has(key))safe.set(key,data.get(key));}
-            else if(type.equals("memory")){for(String key:List.of("content","category","revoked"))if(data.has(key))safe.set(key,data.get(key));}
+            else if(type.equals("memory"))continue;
             else if(type.equals("workspace_result")){for(String key:List.of("workspaceId","sessionId","boardIds","status","message"))if(data.has(key))safe.set(key,data.get(key));}
             else if(type.equals("navigation"))safe.set("path",data.path("path"));
             else continue;
@@ -230,10 +249,10 @@ public class AgentService {
         synchronized(output) { output.write(("event: "+event+"\ndata: "+json.writeValueAsString(data)+"\n\n").getBytes(StandardCharsets.UTF_8));output.flush(); }
     }
     public Object permit(String token,JsonNode input){
-        String action=input.path("action").asText();int iteration=input.path("iteration").asInt();if(iteration<1||iteration>100)throw AgentRepository.invalid("模型调用编号无效。");
+        String action=input.path("action").asText();int iteration=input.path("iteration").asInt();if(iteration<1||iteration>config.maxToolCalls()+2)throw AgentRepository.invalid("模型调用编号无效。");
         String binding="agent:"+WorkflowFiles.hash(token.getBytes(java.nio.charset.StandardCharsets.UTF_8))+":"+iteration;
         var grant=grants.get(token);String permit=input.path("permit").asText("");
-        if(action.equals("acquire")){if(grant==null||grant.expires()<System.currentTimeMillis())throw new ProcessingException(HttpStatus.FORBIDDEN,"GRANT_EXPIRED","助手运行授权已结束。");String acquired=processingResources.acquire(config.credentialProvider(),"ASSISTANT",binding,grant.expires()+10000);return acquired==null?Map.of("status","WAITING","retryAfterMs",500):Map.of("status","GRANTED","permit",acquired);}
+        if(action.equals("acquire")){if(contextClosed.contains(token)||grant==null||grant.expires()<System.currentTimeMillis()||!memoryDocuments.current(grant.owner(),grant.session(),memoryEpochs.getOrDefault(token,-1L)))throw new ProcessingException(HttpStatus.FORBIDDEN,"GRANT_EXPIRED","助手运行授权已结束。");String acquired=processingResources.acquire(config.credentialProvider(),"ASSISTANT",binding,grant.expires()+10000);return acquired==null?Map.of("status","WAITING","retryAfterMs",500):Map.of("status","GRANTED","permit",acquired);}
         if(processingStore.db().queryForObject("SELECT COUNT(*) FROM resource_permit WHERE token=? AND binding=? AND purpose='ASSISTANT'",Integer.class,permit,binding)!=1)throw new ProcessingException(HttpStatus.FORBIDDEN,"PERMIT_DENIED","模型许可不属于此运行。");
         switch(action){case "dispatch"->{if(grant==null||grant.expires()<System.currentTimeMillis())throw new ProcessingException(HttpStatus.FORBIDDEN,"GRANT_EXPIRED","助手运行授权已结束。");processingResources.dispatch(permit);}case "heartbeat"->processingResources.heartbeat(permit);case "finish"->{if(input.path("rateLimited").asBoolean(false))processingResources.backoff(permit,input.path("retryAfterMs").asLong(1000));else processingResources.finish(permit,input.path("unknown").asBoolean(false));}default->throw AgentRepository.invalid("许可操作无效。");}return Map.of("status","OK");
     }
@@ -241,6 +260,8 @@ public class AgentService {
         var grant=grants.get(token);
         if(grant==null||grant.expires()<System.currentTimeMillis())throw new ProcessingException(HttpStatus.FORBIDDEN,"AGENT_GRANT_EXPIRED","工具授权已失效。");
 
+        if(!memoryDocuments.current(grant.owner(),grant.session(),memoryEpochs.getOrDefault(token,memoryDocuments.epoch(grant.owner(),grant.session()))))throw new ProcessingException(HttpStatus.FORBIDDEN,"MEMORY_CONTEXT_REVOKED","记忆或用途许可已改变，请重新发起消息。");
+        if(contextClosed.contains(token)&&call!=null&&!"__trace".equals(call.name()))throw AgentRepository.invalid("记忆已经更新，本轮后续工具已停止，请使用新上下文继续。");
         if(call==null||call.name()==null||call.args()==null||!call.args().isObject())throw AgentRepository.invalid("工具参数无效。");
         String owner=grant.owner();
         if(db.queryForObject("SELECT COUNT(*) FROM closet_user WHERE username=? AND enabled=1 AND must_change_password=0",Integer.class,owner)!=1)
@@ -252,10 +273,18 @@ public class AgentService {
             grant.channel().send("debug_trace",summary);return summary;
         }
         if(grant.calls().incrementAndGet()>config.maxToolCalls())throw AgentRepository.invalid("本轮工具调用已达到上限。");
+        AgentIntentPolicy.require(AgentIntentPolicy.classify(grant.request().content()),call.name());
         String callId=call.callId()==null?UUID.randomUUID().toString():call.callId();long started=System.currentTimeMillis();
         emitTrace(grant,"tool","STARTED","工具调用 · "+call.name(),Map.of("callId",callId,"name",call.name(),"args",call.args()));
         try {
-            Object result=executeTool(grant,call);
+            var previousSecurity=org.springframework.security.core.context.SecurityContextHolder.getContext();
+            var toolSecurity=org.springframework.security.core.context.SecurityContextHolder.createEmptyContext();
+            String role=db.queryForObject("SELECT role FROM closet_user WHERE username=?",String.class,owner);
+            toolSecurity.setAuthentication(new org.springframework.security.authentication.UsernamePasswordAuthenticationToken(owner,null,List.of(new org.springframework.security.core.authority.SimpleGrantedAuthority("ROLE_"+role))));
+            Object result;
+            try{org.springframework.security.core.context.SecurityContextHolder.setContext(toolSecurity);result=executeTool(grant,call);}finally{org.springframework.security.core.context.SecurityContextHolder.setContext(previousSecurity);}
+            var node=json.valueToTree(result);if(node.has("latestContext")){var next=node.path("latestContext");validateContext(owner,next);liveContexts.put(grant.request().requestId(),next);}
+            if(node.path("contextChanged").asBoolean(false)){memoryEpochs.put(token,memoryDocuments.epoch(owner,grant.session()));contextClosed.add(token);}
             emitTrace(grant,"tool","COMPLETE","工具返回 · "+call.name(),Map.of("callId",callId,"name",call.name(),"result",result,"durationMs",System.currentTimeMillis()-started));return result;
         } catch(RuntimeException e) {
             emitTrace(grant,"tool","FAILED","工具拒绝 · "+call.name(),Map.of("callId",callId,"name",call.name(),"errorType",e.getClass().getSimpleName(),"code",e instanceof ProcessingException pe?pe.code():"TOOL_FAILED","message",Objects.toString(e.getMessage(),"工具失败"),"durationMs",System.currentTimeMillis()-started));throw e;
@@ -267,24 +296,49 @@ public class AgentService {
     private Object executeTool(Grant grant,ToolRequest call) {
         String owner=grant.owner();var a=call.args();
         return switch(call.name()) {
+            case "get_profile_for_edit" -> {
+                var p=json.valueToTree(wearerProfiles.get(owner));var result=json.createObjectNode();result.set("revision",p.path("revision"));
+                var labels=Map.of("sex","性别","heightCm","身高","weightKg","体重","bodyShape","身材","measurements","围","preferences","偏好");
+                labels.forEach((key,label)->{if(grant.request().content().contains(label))result.set(key,p.path(key));});yield result;
+            }
+            case "get_processing_options" -> Map.of("recognition",recognitionService.providers(),"generation",generationService.providers(),"quotaUnits",1);
+            case "prepare_platform_operation" -> {
+                String kind=a.path("kind").asText();if(!AgentIntentPolicy.classify(grant.request().content()).purposes().contains("COMMAND:"+kind))throw AgentRepository.invalid("本轮未授权此种平台操作。");
+                var command=platformCommands.prepare(owner,kind,grant.request().requestId()+":"+Objects.toString(call.callId(),UUID.randomUUID().toString()),a.path("parameters"));grant.channel().send("command",command);yield command;
+            }
+            case "get_render_options", "prepare_generation" -> {
+                String purpose=a.path("purpose").asText();if(!AgentIntentPolicy.classify(grant.request().content()).purposes().contains(purpose))throw AgentRepository.invalid("本轮没有授权此生成用途。");
+                if(call.name().equals("get_render_options"))yield renderCommands.options(owner,purpose);
+                String source=contextFor(grant).path("outfitId").asText("");if(purpose.equals("OOTD")&&!source.isBlank()&&!source.equals("new")&&!source.equals(a.path("outfitId").asText()))throw AgentRepository.invalid("当前搭配与生成目标不符，请明确选择来源。");
+                try{var command=renderCommands.prepare(owner,grant.request().requestId()+":"+Objects.toString(call.callId(),UUID.randomUUID().toString()),a);grant.channel().send("command",command);yield command;}catch(IOException e){throw AgentRepository.invalid("参考文件不可用，请更换有效图片。");}
+            }
+            case "get_personal_status" -> Map.of("baselines",renders.baselines(owner).stream().map(b -> Map.of("id",b.id(),"revision",b.revision(),"status",b.status(),"currentDefault",b.currentDefault())).toList(),"ootd",renders.jobs(owner,"OOTD"));
+            case "prepare_command" -> {
+                String currentUserText=grant.request().content();var pinned=pinned(grant);if(!pinned.isEmpty()&&(pinned.size()!=1||!pinned.contains(a.path("targetId").asText())))throw AgentRepository.invalid("当前指代不唯一或目标与选中衣物不符，请明确选择一件衣物。");
+                if(pinned.isEmpty()&&(!contextFor(grant).path("garmentId").asText().equals(a.path("targetId").asText())||!currentUserText.matches("(?s).*(这件|此件|当前|选中).*")))currentUserText="";
+                var prepared=commands.prepare(owner,new AgentCommands.Prepare(a.path("kind").asText(),uuid(a.path("targetId").asText()),a.path("revision").asLong(-1),a.path("parameters"),grant.request().requestId()+":"+Objects.toString(call.callId(),UUID.randomUUID().toString())),currentUserText);
+                grant.channel().send("command",prepared);yield prepared;
+            }
+            case "review_outfit" -> reviews.review(owner,new CompositionReviews.Request(null,null,contextFor(grant).path("scene"),null,null,false));
+            case "closet_summary" -> closetSummary.summary(owner,a.path("query").asText(""),a.path("category").asText(""),a.path("color").asText(""),a.path("season").asText(""),a.has("favorite")?a.path("favorite").asBoolean():null);
+            case "list_outfits" -> db.queryForList("SELECT id,name,revision,created_at_ms,updated_at_ms FROM outfit WHERE owner_username=? ORDER BY updated_at_ms DESC",owner);
+            case "list_tasks" -> db.queryForList("SELECT id,kind,status,wait_reason,created_at_ms FROM execution_task WHERE owner_username=? ORDER BY created_at_ms DESC LIMIT 50",owner);
             case "search_help" -> {var hits=help.search(a.path("query").asText());yield Map.of("known",!hits.isEmpty(),"articles",hits,"unknownAnswer","暂时不知道，可以向平台反馈这个问题；目前尚无反馈提交入口。");}
             case "get_outfit_candidates" -> {
-                var ids=db.query("SELECT id FROM garment WHERE owner_username=? AND closet_status='ACTIVE' ORDER BY updated_at_ms DESC,id DESC LIMIT 1001",(r,n)->r.getString(1),owner);
-                boolean truncated=ids.size()>1000;if(truncated)ids=ids.subList(0,1000);
-                var inventory=new LinkedHashMap<String,GarmentRepository.View>();for(String id:ids)inventory.put(id,garment(owner,id,true));
-                var required=new HashSet<>(pinned(grant));for(var id:a.path("requiredGarmentIds")) {garment(owner,id.asText(),true);required.add(id.asText());}
-                var options=OutfitCandidates.generate(inventory.values().stream().map(g->new OutfitCandidates.Item(g.id().toString(),ruleFields(g))).toList(),required,40);
+                var snapshot=garments.projection(owner).stream().filter(g -> g.status().equals("ACTIVE")).toList();boolean truncated=false;
+                var required=new HashSet<>(pinned(grant));for(var id:a.path("requiredGarmentIds")){garment(owner,id.asText(),true);required.add(id.asText());}
+                var options=OutfitCandidates.generate(snapshot.stream().map(g -> {var f=new LinkedHashMap<>(g.fields());f.put("_layeringConfirmed",g.wearingConfirmed()?List.of("yes"):List.of());return new OutfitCandidates.Item(g.id().toString(),f);}).toList(),required,40);
+                var inventory=new LinkedHashMap<String,GarmentRepository.View>();for(String id:options.stream().flatMap(List::stream).distinct().toList())inventory.put(id,garment(owner,id,true));
                 var pool=new LinkedHashMap<String,List<String>>();var result=new ArrayList<Object>();
-                for(var option:options) {String id=UUID.randomUUID().toString();pool.put(id,option);result.add(Map.of("candidateId",id,"garmentIds",option));}
+                for(var option:options) {String id=UUID.randomUUID().toString();pool.put(id,option);result.add(Map.of("candidateId",id,"garmentIds",option,"bodySignature",option.stream().filter(gid -> Set.of(OutfitRules.Role.TOP,OutfitRules.Role.BOTTOM,OutfitRules.Role.ONE_PIECE).contains(OutfitRules.role(inventory.get(gid).effective()))).sorted().toList()));}
                 candidatePools.put(grant.request().requestId(),pool);
-                yield Map.of("candidates",result,"garments",options.stream().flatMap(List::stream).distinct().map(k->candidateMetadata(inventory.get(k))).toList(),"inventoryCount",inventory.size(),"inventoryEvidence",Map.of("truncated",truncated,"outerCount",inventory.values().stream().filter(g->OutfitRules.role(g.effective())==OutfitRules.Role.OUTER).count(),"missingWearDataCount",inventory.values().stream().filter(g->Set.of(OutfitRules.Role.TOP,OutfitRules.Role.OUTER,OutfitRules.Role.ONE_PIECE).contains(OutfitRules.role(g.effective()))&&!OutfitRules.confirmed(ruleFields(g))).count()),"candidateLimit",40,"requiredGarmentIds",required,
+                yield Map.of("candidates",result,"garments",options.stream().flatMap(List::stream).distinct().map(k->candidateMetadata(inventory.get(k))).toList(),"inventoryCount",snapshot.size(),"inventoryEvidence",Map.of("truncated",truncated,"outerCount",snapshot.stream().filter(g->OutfitRules.role(g.fields())==OutfitRules.Role.OUTER).count(),"missingWearDataCount",snapshot.stream().filter(g->Set.of(OutfitRules.Role.TOP,OutfitRules.Role.OUTER,OutfitRules.Role.ONE_PIECE).contains(OutfitRules.role(g.fields()))&&!g.wearingConfirmed()).count()),"candidateLimit",40,"requiredGarmentIds",required,
                     "ruleVersion","daily-evidence-v3","note","候选已通过结构及保守叠穿筛选；非审美排名，也不是全部衣柜，未出现在候选中不代表库存不存在。只用本次 candidateId 选择，不自由拼接衣物。缺失的叠穿资料无需在每次搭配重识别，可在衣物详情核对。","emptyReason",options.isEmpty()?"指定衣物或库存无法组成可靠主体，请说明限制，不重试相同组合。":"");
             }
             case "search_wardrobe" -> {
                 String query=a.path("query").asText("").trim();
                 var page=garments.listCloset(owner,"ACTIVE",query,"","","",Math.max(1,a.path("page").asInt(1)),50);
-                long matchedTotal=page.total();boolean fallback=!query.isBlank()&&matchedTotal==0;
-                if(fallback)page=garments.listCloset(owner,"ACTIVE","","","","",1,50);
+                long matchedTotal=page.total();boolean fallback=false;
                 yield Map.of("items",page.items().stream().map(this::metadata).toList(),"total",page.total(),"page",page.page(),"hasMore",(long)page.page()*50<page.total(),
                     "matchedTotal",matchedTotal,"fallbackApplied",fallback,"requestedQuery",query,"appliedQuery",fallback?"":query,
                     "searchNote",fallback?"连续关键词未命中，已返回未筛选衣柜第一页。请核查真实品类，不能据此声称衣柜缺少该衣物；hasMore=true 时继续以空 query 分页查询。":"query 只匹配单个连续子串，不支持多个词的组合或自然语言条件。");
@@ -318,11 +372,11 @@ public class AgentService {
                     if(!signatures.add(selected.toString()))throw AgentRepository.invalid("候选需要使用不同组合。");
                     traceValidation(grant,call,candidate,ids,clothes,true);
                 }
-                if(call.name().equals("build_outfits"))yield canvasRuns.build(owner,grant.session(),grant.request().context(),a,false,grant.channel()::send);
-                yield repo.propose(owner,grant.session(),"OUTFITS",a,grant.request().context());
+                if(call.name().equals("build_outfits"))yield canvasRuns.build(owner,grant.session(),contextFor(grant),a,false,grant.channel()::send);
+                yield repo.propose(owner,grant.session(),"OUTFITS",a,contextFor(grant));
             }
             case "edit_workspace" -> {
-                var context=grant.request().context();var elements=context.path("scene").path("elements");
+                var context=contextFor(grant);var elements=context.path("scene").path("elements");
                 if(!elements.isArray()||elements.isEmpty())throw AgentRepository.invalid("请先选中要调整的画板。");
                 var operations=a.path("operations");if(!operations.isArray()||operations.isEmpty()||operations.size()>20)throw AgentRepository.invalid("画板操作无效。");
                 var keys=new HashSet<String>();for(var e:elements)keys.add(e.path("elementId").asText(e.path("garmentId").asText()));
@@ -337,7 +391,7 @@ public class AgentService {
                 yield canvasRuns.build(owner,grant.session(),context,a,true,grant.channel()::send);
             }
             case "propose_edit" -> {
-                var context=grant.request().context();var elements=context.path("scene").path("elements");
+                var context=contextFor(grant);var elements=context.path("scene").path("elements");
                 if(!elements.isArray())throw AgentRepository.invalid("请先打开组合画布。");
                 var operations=a.path("operations");if(!operations.isArray()||operations.isEmpty()||operations.size()>20)throw AgentRepository.invalid("画布操作无效。");
                 var keys=new HashSet<String>();for(var e:elements)keys.add(e.path("elementId").asText(e.path("garmentId").asText()));
@@ -356,15 +410,15 @@ public class AgentService {
                 yield repo.propose(owner,grant.session(),"EDIT",a,context);
             }
             case "request_save" -> {
-                if(!grant.request().context().path("scene").path("elements").isArray())throw AgentRepository.invalid("请先打开组合画布。");
-                yield repo.propose(owner,grant.session(),"SAVE",json.createObjectNode(),grant.request().context());
+                if(!contextFor(grant).path("scene").path("elements").isArray())throw AgentRepository.invalid("请先打开组合画布。");
+                yield repo.propose(owner,grant.session(),"SAVE",json.createObjectNode(),contextFor(grant));
             }
-            case "remember_preference" -> {
-                String evidence=a.path("evidence").asText();
-                if(evidence.length()<2||!grant.request().content().contains(evidence))throw AgentRepository.invalid("记忆必须来自本条消息中明确表达的偏好。");
-                String category=a.path("category").asText();
-                if(category.equals("PERSONAL")&&!Boolean.TRUE.equals(grant.request().personalMemoryConsent()))throw AgentRepository.invalid("保存尺码或身材信息需要用户明确同意。");
-                yield repo.memory(owner,null,a.path("content").asText(),category);
+            case "remember_preference", "edit_memory_document" -> {
+                String evidence=a.path("evidence").asText();if(evidence.length()<2||!grant.request().content().contains(evidence))throw AgentRepository.invalid("记忆必须依据当前用户消息。");
+                var parameters=(tools.jackson.databind.node.ObjectNode)a.deepCopy();String kind=a.path("documentKind").asText(a.path("category").asText().equals("PERSONAL")?"SENSITIVE":"GENERAL");parameters.put("documentKind",kind);
+                if(call.name().equals("remember_preference")){parameters.put("operation","APPEND");parameters.put("newContent",a.path("content").asText());}
+                var doc=memoryDocuments.get(owner,kind);long revision=call.name().equals("remember_preference")?doc.revision():a.path("revision").asLong(-1);
+                var command=commands.prepare(owner,new AgentCommands.Prepare("MEMORY_PATCH",null,revision,parameters,grant.request().requestId()+":"+Objects.toString(call.callId(),UUID.randomUUID().toString())),grant.request().content());grant.channel().send("command",command);yield command;
             }
             default -> throw AgentRepository.invalid("工具未开放。");
         };
@@ -420,13 +474,13 @@ public class AgentService {
     private UUID uuid(String value){try{return UUID.fromString(value);}catch(Exception e){throw AgentRepository.invalid("对象 ID 无效。");}}
     private Set<String> pinned(Grant grant){
         var out=new HashSet<String>();if(!grant.request().content().matches("(?s).*(这件|这些|这条|这双|选中).*"))return out;
-        var c=grant.request().context();if(!c.path("garmentId").asText("").isBlank())out.add(c.path("garmentId").asText());
+        var c=contextFor(grant);if(!c.path("garmentId").asText("").isBlank())out.add(c.path("garmentId").asText());
         var ids=new HashSet<String>();for(var id:c.path("selectedIds"))ids.add(id.asText());
         for(var e:c.path("scene").path("elements"))if(ids.contains(e.path("elementId").asText())&&!e.path("garmentId").asText("").isBlank())out.add(e.path("garmentId").asText());
         return out;
     }
     public String validRoute(String owner,String route){
-        if(Set.of("/wardrobe","/add","/pending","/tasks","/trash","/settings","/outfits","/outfits/new","/outfits/workspace","/help").contains(route))return route;
+        if(Set.of("/wardrobe","/add","/pending","/tasks","/trash","/settings","/outfits","/outfits/new","/outfits/workspace","/ootd","/help").contains(route))return route;
         if(route.startsWith("/help?article=")&&help.articles().stream().anyMatch(a->a.href().equals(route)))return route;
         if(route.matches("/garment/[a-fA-F0-9-]{36}")){garment(owner,route.substring(9),false);return route;}
         if(route.matches("/outfits/[a-fA-F0-9-]{36}")){outfits.get(uuid(route.substring(9)),owner);return route;}

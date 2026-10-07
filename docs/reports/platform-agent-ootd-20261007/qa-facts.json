@@ -1,0 +1,110 @@
+{
+  "summary": {
+    "count": 5,
+    "totalActive": 5,
+    "statuses": {
+      "ACTIVE": 5
+    },
+    "categoryCounts": {
+      "DRESS": 1,
+      "OUTER": 2,
+      "PANTS": 1,
+      "SHIRT": 1
+    },
+    "seasonCounts": {
+      "夏": 3,
+      "秋": 2
+    },
+    "skirtCount": 1,
+    "unknownCategoryCount": 0,
+    "unknownSeasonCount": 0,
+    "filter": {
+      "favorite": "ANY",
+      "category": "",
+      "color": "",
+      "season": "",
+      "query": ""
+    },
+    "queriedAt": 1791306131194,
+    "wardrobeVersion": "d37085a2f2f3f05ad78f1b1606bd2306d1781e42b6870a7abf4b84b81369eaa6",
+    "mappingVersion": "closet-families-v1",
+    "scope": "已入柜 ACTIVE 物品记录；包含鞋包配饰，多季节标签交叉计数；适穿建议不当作统计事实。"
+  },
+  "skirts": {
+    "count": 1,
+    "totalActive": 5,
+    "statuses": {
+      "ACTIVE": 5
+    },
+    "categoryCounts": {
+      "DRESS": 1,
+      "OUTER": 2,
+      "PANTS": 1,
+      "SHIRT": 1
+    },
+    "seasonCounts": {
+      "夏": 3,
+      "秋": 2
+    },
+    "skirtCount": 1,
+    "unknownCategoryCount": 0,
+    "unknownSeasonCount": 0,
+    "filter": {
+      "favorite": "ANY",
+      "category": "裙子",
+      "color": "",
+      "season": "",
+      "query": ""
+    },
+    "queriedAt": 1791306131199,
+    "wardrobeVersion": "d37085a2f2f3f05ad78f1b1606bd2306d1781e42b6870a7abf4b84b81369eaa6",
+    "mappingVersion": "closet-families-v1",
+    "scope": "已入柜 ACTIVE 物品记录；包含鞋包配饰，多季节标签交叉计数；适穿建议不当作统计事实。"
+  },
+  "summer": {
+    "count": 3,
+    "totalActive": 5,
+    "statuses": {
+      "ACTIVE": 5
+    },
+    "categoryCounts": {
+      "DRESS": 1,
+      "OUTER": 2,
+      "PANTS": 1,
+      "SHIRT": 1
+    },
+    "seasonCounts": {
+      "夏": 3,
+      "秋": 2
+    },
+    "skirtCount": 1,
+    "unknownCategoryCount": 0,
+    "unknownSeasonCount": 0,
+    "filter": {
+      "favorite": "ANY",
+      "category": "",
+      "color": "",
+      "season": "夏季",
+      "query": ""
+    },
+    "queriedAt": 1791306131202,
+    "wardrobeVersion": "d37085a2f2f3f05ad78f1b1606bd2306d1781e42b6870a7abf4b84b81369eaa6",
+    "mappingVersion": "closet-families-v1",
+    "scope": "已入柜 ACTIVE 物品记录；包含鞋包配饰，多季节标签交叉计数；适穿建议不当作统计事实。"
+  },
+  "profile": {
+    "revision": 2,
+    "sex": "FEMALE",
+    "heightCm": null,
+    "weightKg": null,
+    "bodyShape": null,
+    "measurements": {},
+    "preferences": {},
+    "defaultBaselineId": "46df6a86-aaa3-4345-840b-c0e940e40350"
+  },
+  "permissions": [],
+  "viewport": {
+    "width": 390,
+    "scrollWidth": 390
+  }
+}

@@ -24,4 +24,8 @@ class OutfitCandidatesTest {
         assertEquals(List.of(List.of("b","i","o")),OutfitCandidates.generate(pieces,Set.of("o"),40));
         outer.put("fit",List.of("修身"));assertTrue(OutfitCandidates.generate(pieces,Set.of("o"),40).isEmpty());
     }
+    @Test void largeInventoryIsBoundedAndOldRequiredSubjectsAreNotDropped(){
+        var inventory=new ArrayList<OutfitCandidates.Item>();for(int i=0;i<4000;i++){inventory.add(item("t"+i,"衬衫"));inventory.add(item("b"+i,"长裤"));}inventory.add(item("shoe","运动鞋"));
+        var choices=assertTimeoutPreemptively(java.time.Duration.ofSeconds(3),()->OutfitCandidates.generate(inventory,Set.of("t3999"),40));assertTrue(choices.size()<=40);assertTrue(choices.stream().allMatch(ids->ids.contains("t3999")));assertTrue(choices.stream().anyMatch(ids->ids.contains("shoe")));
+    }
 }

@@ -34,9 +34,12 @@ public class ProcessingStore {
     private ProcessingException conflict(){return new ProcessingException(HttpStatus.CONFLICT,"CONFIG_CONFLICT","配置已变化，请刷新后再保存。");}
     public Map<String,Object> configView(){var rows=db.query("SELECT revision FROM processing_config WHERE id='limits'",(r,n)->r.getLong(1));return Map.of("limits",config(),"revision",rows.isEmpty()?0L:rows.getFirst());}
     private Task map(java.sql.ResultSet r,int n)throws java.sql.SQLException{return new Task(r.getString("id"),r.getString("business_key"),r.getString("owner_username"),r.getString("kind"),r.getString("business_id"),r.getInt("stage"),r.getString("pool"),r.getString("account_id"),r.getInt("priority"),r.getString("status"),r.getLong("next_run_at_ms"),r.getLong("created_at_ms"),r.getString("wait_reason"),r.getString("error_message"));}
-    public synchronized void enqueue(String kind,String id,int stage,String owner,String pool,String account,int priority) {
+    public synchronized void enqueue(String kind,String id,int stage,String owner,String pool,String account,int priority) {enqueue(kind,id,stage,owner,pool,account,priority,null);}
+    public synchronized void enqueue(String kind,String id,int stage,String owner,String pool,String account,int priority,String providedPayload) {
         String key=kind+":"+id+":"+stage; if(db.queryForObject("SELECT COUNT(*) FROM execution_task WHERE business_key=?",Integer.class,key)>0)return;
         long now=System.currentTimeMillis();db.update("INSERT INTO execution_task(id,business_key,owner_username,kind,business_id,stage,pool,account_id,priority,status,next_run_at_ms,created_at_ms,updated_at_ms) VALUES(?,?,?,?,?,?,?,?,?,'QUEUED',?,?,?)",UUID.randomUUID().toString(),key,owner,kind,id,stage,pool,account,priority,now,now,now);
+        if(providedPayload!=null){db.update("UPDATE execution_task SET payload_json=? WHERE business_key=?",providedPayload,key);return;}
+        if(!Set.of("BATCH","WORKFLOW","QUICK").contains(kind))return;
         String table=kind.equals("BATCH")?"batch_call":"workflow_job";String column=kind.equals("BATCH")?"payload_json":"request_json";var frozen=db.query("SELECT "+column+" FROM "+table+" WHERE id=?",(r,n)->r.getString(1),id);if(!frozen.isEmpty())db.update("UPDATE execution_task SET payload_json=?,dependency_key=? WHERE business_key=?",frozen.getFirst(),stage==0?null:kind+":"+id+":"+(stage-1),key);
     }
     public List<Task> due(){return db.query("SELECT * FROM (SELECT e.*,ROW_NUMBER() OVER (PARTITION BY owner_username,pool,account_id ORDER BY priority DESC,created_at_ms,id) AS due_rank FROM execution_task e WHERE status IN ('QUEUED','WAITING_QUOTA') AND next_run_at_ms<=?) WHERE due_rank<=8 ORDER BY created_at_ms,id",this::map,System.currentTimeMillis());}

@@ -1,0 +1,170 @@
+{
+  "summary": {
+    "requests": 32,
+    "errors": 0,
+    "elapsedSeconds": 0.119,
+    "maxSeconds": 0.108
+  },
+  "results": [
+    {
+      "path": "/api/me/person-baselines",
+      "seconds": 0.023,
+      "count": 7
+    },
+    {
+      "path": "/api/ootd/jobs",
+      "seconds": 0.023,
+      "count": 2
+    },
+    {
+      "path": "/api/outfits",
+      "seconds": 0.025,
+      "count": 7
+    },
+    {
+      "path": "/api/closet/tasks?page=1&size=50",
+      "seconds": 0.108,
+      "count": 11
+    },
+    {
+      "path": "/api/me/person-baselines",
+      "seconds": 0.024,
+      "count": 7
+    },
+    {
+      "path": "/api/ootd/jobs",
+      "seconds": 0.022,
+      "count": 2
+    },
+    {
+      "path": "/api/outfits",
+      "seconds": 0.025,
+      "count": 7
+    },
+    {
+      "path": "/api/closet/tasks?page=1&size=50",
+      "seconds": 0.09,
+      "count": 11
+    },
+    {
+      "path": "/api/me/person-baselines",
+      "seconds": 0.005,
+      "count": 7
+    },
+    {
+      "path": "/api/ootd/jobs",
+      "seconds": 0.004,
+      "count": 2
+    },
+    {
+      "path": "/api/outfits",
+      "seconds": 0.005,
+      "count": 7
+    },
+    {
+      "path": "/api/closet/tasks?page=1&size=50",
+      "seconds": 0.085,
+      "count": 11
+    },
+    {
+      "path": "/api/me/person-baselines",
+      "seconds": 0.002,
+      "count": 7
+    },
+    {
+      "path": "/api/ootd/jobs",
+      "seconds": 0.003,
+      "count": 2
+    },
+    {
+      "path": "/api/outfits",
+      "seconds": 0.005,
+      "count": 7
+    },
+    {
+      "path": "/api/closet/tasks?page=1&size=50",
+      "seconds": 0.076,
+      "count": 11
+    },
+    {
+      "path": "/api/me/person-baselines",
+      "seconds": 0.005,
+      "count": 7
+    },
+    {
+      "path": "/api/ootd/jobs",
+      "seconds": 0.004,
+      "count": 2
+    },
+    {
+      "path": "/api/outfits",
+      "seconds": 0.006,
+      "count": 7
+    },
+    {
+      "path": "/api/closet/tasks?page=1&size=50",
+      "seconds": 0.052,
+      "count": 11
+    },
+    {
+      "path": "/api/me/person-baselines",
+      "seconds": 0.005,
+      "count": 7
+    },
+    {
+      "path": "/api/ootd/jobs",
+      "seconds": 0.004,
+      "count": 2
+    },
+    {
+      "path": "/api/outfits",
+      "seconds": 0.01,
+      "count": 7
+    },
+    {
+      "path": "/api/closet/tasks?page=1&size=50",
+      "seconds": 0.062,
+      "count": 11
+    },
+    {
+      "path": "/api/me/person-baselines",
+      "seconds": 0.005,
+      "count": 7
+    },
+    {
+      "path": "/api/ootd/jobs",
+      "seconds": 0.003,
+      "count": 2
+    },
+    {
+      "path": "/api/outfits",
+      "seconds": 0.004,
+      "count": 7
+    },
+    {
+      "path": "/api/closet/tasks?page=1&size=50",
+      "seconds": 0.06,
+      "count": 11
+    },
+    {
+      "path": "/api/me/person-baselines",
+      "seconds": 0.003,
+      "count": 7
+    },
+    {
+      "path": "/api/ootd/jobs",
+      "seconds": 0.002,
+      "count": 2
+    },
+    {
+      "path": "/api/outfits",
+      "seconds": 0.005,
+      "count": 7
+    },
+    {
+      "path": "/api/closet/tasks?page=1&size=50",
+      "seconds": 0.05,
+      "count": 11
+    }
+  ]
+}

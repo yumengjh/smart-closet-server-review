@@ -15,6 +15,18 @@ public class AgentController {
     public record PreferenceEdit(String model,String avatarMode) {}
     public record MemoryEdit(String content,String category) {}
     public record Accept(JsonNode context,Boolean current) {}
+    @org.springframework.beans.factory.annotation.Autowired private AgentMemoryDocuments documents;
+    public record MemoryPermission(String purpose,long revision) {}
+    @GetMapping("/memory-documents") public Object documents(){return documents.list(ClosetIdentity.username());}
+    @PutMapping("/memory-documents/{kind}") public Object document(@PathVariable String kind,@RequestBody AgentMemoryDocuments.Edit edit){return documents.save(ClosetIdentity.username(),kind,edit);}
+    @GetMapping("/memory-permissions") public Object permissions(){return documents.permissions(ClosetIdentity.username());}
+    @PostMapping("/memory-permissions") public Object permission(@RequestBody MemoryPermission input){return documents.authorize(ClosetIdentity.username(),input.purpose(),input.revision());}
+    @DeleteMapping("/memory-permissions/{purpose}") public ResponseEntity<Void> revoke(@PathVariable String purpose){documents.revoke(ClosetIdentity.username(),purpose);return ResponseEntity.noContent().build();}
+    @org.springframework.beans.factory.annotation.Autowired private AgentCommands commands;
+    @GetMapping("/commands/{id}") public Object command(@PathVariable String id){return commands.get(ClosetIdentity.username(),id);}
+    @PostMapping("/commands/{id}/confirm") public Object confirmCommand(@PathVariable String id){return commands.execute(ClosetIdentity.username(),id);}
+    @PostMapping("/commands/{id}/cancel") public Object cancelCommand(@PathVariable String id){return commands.cancel(ClosetIdentity.username(),id);}
+    @PostMapping("/commands/{id}/undo") public Object undoCommand(@PathVariable String id){return commands.undo(ClosetIdentity.username(),id);}
     private final AgentRepository repo;
     private final AgentService service;
     private final HelpService help;

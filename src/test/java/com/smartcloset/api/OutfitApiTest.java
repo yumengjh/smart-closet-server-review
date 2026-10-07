@@ -34,7 +34,7 @@ class OutfitApiTest {
     String csrf;
 
     @Test void outfitHistoryLinksServeTheVueShell() throws Exception {
-        for (String path : List.of("/outfits", "/outfits/new", "/outfits/" + UUID.randomUUID())) {
+        for (String path : List.of("/ootd", "/ootd?outfit=" + UUID.randomUUID(), "/outfits", "/outfits/new", "/outfits/" + UUID.randomUUID())) {
             var response = get(path);
             assertEquals(200, response.statusCode(), path);
             assertTrue(response.body().contains("id=\"app\""), path);
@@ -64,6 +64,19 @@ class OutfitApiTest {
                 HttpResponse.BodyHandlers.ofString());
         assertEquals(204, password.statusCode(), password.body());
         csrf = token;
+    }
+    @Test void lostRenderResponseCanBeReconciledWithoutResubmittingAndDoesNotExposeOtherOwners() throws Exception {
+        String owner="render-owner-"+UUID.randomUUID().toString().substring(0,8);signIn(owner);
+        String key=UUID.randomUUID().toString(),id=UUID.randomUUID().toString();long now=System.currentTimeMillis();
+        jdbc.update("INSERT INTO image_render_job(id,owner_username,purpose,input_json,status,idempotency_key,created_at_ms,updated_at_ms) VALUES(?,?,'BASELINE','{}','QUEUED',?,?,?)",id,owner,key,now,now);
+        for(int i=0;i<2;i++){
+            var response=get("/api/me/image-render-submissions/"+key);assertEquals(200,response.statusCode());
+            var result=json.readTree(response.body());assertTrue(result.path("found").asBoolean());assertEquals(id,result.path("job").path("id").asText());
+            assertEquals("no-store",response.headers().firstValue("Cache-Control").orElse(""));assertFalse(response.body().contains("input_json"));
+        }
+        assertEquals(1,jdbc.queryForObject("SELECT COUNT(*) FROM image_render_job WHERE idempotency_key=?",Integer.class,key));
+        signIn("render-other-"+UUID.randomUUID().toString().substring(0,8));
+        var result=json.readTree(get("/api/me/image-render-submissions/"+key).body());assertFalse(result.path("found").asBoolean());assertTrue(result.path("job").isNull());
     }
     private UUID activeGarment(String owner) throws Exception {
         UUID garment = UUID.randomUUID(), job = UUID.randomUUID(), asset = UUID.randomUUID();

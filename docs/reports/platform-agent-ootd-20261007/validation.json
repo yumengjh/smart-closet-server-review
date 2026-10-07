@@ -1,0 +1,517 @@
+{
+  "backend": {
+    "tests": 222,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 7
+  },
+  "frontend": {
+    "tests": 49,
+    "passed": 49
+  },
+  "runtime": {
+    "tests": 16,
+    "passed": 16
+  },
+  "realModelCalls": 0,
+  "cases": [
+    {
+      "{http://www.w3.org/2001/XMLSchema-instance}noNamespaceSchemaLocation": "https://maven.apache.org/surefire/maven-surefire-plugin/xsd/surefire-test-report.xsd",
+      "version": "3.0.2",
+      "name": "com.smartcloset.ClosetEnvironmentPostProcessorTest",
+      "time": "0.001",
+      "tests": "2",
+      "errors": "0",
+      "skipped": "0",
+      "failures": "0",
+      "flakes": "0"
+    },
+    {
+      "{http://www.w3.org/2001/XMLSchema-instance}noNamespaceSchemaLocation": "https://maven.apache.org/surefire/maven-surefire-plugin/xsd/surefire-test-report.xsd",
+      "version": "3.0.2",
+      "name": "com.smartcloset.agent.AgentApiTest",
+      "time": "18.713",
+      "tests": "23",
+      "errors": "0",
+      "skipped": "0",
+      "failures": "0",
+      "flakes": "0"
+    },
+    {
+      "{http://www.w3.org/2001/XMLSchema-instance}noNamespaceSchemaLocation": "https://maven.apache.org/surefire/maven-surefire-plugin/xsd/surefire-test-report.xsd",
+      "version": "3.0.2",
+      "name": "com.smartcloset.agent.AgentIntentPolicyTest",
+      "time": "0.003",
+      "tests": "2",
+      "errors": "0",
+      "skipped": "0",
+      "failures": "0",
+      "flakes": "0"
+    },
+    {
+      "{http://www.w3.org/2001/XMLSchema-instance}noNamespaceSchemaLocation": "https://maven.apache.org/surefire/maven-surefire-plugin/xsd/surefire-test-report.xsd",
+      "version": "3.0.2",
+      "name": "com.smartcloset.agent.OutfitCandidatesTest",
+      "time": "0.079",
+      "tests": "3",
+      "errors": "0",
+      "skipped": "0",
+      "failures": "0",
+      "flakes": "0"
+    },
+    {
+      "{http://www.w3.org/2001/XMLSchema-instance}noNamespaceSchemaLocation": "https://maven.apache.org/surefire/maven-surefire-plugin/xsd/surefire-test-report.xsd",
+      "version": "3.0.2",
+      "name": "com.smartcloset.agent.OutfitRulesTest",
+      "time": "0.005",
+      "tests": "7",
+      "errors": "0",
+      "skipped": "0",
+      "failures": "0",
+      "flakes": "0"
+    },
+    {
+      "{http://www.w3.org/2001/XMLSchema-instance}noNamespaceSchemaLocation": "https://maven.apache.org/surefire/maven-surefire-plugin/xsd/surefire-test-report.xsd",
+      "version": "3.0.2",
+      "name": "com.smartcloset.agent.RecognitionModelLiveCheckTest",
+      "time": "0.0",
+      "tests": "1",
+      "errors": "0",
+      "skipped": "1",
+      "failures": "0",
+      "flakes": "0"
+    },
+    {
+      "{http://www.w3.org/2001/XMLSchema-instance}noNamespaceSchemaLocation": "https://maven.apache.org/surefire/maven-surefire-plugin/xsd/surefire-test-report.xsd",
+      "version": "3.0.2",
+      "name": "com.smartcloset.api.FlatLayComparisonTest",
+      "time": "0.0",
+      "tests": "2",
+      "errors": "0",
+      "skipped": "2",
+      "failures": "0",
+      "flakes": "0"
+    },
+    {
+      "{http://www.w3.org/2001/XMLSchema-instance}noNamespaceSchemaLocation": "https://maven.apache.org/surefire/maven-surefire-plugin/xsd/surefire-test-report.xsd",
+      "version": "3.0.2",
+      "name": "com.smartcloset.api.LocalStickerOptionsTest",
+      "time": "0.175",
+      "tests": "1",
+      "errors": "0",
+      "skipped": "0",
+      "failures": "0",
+      "flakes": "0"
+    },
+    {
+      "{http://www.w3.org/2001/XMLSchema-instance}noNamespaceSchemaLocation": "https://maven.apache.org/surefire/maven-surefire-plugin/xsd/surefire-test-report.xsd",
+      "version": "3.0.2",
+      "name": "com.smartcloset.api.OutfitApiTest",
+      "time": "8.908",
+      "tests": "6",
+      "errors": "0",
+      "skipped": "0",
+      "failures": "0",
+      "flakes": "0"
+    },
+    {
+      "{http://www.w3.org/2001/XMLSchema-instance}noNamespaceSchemaLocation": "https://maven.apache.org/surefire/maven-surefire-plugin/xsd/surefire-test-report.xsd",
+      "version": "3.0.2",
+      "name": "com.smartcloset.api.SampleComparisonTest",
+      "time": "0.0",
+      "tests": "2",
+      "errors": "0",
+      "skipped": "2",
+      "failures": "0",
+      "flakes": "0"
+    },
+    {
+      "{http://www.w3.org/2001/XMLSchema-instance}noNamespaceSchemaLocation": "https://maven.apache.org/surefire/maven-surefire-plugin/xsd/surefire-test-report.xsd",
+      "version": "3.0.2",
+      "name": "com.smartcloset.api.SegmentationApiTest",
+      "time": "6.954",
+      "tests": "9",
+      "errors": "0",
+      "skipped": "0",
+      "failures": "0",
+      "flakes": "0"
+    },
+    {
+      "{http://www.w3.org/2001/XMLSchema-instance}noNamespaceSchemaLocation": "https://maven.apache.org/surefire/maven-surefire-plugin/xsd/surefire-test-report.xsd",
+      "version": "3.0.2",
+      "name": "com.smartcloset.api.StickerPreviewTest",
+      "time": "0.0",
+      "tests": "1",
+      "errors": "0",
+      "skipped": "1",
+      "failures": "0",
+      "flakes": "0"
+    },
+    {
+      "{http://www.w3.org/2001/XMLSchema-instance}noNamespaceSchemaLocation": "https://maven.apache.org/surefire/maven-surefire-plugin/xsd/surefire-test-report.xsd",
+      "version": "3.0.2",
+      "name": "com.smartcloset.batch.BatchRulesTest",
+      "time": "1.672",
+      "tests": "11",
+      "errors": "0",
+      "skipped": "0",
+      "failures": "0",
+      "flakes": "0"
+    },
+    {
+      "{http://www.w3.org/2001/XMLSchema-instance}noNamespaceSchemaLocation": "https://maven.apache.org/surefire/maven-surefire-plugin/xsd/surefire-test-report.xsd",
+      "version": "3.0.2",
+      "name": "com.smartcloset.batch.BatchServiceTest",
+      "time": "19.409",
+      "tests": "10",
+      "errors": "0",
+      "skipped": "0",
+      "failures": "0",
+      "flakes": "0"
+    },
+    {
+      "{http://www.w3.org/2001/XMLSchema-instance}noNamespaceSchemaLocation": "https://maven.apache.org/surefire/maven-surefire-plugin/xsd/surefire-test-report.xsd",
+      "version": "3.0.2",
+      "name": "com.smartcloset.garment.ClosetClassificationTest",
+      "time": "0.002",
+      "tests": "1",
+      "errors": "0",
+      "skipped": "0",
+      "failures": "0",
+      "flakes": "0"
+    },
+    {
+      "{http://www.w3.org/2001/XMLSchema-instance}noNamespaceSchemaLocation": "https://maven.apache.org/surefire/maven-surefire-plugin/xsd/surefire-test-report.xsd",
+      "version": "3.0.2",
+      "name": "com.smartcloset.generation.GenerationConfigurationTest",
+      "time": "0.005",
+      "tests": "3",
+      "errors": "0",
+      "skipped": "0",
+      "failures": "0",
+      "flakes": "0"
+    },
+    {
+      "{http://www.w3.org/2001/XMLSchema-instance}noNamespaceSchemaLocation": "https://maven.apache.org/surefire/maven-surefire-plugin/xsd/surefire-test-report.xsd",
+      "version": "3.0.2",
+      "name": "com.smartcloset.generation.GenerationServiceTest",
+      "time": "0.587",
+      "tests": "11",
+      "errors": "0",
+      "skipped": "0",
+      "failures": "0",
+      "flakes": "0"
+    },
+    {
+      "{http://www.w3.org/2001/XMLSchema-instance}noNamespaceSchemaLocation": "https://maven.apache.org/surefire/maven-surefire-plugin/xsd/surefire-test-report.xsd",
+      "version": "3.0.2",
+      "name": "com.smartcloset.image.ImageProcessingTest",
+      "time": "0.048",
+      "tests": "9",
+      "errors": "0",
+      "skipped": "0",
+      "failures": "0",
+      "flakes": "0"
+    },
+    {
+      "{http://www.w3.org/2001/XMLSchema-instance}noNamespaceSchemaLocation": "https://maven.apache.org/surefire/maven-surefire-plugin/xsd/surefire-test-report.xsd",
+      "version": "3.0.2",
+      "name": "com.smartcloset.image.LocalStickerRegressionTest",
+      "time": "0.0",
+      "tests": "1",
+      "errors": "0",
+      "skipped": "1",
+      "failures": "0",
+      "flakes": "0"
+    },
+    {
+      "{http://www.w3.org/2001/XMLSchema-instance}noNamespaceSchemaLocation": "https://maven.apache.org/surefire/maven-surefire-plugin/xsd/surefire-test-report.xsd",
+      "version": "3.0.2",
+      "name": "com.smartcloset.image.RotationTest",
+      "time": "0.054",
+      "tests": "4",
+      "errors": "0",
+      "skipped": "0",
+      "failures": "0",
+      "flakes": "0"
+    },
+    {
+      "{http://www.w3.org/2001/XMLSchema-instance}noNamespaceSchemaLocation": "https://maven.apache.org/surefire/maven-surefire-plugin/xsd/surefire-test-report.xsd",
+      "version": "3.0.2",
+      "name": "com.smartcloset.image.SegmentationServiceTest",
+      "time": "0.01",
+      "tests": "1",
+      "errors": "0",
+      "skipped": "0",
+      "failures": "0",
+      "flakes": "0"
+    },
+    {
+      "{http://www.w3.org/2001/XMLSchema-instance}noNamespaceSchemaLocation": "https://maven.apache.org/surefire/maven-surefire-plugin/xsd/surefire-test-report.xsd",
+      "version": "3.0.2",
+      "name": "com.smartcloset.image.StickerRendererTest",
+      "time": "0.581",
+      "tests": "5",
+      "errors": "0",
+      "skipped": "0",
+      "failures": "0",
+      "flakes": "0"
+    },
+    {
+      "{http://www.w3.org/2001/XMLSchema-instance}noNamespaceSchemaLocation": "https://maven.apache.org/surefire/maven-surefire-plugin/xsd/surefire-test-report.xsd",
+      "version": "3.0.2",
+      "name": "com.smartcloset.image.StickerServiceTest",
+      "time": "0.105",
+      "tests": "2",
+      "errors": "0",
+      "skipped": "0",
+      "failures": "0",
+      "flakes": "0"
+    },
+    {
+      "{http://www.w3.org/2001/XMLSchema-instance}noNamespaceSchemaLocation": "https://maven.apache.org/surefire/maven-surefire-plugin/xsd/surefire-test-report.xsd",
+      "version": "3.0.2",
+      "name": "com.smartcloset.image.TransparencyInspectorTest",
+      "time": "0.008",
+      "tests": "8",
+      "errors": "0",
+      "skipped": "0",
+      "failures": "0",
+      "flakes": "0"
+    },
+    {
+      "{http://www.w3.org/2001/XMLSchema-instance}noNamespaceSchemaLocation": "https://maven.apache.org/surefire/maven-surefire-plugin/xsd/surefire-test-report.xsd",
+      "version": "3.0.2",
+      "name": "com.smartcloset.image.TransparencyServiceTest",
+      "time": "0.119",
+      "tests": "7",
+      "errors": "0",
+      "skipped": "0",
+      "failures": "0",
+      "flakes": "0"
+    },
+    {
+      "{http://www.w3.org/2001/XMLSchema-instance}noNamespaceSchemaLocation": "https://maven.apache.org/surefire/maven-surefire-plugin/xsd/surefire-test-report.xsd",
+      "version": "3.0.2",
+      "name": "com.smartcloset.intake.QuickIntakeServiceTest",
+      "time": "3.976",
+      "tests": "9",
+      "errors": "0",
+      "skipped": "0",
+      "failures": "0",
+      "flakes": "0"
+    },
+    {
+      "{http://www.w3.org/2001/XMLSchema-instance}noNamespaceSchemaLocation": "https://maven.apache.org/surefire/maven-surefire-plugin/xsd/surefire-test-report.xsd",
+      "version": "3.0.2",
+      "name": "com.smartcloset.intake.QuickRecognitionTest",
+      "time": "0.004",
+      "tests": "2",
+      "errors": "0",
+      "skipped": "0",
+      "failures": "0",
+      "flakes": "0"
+    },
+    {
+      "{http://www.w3.org/2001/XMLSchema-instance}noNamespaceSchemaLocation": "https://maven.apache.org/surefire/maven-surefire-plugin/xsd/surefire-test-report.xsd",
+      "version": "3.0.2",
+      "name": "com.smartcloset.person.PersonalRendersTest",
+      "time": "3.656",
+      "tests": "3",
+      "errors": "0",
+      "skipped": "0",
+      "failures": "0",
+      "flakes": "0"
+    },
+    {
+      "{http://www.w3.org/2001/XMLSchema-instance}noNamespaceSchemaLocation": "https://maven.apache.org/surefire/maven-surefire-plugin/xsd/surefire-test-report.xsd",
+      "version": "3.0.2",
+      "name": "com.smartcloset.person.WearerProfilesTest",
+      "time": "0.001",
+      "tests": "3",
+      "errors": "0",
+      "skipped": "0",
+      "failures": "0",
+      "flakes": "0"
+    },
+    {
+      "{http://www.w3.org/2001/XMLSchema-instance}noNamespaceSchemaLocation": "https://maven.apache.org/surefire/maven-surefire-plugin/xsd/surefire-test-report.xsd",
+      "version": "3.0.2",
+      "name": "com.smartcloset.processing.ProcessingInfrastructureTest",
+      "time": "3.435",
+      "tests": "7",
+      "errors": "0",
+      "skipped": "0",
+      "failures": "0",
+      "flakes": "0"
+    },
+    {
+      "{http://www.w3.org/2001/XMLSchema-instance}noNamespaceSchemaLocation": "https://maven.apache.org/surefire/maven-surefire-plugin/xsd/surefire-test-report.xsd",
+      "version": "3.0.2",
+      "name": "com.smartcloset.recognition.RecognitionContractTest",
+      "time": "0.003",
+      "tests": "4",
+      "errors": "0",
+      "skipped": "0",
+      "failures": "0",
+      "flakes": "0"
+    },
+    {
+      "{http://www.w3.org/2001/XMLSchema-instance}noNamespaceSchemaLocation": "https://maven.apache.org/surefire/maven-surefire-plugin/xsd/surefire-test-report.xsd",
+      "version": "3.0.2",
+      "name": "com.smartcloset.security.ClosetAuthenticationApiTest",
+      "time": "9.615",
+      "tests": "9",
+      "errors": "0",
+      "skipped": "0",
+      "failures": "0",
+      "flakes": "0"
+    },
+    {
+      "{http://www.w3.org/2001/XMLSchema-instance}noNamespaceSchemaLocation": "https://maven.apache.org/surefire/maven-surefire-plugin/xsd/surefire-test-report.xsd",
+      "version": "3.0.2",
+      "name": "com.smartcloset.security.ClosetCorsApiTest",
+      "time": "4.491",
+      "tests": "4",
+      "errors": "0",
+      "skipped": "0",
+      "failures": "0",
+      "flakes": "0"
+    },
+    {
+      "{http://www.w3.org/2001/XMLSchema-instance}noNamespaceSchemaLocation": "https://maven.apache.org/surefire/maven-surefire-plugin/xsd/surefire-test-report.xsd",
+      "version": "3.0.2",
+      "name": "com.smartcloset.security.ClosetCorsPropertiesTest",
+      "time": "0.004",
+      "tests": "1",
+      "errors": "0",
+      "skipped": "0",
+      "failures": "0",
+      "flakes": "0"
+    },
+    {
+      "{http://www.w3.org/2001/XMLSchema-instance}noNamespaceSchemaLocation": "https://maven.apache.org/surefire/maven-surefire-plugin/xsd/surefire-test-report.xsd",
+      "version": "3.0.2",
+      "name": "com.smartcloset.security.ClosetSessionRestartTest",
+      "time": "2.152",
+      "tests": "1",
+      "errors": "0",
+      "skipped": "0",
+      "failures": "0",
+      "flakes": "0"
+    },
+    {
+      "{http://www.w3.org/2001/XMLSchema-instance}noNamespaceSchemaLocation": "https://maven.apache.org/surefire/maven-surefire-plugin/xsd/surefire-test-report.xsd",
+      "version": "3.0.2",
+      "name": "com.smartcloset.security.PortableLoginFilterTest",
+      "time": "0.075",
+      "tests": "2",
+      "errors": "0",
+      "skipped": "0",
+      "failures": "0",
+      "flakes": "0"
+    },
+    {
+      "{http://www.w3.org/2001/XMLSchema-instance}noNamespaceSchemaLocation": "https://maven.apache.org/surefire/maven-surefire-plugin/xsd/surefire-test-report.xsd",
+      "version": "3.0.2",
+      "name": "com.smartcloset.weather.WeatherContextTest",
+      "time": "0.002",
+      "tests": "1",
+      "errors": "0",
+      "skipped": "0",
+      "failures": "0",
+      "flakes": "0"
+    },
+    {
+      "{http://www.w3.org/2001/XMLSchema-instance}noNamespaceSchemaLocation": "https://maven.apache.org/surefire/maven-surefire-plugin/xsd/surefire-test-report.xsd",
+      "version": "3.0.2",
+      "name": "com.smartcloset.workflow.ParallelHttpWorkflowTest",
+      "time": "4.616",
+      "tests": "1",
+      "errors": "0",
+      "skipped": "0",
+      "failures": "0",
+      "flakes": "0"
+    },
+    {
+      "{http://www.w3.org/2001/XMLSchema-instance}noNamespaceSchemaLocation": "https://maven.apache.org/surefire/maven-surefire-plugin/xsd/surefire-test-report.xsd",
+      "version": "3.0.2",
+      "name": "com.smartcloset.workflow.RecognitionWorkflowTest",
+      "time": "6.925",
+      "tests": "18",
+      "errors": "0",
+      "skipped": "0",
+      "failures": "0",
+      "flakes": "0"
+    },
+    {
+      "{http://www.w3.org/2001/XMLSchema-instance}noNamespaceSchemaLocation": "https://maven.apache.org/surefire/maven-surefire-plugin/xsd/surefire-test-report.xsd",
+      "version": "3.0.2",
+      "name": "com.smartcloset.workflow.WorkflowApiTest",
+      "time": "17.135",
+      "tests": "13",
+      "errors": "0",
+      "skipped": "0",
+      "failures": "0",
+      "flakes": "0"
+    },
+    {
+      "{http://www.w3.org/2001/XMLSchema-instance}noNamespaceSchemaLocation": "https://maven.apache.org/surefire/maven-surefire-plugin/xsd/surefire-test-report.xsd",
+      "version": "3.0.2",
+      "name": "com.smartcloset.workflow.WorkflowServiceTest",
+      "time": "3.323",
+      "tests": "12",
+      "errors": "0",
+      "skipped": "0",
+      "failures": "0",
+      "flakes": "0"
+    }
+  ],
+  "build": {
+    "jar": "smart-closet-server-0.0.1-SNAPSHOT.jar",
+    "sha256": "d6f2d3c2f834a5fbeb5d48ebac6e8879212d7f9897da9afd53447158e67666de",
+    "deployed": false
+  },
+  "assistantOverlay": {
+    "viewportWidth": 1440,
+    "mainWidthBefore": 1216,
+    "mainWidthAfter": 1216
+  },
+  "skippedDetails": [
+    {
+      "suite": "com.smartcloset.api.FlatLayComparisonTest",
+      "case": "referenceMetricsCountMissingAndExtraPixels",
+      "reason": "System property [closet.round2] does not exist"
+    },
+    {
+      "suite": "com.smartcloset.api.FlatLayComparisonTest",
+      "case": "compareFixedCompleteGarments",
+      "reason": "System property [closet.round2] does not exist"
+    },
+    {
+      "suite": "com.smartcloset.image.LocalStickerRegressionTest",
+      "case": "roundedTransparentPhotosActuallyRunSegmentationWhenForced",
+      "reason": "System property [closet.samples] does not exist"
+    },
+    {
+      "suite": "com.smartcloset.api.SampleComparisonTest",
+      "case": "modelRefinementUsesOriginalCoordinatesAndKeepsOutsideTransparent",
+      "reason": "System property [closet.samples] does not exist"
+    },
+    {
+      "suite": "com.smartcloset.api.SampleComparisonTest",
+      "case": "compareDownloadedPhotosOverHttpAndSaveArtifacts",
+      "reason": "System property [closet.samples] does not exist"
+    },
+    {
+      "suite": "com.smartcloset.agent.RecognitionModelLiveCheckTest",
+      "case": "realPublicSampleUsesExistingRecognitionSchema",
+      "reason": "Environment variable [CLOSET_AGENT_LIVE_VERIFY] does not exist"
+    },
+    {
+      "suite": "com.smartcloset.api.StickerPreviewTest",
+      "case": "renderReviewedCutoutsAndExportLightAndDarkPreviews",
+      "reason": "System property [closet.stickers] does not exist"
+    }
+  ]
+}

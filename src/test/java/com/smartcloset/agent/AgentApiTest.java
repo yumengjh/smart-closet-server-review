@@ -30,8 +30,9 @@ class AgentApiTest {
  @DynamicPropertySource static void config(DynamicPropertyRegistry r){r.add("closet.storage-dir",()->storage.toString());r.add("agent.runtime-url",()->"http://127.0.0.1:"+runtime.getAddress().getPort());}
  @AfterAll static void shutdown(){runtime.stop(0);}
  @LocalServerPort int port;
- @Autowired AgentTraceService traces; @Autowired AgentRepository repo; @Autowired AgentService service; @Autowired HelpService help;
- @Autowired ClosetAccountService accounts; @Autowired JdbcTemplate db;
+ @Autowired com.smartcloset.person.PrivateMedia privateMedia; @Autowired AgentTraceService traces; @Autowired AgentRepository repo; @Autowired AgentService service; @Autowired HelpService help;
+ @Autowired com.smartcloset.garment.ClosetSummaryService summaries; @Autowired com.smartcloset.garment.GarmentRepository garments; @Autowired CompositionReviews reviews; @Autowired AgentMemoryDocuments documents; @Autowired AgentCommands commands;
+ @Autowired AgentPlatformCommands platformCommands; @Autowired ClosetAccountService accounts; @Autowired JdbcTemplate db;
  HttpClient client=HttpClient.newBuilder().cookieHandler(new CookieManager(null,CookiePolicy.ACCEPT_ALL)).build(); String csrf;
  HttpResponse<String> send(String method,String path,Object body)throws Exception{
   var b=HttpRequest.newBuilder(URI.create("http://127.0.0.1:"+port+path)).header("Content-Type","application/json");
@@ -148,8 +149,8 @@ class AgentApiTest {
     assertEquals("UNKNOWN",metadata.path("quality").path("primaryColor").path("status").asText());
     assertTrue(metadata.path("fields").has("closure"));assertEquals(3,input.path("context").path("garments").size());
     var search=json.valueToTree(service.tool(token,new AgentService.ToolRequest("search_wardrobe",json.readTree("{\"query\":\"衬衫 长裤\",\"page\":9}"))));
-    assertTrue(search.path("fallbackApplied").asBoolean());assertEquals(0,search.path("matchedTotal").asInt());
-    assertEquals(6,search.path("total").asInt());assertEquals(1,search.path("page").asInt());assertEquals("",search.path("appliedQuery").asText());
+    assertFalse(search.path("fallbackApplied").asBoolean());assertEquals(0,search.path("matchedTotal").asInt());
+    assertEquals(0,search.path("total").asInt());assertEquals(9,search.path("page").asInt());assertEquals("衬衫 长裤",search.path("appliedQuery").asText());
     assertFalse(search.path("hasMore").asBoolean());
     for(String name:List.of("build_outfits","propose_outfits"))for(var ids:List.of(List.of(top,bottom,outer,cardigan),List.of(dress,top),List.of(top,bottom,outer),List.of(dress,cardigan),List.of(top,unknown),List.of(outer)))
      assertThrows(com.smartcloset.image.ProcessingException.class,()->service.tool(token,new AgentService.ToolRequest(name,candidates(List.of(ids)))));
@@ -182,6 +183,72 @@ class AgentApiTest {
    if(failure.get()!=null)throw new AssertionError("Outfit callback checks failed",failure.get());
    assertTrue(response.body().contains("event: done"),response.body());assertFalse(response.body().contains("event: canvas_operation"));
   }finally{runtime.removeContext("/run");}
+ }
+ @Test void countsUseAuthoritativeActiveRecordsOverlappingSeasonsAndUnknowns()throws Exception {
+  String owner=login();String dress=clothing(owner,"ACTIVE","连衣裙");clothing(owner,"ACTIVE","半身裙");clothing(owner,"ACTIVE","衬衫");String ambiguous=clothing(owner,"ACTIVE","裙装");clothing(owner,"DRAFT","衬衫");clothing(owner,"TRASHED","长裤");
+  db.update("UPDATE garment SET overrides_json=? WHERE id=?",json.writeValueAsString(Map.of("category",List.of("连衣裙"),"seasons",List.of("春季","夏季"))),dress);
+  db.update("UPDATE garment SET overrides_json=? WHERE id=?",json.writeValueAsString(Map.of("category",List.of("裙装"),"seasons",List.of("未知"))),ambiguous);
+  var result=summaries.summary(owner,"裙子","");assertFalse(((Map<?,?>)result.get("seasonCounts")).containsKey("未知"));assertEquals(2,result.get("count"));assertEquals(4,result.get("totalActive"));assertEquals(1L,result.get("unknownCategoryCount"));assertEquals(3L,result.get("unknownSeasonCount"));assertEquals(0,summaries.summary(owner,"裤子","").get("count"));assertEquals(1,summaries.summary(owner,"","夏季").get("count"));
+  assertEquals(2,garments.listCloset(owner,"ACTIVE","","裙子","","",1,20).total());assertEquals(0,garments.listCloset(owner,"ACTIVE","不存在","","","",1,20).total());
+ }
+ @Test void sensitiveMemoryRequiresConcreteConfirmationAndUndoUsesRevision()throws Exception {
+  String owner=login();var doc=documents.get(owner,"SENSITIVE");var parameters=json.valueToTree(Map.of("documentKind","SENSITIVE","operation","APPEND","newContent","身高170 cm","evidence","记住我身高170"));var prepared=commands.prepare(owner,new AgentCommands.Prepare("MEMORY_PATCH",null,doc.revision(),parameters,"sensitive-1"),"记住我身高170");
+  assertEquals("PREPARED",prepared.status());assertTrue(documents.get(owner,"SENSITIVE").content().isBlank());var confirmed=commands.execute(owner,prepared.id());assertTrue(confirmed.contextChanged());assertTrue(documents.get(owner,"SENSITIVE").content().contains("170"));assertTrue(documents.permissions(owner).isEmpty());commands.undo(owner,prepared.id());assertTrue(documents.get(owner,"SENSITIVE").content().isBlank());
+ }
+ @Test void revokedMemoryBetweenPreparationAndStreamingNeverReachesRuntime()throws Exception {
+  String owner=login();var session=repo.create(owner);var called=new java.util.concurrent.atomic.AtomicInteger();
+  runtime.createContext("/run",exchange->{called.incrementAndGet();byte[] out="{\"event\":\"done\",\"data\":{}}\n".getBytes(StandardCharsets.UTF_8);exchange.sendResponseHeaders(200,out.length);exchange.getResponseBody().write(out);exchange.close();});
+  try {
+   var request=json.treeToValue(json.valueToTree(Map.of("requestId",UUID.randomUUID().toString(),"content","你好","context",Map.of("route","/wardrobe"))),AgentService.Request.class);
+   var prepared=service.stream(owner,session.id(),request);
+   documents.revoke(owner,"OUTFIT");
+   var output=new java.io.ByteArrayOutputStream();prepared.writeTo(output);
+   assertEquals(0,called.get());assertTrue(output.toString(StandardCharsets.UTF_8).contains("AGENT_RUN_FAILED"));
+  }finally{runtime.removeContext("/run");}
+ }
+ @Test void rawMemoryHasCasPurposeConsentAndForgetBarrier()throws Exception {
+  String owner=login();var session=repo.create(owner);long epoch=documents.epoch(owner,session.id());
+  var sensitive=documents.get(owner,"SENSITIVE");var saved=documents.save(owner,"SENSITIVE",new AgentMemoryDocuments.Edit(sensitive.revision(),"身高 170，怕冷"));
+  assertTrue(documents.epoch(owner,session.id())>epoch);assertFalse(json.writeValueAsString(documents.modelInput(owner,Set.of("OUTFIT"))).contains("170"));
+  documents.authorize(owner,"OUTFIT",saved.revision());assertTrue(json.writeValueAsString(documents.modelInput(owner,Set.of("OUTFIT"))).contains("170"));assertFalse(json.writeValueAsString(documents.modelInput(owner,Set.of())).contains("170"));
+  assertThrows(com.smartcloset.image.ProcessingException.class,()->documents.save(owner,"SENSITIVE",new AgentMemoryDocuments.Edit(sensitive.revision(),"覆盖")));
+  documents.revoke(owner,"OUTFIT");assertFalse(json.writeValueAsString(documents.modelInput(owner,Set.of("OUTFIT"))).contains("170"));
+ }
+ @Test void commandIsIdempotentAndUndoCannotOverwriteLaterEdits()throws Exception {
+  String owner=login();String target=clothing(owner,"ACTIVE","衬衫");var request=new AgentCommands.Prepare("GARMENT_BASIC",UUID.fromString(target),0,json.valueToTree(Map.of("name","白衬衫")),"rename-1");
+  var command=commands.prepare(owner,request,"把这件改名为白衬衫");assertEquals("SUCCEEDED",command.status());assertEquals(command.id(),commands.prepare(owner,request,"把这件改名为白衬衫").id());assertEquals(1,garments.get(UUID.fromString(target)).revision());
+  garments.editBasic(owner,UUID.fromString(target),new com.smartcloset.garment.GarmentRepository.BasicEdit(1L,"通勤衬衫",null));assertThrows(com.smartcloset.image.ProcessingException.class,()->commands.undo(owner,command.id()));assertEquals("通勤衬衫",garments.get(UUID.fromString(target)).name());
+  var favorite=commands.prepare(owner,new AgentCommands.Prepare("GARMENT_BASIC",UUID.fromString(target),2,json.valueToTree(Map.of("favorite",true)),"fav-2"),"收藏这件");commands.undo(owner,favorite.id());assertFalse(garments.get(UUID.fromString(target)).favorite());
+ }
+ @Test void reviewUsesRealCategoryAndDeduplicatesCanvasInstances()throws Exception {
+  String owner=login();String dress=clothing(owner,"ACTIVE","连衣裙"),coat=clothing(owner,"ACTIVE","外套"),cardigan=clothing(owner,"ACTIVE","开衫");
+  var scene=json.valueToTree(Map.of("elements",List.of(Map.of("garmentId",dress,"role","BOTTOM"),Map.of("garmentId",dress,"role","TOP"))));
+  var review=reviews.review(owner,new CompositionReviews.Request(null,null,scene,null,null,false));assertTrue(review.passed());assertEquals(1,review.items().size());assertEquals("ONE_PIECE",review.items().getFirst().role());assertEquals("NO_SHOES",review.warnings().getFirst().code());
+  var invalid=json.valueToTree(Map.of("elements",List.of(Map.of("garmentId",dress),Map.of("garmentId",coat,"role","TOP"),Map.of("garmentId",cardigan,"role","ACCESSORY"))));assertFalse(reviews.review(owner,new CompositionReviews.Request(null,null,invalid,null,null,false)).passed());
+ }
+ @Test void countTurnRejectsEvenMaliciousModelWriteTool()throws Exception {
+  String owner=login();String item=clothing(owner,"ACTIVE","衬衫");var session=repo.create(owner);var failure=new java.util.concurrent.atomic.AtomicReference<Throwable>();
+  runtime.createContext("/run",exchange->{String frame;try{var input=json.readTree(exchange.getRequestBody().readAllBytes());String token=input.path("callbackToken").asText();assertFalse(input.path("allowedTools").toString().contains("build_outfits"));assertEquals(1,json.valueToTree(service.tool(token,new AgentService.ToolRequest("closet_summary",json.createObjectNode()))).path("count").asInt());for(String name:List.of("build_outfits","remember_preference","navigate","prepare_command"))assertThrows(com.smartcloset.image.ProcessingException.class,()->service.tool(token,new AgentService.ToolRequest(name,json.createObjectNode())));frame="{\"event\":\"done\",\"data\":{}}\n";}catch(Throwable e){failure.set(e);frame="{\"event\":\"error\",\"data\":{}}\n";}byte[] out=frame.getBytes(StandardCharsets.UTF_8);exchange.sendResponseHeaders(200,out.length);exchange.getResponseBody().write(out);exchange.close();});
+  try{var response=send("POST","/api/agent/sessions/"+session.id()+"/messages",Map.of("requestId",UUID.randomUUID().toString(),"content","我有多少件衣服？","context",Map.of("route","/wardrobe")));if(failure.get()!=null)throw new AssertionError(failure.get());assertTrue(response.body().contains("event: done"));assertEquals(0,garments.get(UUID.fromString(item)).revision());}finally{runtime.removeContext("/run");}
+ }
+ @Test void batchConfirmationChecksAllVersionsAndDoesNotPartiallyWrite()throws Exception {
+  String owner=login();String a=clothing(owner,"ACTIVE","衬衫"),b=clothing(owner,"ACTIVE","长裤");var input=json.valueToTree(Map.of("operation","BASIC","favorite",true,"targets",List.of(Map.of("id",a,"revision",0),Map.of("id",b,"revision",0))));
+  var prepared=platformCommands.prepare(owner,"GARMENT_BATCH","batch-cas",input);assertEquals("PREPARED",prepared.status());assertFalse(garments.get(UUID.fromString(a)).favorite());
+  garments.editBasic(owner,UUID.fromString(b),new com.smartcloset.garment.GarmentRepository.BasicEdit(0L,"用户新名称",null));assertThrows(com.smartcloset.image.ProcessingException.class,()->commands.execute(owner,prepared.id()));assertFalse(garments.get(UUID.fromString(a)).favorite());
+  var fresh=json.valueToTree(Map.of("operation","BASIC","favorite",true,"targets",List.of(Map.of("id",a,"revision",0),Map.of("id",b,"revision",1))));var command=platformCommands.prepare(owner,"GARMENT_BATCH","batch-fresh",fresh);assertEquals("SUCCEEDED",commands.execute(owner,command.id()).status());commands.execute(owner,command.id());assertEquals(1,garments.get(UUID.fromString(a)).revision());assertTrue(garments.get(UUID.fromString(b)).favorite());assertFalse(commands.get(owner,command.id()).canUndo());
+ }
+ @Test void legacyMemoryCannotResurrectForgottenContentOrOverrideRawEdits()throws Exception {
+  String owner=login();var memory=repo.memory(owner,null,"我喜欢绿色","COLOR");var raw=documents.get(owner,"GENERAL");documents.save(owner,"GENERAL",new AgentMemoryDocuments.Edit(raw.revision(),""));assertThrows(com.smartcloset.image.ProcessingException.class,()->repo.memory(owner,memory.id(),"我喜欢蓝色","COLOR"));assertEquals("我喜欢绿色",repo.memories(owner).getFirst().content());assertTrue(documents.get(owner,"GENERAL").content().isBlank());
+ }
+ @Test void proposalAcceptanceRejectsChangedGarmentFacts()throws Exception {
+  String owner=login();String id=clothing(owner,"ACTIVE","连衣裙");var session=repo.create(owner);var p=repo.propose(owner,session.id(),"OUTFITS",candidates(List.of(List.of(id))),json.valueToTree(Map.of("route","/wardrobe")));garments.editBasic(owner,UUID.fromString(id),new com.smartcloset.garment.GarmentRepository.BasicEdit(0L,"新名称",null));assertThrows(com.smartcloset.image.ProcessingException.class,()->repo.consume(owner,p.id()));assertFalse(repo.proposal(owner,p.id()).consumed());
+ }
+ @Test void sensitiveFactsCannotBeAutoSavedToGeneralMemory()throws Exception {
+  String owner=login();var doc=documents.get(owner,"GENERAL");var input=json.valueToTree(Map.of("documentKind","GENERAL","operation","APPEND","newContent","身高170cm","evidence","记住我身高170"));assertThrows(com.smartcloset.image.ProcessingException.class,()->commands.prepare(owner,new AgentCommands.Prepare("MEMORY_PATCH",null,doc.revision(),input,"bad-classification"),"记住我身高170"));assertTrue(documents.get(owner,"GENERAL").content().isBlank());
+ }
+ @Test void privateMediaHttpIsNoStoreAndEvenAnAdministratorCannotReadAnotherOwner()throws Exception {
+  String owner=login();var bytes=new java.io.ByteArrayOutputStream();javax.imageio.ImageIO.write(new java.awt.image.BufferedImage(32,48,java.awt.image.BufferedImage.TYPE_INT_RGB),"png",bytes);var image=privateMedia.put(owner,"PHOTO",bytes.toByteArray());var own=send("GET",image.url(),null);assertEquals(200,own.statusCode());assertTrue(own.headers().firstValue("Cache-Control").orElse("").contains("no-store"));
+  String admin="admin-"+UUID.randomUUID().toString().substring(0,8);accounts.create(admin,"agent-test-password","ADMIN");db.update("UPDATE closet_user SET must_change_password=0 WHERE username=?",admin);assertEquals(200,send("POST","/api/auth/login",Map.of("username",admin,"password","agent-test-password")).statusCode());assertEquals(404,send("GET",image.url(),null).statusCode());
  }
  @Test void helpIsSharedAndUnknownRetrievalStaysUnknown(){assertEquals(3,help.articles().size());assertFalse(help.search("组合台保存草稿").isEmpty());assertTrue(help.search("宇宙量子飞船驾驶").isEmpty());}
  @Test void traceSnapshotsPersistArePaginatedRedactedAndAccountScoped()throws Exception {
@@ -219,6 +286,13 @@ class AgentApiTest {
   traces.recoverInterruptedRuns();assertEquals("FAILED",repo.messages(owner,session.id()).getLast().status());assertEquals(request,repo.messages(owner,session.id()).getLast().requestId());
   assertEquals("INTERRUPTED",json.valueToTree(traces.list(owner,session.id(),request,0,100)).path("status").asText());assertEquals(1,repo.quota(owner).get("used"));
   assertEquals(2,db.queryForObject("SELECT COUNT(*) FROM agent_trace_event WHERE request_id=?",Integer.class,request));repo.delete(owner,session.id());
+ }
+
+ @Test void profilePatchPreservesOtherPreferencesAndUnknownRenderCanBeCancelled()throws Exception {
+  String owner=login();var profiles=new com.smartcloset.person.WearerProfiles(db,json);profiles.update(owner,new com.smartcloset.person.WearerProfiles.Profile(0,"FEMALE",null,null,null,Map.of("waist",70d),Map.of("style","简约","thermal","怕冷"),null));
+  var command=platformCommands.prepare(owner,"PROFILE_EDIT","profile-one-field",json.valueToTree(Map.of("revision",1,"fields",Map.of("preferences",Map.of("style","休闲")))));commands.execute(owner,command.id());assertEquals(Map.of("style","休闲","thermal","怕冷"),profiles.get(owner).preferences());assertEquals(Map.of("waist",70d),profiles.get(owner).measurements());
+  String id=UUID.randomUUID().toString();long now=System.currentTimeMillis();db.update("INSERT INTO image_render_job(id,owner_username,purpose,input_json,status,idempotency_key,created_at_ms,updated_at_ms) VALUES(?,?,'OOTD','{}','UNKNOWN',?,?,?)",id,owner,id,now,now);
+  var cancel=platformCommands.prepare(owner,"TASK_CANCEL","cancel-unknown",json.valueToTree(Map.of("taskId",id)));commands.execute(owner,cancel.id());assertEquals("CANCELLED",db.queryForObject("SELECT status FROM image_render_job WHERE id=?",String.class,id));assertEquals(1L,db.queryForObject("SELECT deletion_epoch FROM image_render_job WHERE id=?",Long.class,id));
  }
 
 }

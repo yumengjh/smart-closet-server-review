@@ -1,0 +1,23 @@
+{
+  "backend": {
+    "tests": 226,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 7
+  },
+  "frontend": {
+    "tests": 55,
+    "passed": 55
+  },
+  "runtime": {
+    "tests": 16,
+    "passed": 16
+  },
+  "ootdBrowser": {
+    "recoveryPosts": 1,
+    "lookupCalls": 1,
+    "originalRecovered": true,
+    "validationModalError": true
+  },
+  "newRealAiCalls": 0
+}

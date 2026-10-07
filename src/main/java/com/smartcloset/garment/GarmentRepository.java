@@ -20,7 +20,7 @@ public class GarmentRepository {
                        Map<String, List<String>> overrides, Map<String, List<String>> effective,
                        UUID latestRecognitionJobId, UUID appliedRecognitionJobId, List<Run> runs,
                        String status, String restoreStatus, long createdAtMs, long updatedAtMs, UUID latestImageJobId,
-                       List<ImageOption> images, ImageProcessing imageProcessing) {}
+                       List<ImageOption> images, ImageProcessing imageProcessing, String name, boolean favorite) {}
     public record ImageProcessing(UUID jobId, String status, boolean stickerRequired, boolean stickerReady, UUID stickerAssetId) {}
     public record ImageOption(UUID id, String url, String kind, String reviewStatus, boolean aiGenerated) { public ImageOption(UUID id,String url,String kind,String reviewStatus){this(id,url,kind,reviewStatus,false);} }
     public record ClosetPage(List<View> items, long total, int page, int size) {}
@@ -59,7 +59,7 @@ public class GarmentRepository {
                     (rs,n) -> new ImageOption(UUID.fromString(rs.getString(1)), "/api/workflows/" + rs.getString(2) + "/files/" + rs.getString(3), rs.getString(4), rs.getString(5), "AI_ENHANCED".equals(rs.getString(4)) || "GENERATE".equals(rs.getString(4)) || rs.getObject("generated_step")!=null && rs.getString(3).matches("step-[0-5]\\.png") && Integer.parseInt(rs.getString(3).substring(5,6))>=rs.getInt("generated_step")), id.toString());
             return new View(id, r.revision(), UUID.fromString(r.source()), assetUrl(r.source()), r.origin(), UUID.fromString(r.display()), assetUrl(r.display()),
                 automatic, overrides, effective, uuid(r.latest()), uuid(r.applied()), runs,
-                r.status(), r.restoreStatus(), r.created(), r.updated(), uuid(r.latestImage()), images, imageProcessing(r));
+                r.status(), r.restoreStatus(), r.created(), r.updated(), uuid(r.latestImage()), images, imageProcessing(r), jdbc.queryForObject("SELECT name FROM garment WHERE id=?", String.class, id.toString()), Boolean.TRUE.equals(jdbc.queryForObject("SELECT favorite FROM garment WHERE id=?", Boolean.class, id.toString())));
         });
     }
     private ImageProcessing imageProcessing(Row row) {
@@ -81,20 +81,40 @@ public class GarmentRepository {
     }
     public ClosetPage listCloset(String owner, String status, String query, String category, String color, String season, int page, int size) {
         if (page < 1 || size < 1 || size > 50) throw ProcessingException.invalid("page 从 1 开始，size 为 1 到 50。");
-        var ids = jdbc.query("SELECT id FROM garment WHERE owner_username=? AND closet_status=? ORDER BY updated_at_ms DESC,id DESC",
-                (r,n) -> UUID.fromString(r.getString(1)), owner, status);
-        String q = query == null ? "" : query.trim().toLowerCase(Locale.ROOT);
-        var matches = new ArrayList<View>();
-        for (UUID id : ids) {
-            View view = get(id);
-            if (category != null && !category.isBlank() && !view.effective().getOrDefault("category", List.of()).contains(MetadataValues.canonical("category", category))) continue;
-            if (color != null && !color.isBlank() && !MetadataValues.matchesColor(view.effective().getOrDefault("primaryColor", List.of()), color)) continue;
-            if (season != null && !season.isBlank() && !view.effective().getOrDefault("seasons", List.of()).contains(MetadataValues.canonical("seasons", season))) continue;
-            if (!q.isBlank() && view.effective().values().stream().flatMap(Collection::stream).noneMatch(value -> value.toLowerCase(Locale.ROOT).contains(q))) continue;
-            matches.add(view);
-        }
-        int from = Math.min(matches.size(), (page - 1) * size), to = Math.min(matches.size(), from + size);
-        return new ClosetPage(matches.subList(from, to), matches.size(), page, size);
+        var rows = projection(owner).stream().filter(g -> g.status().equals(status))
+            .filter(g -> matches(g, query, category, color, season)).toList();
+        int from = (int)Math.min(rows.size(), (long)(page - 1) * size), to = Math.min(rows.size(), from + size);
+        return new ClosetPage(rows.subList(from, to).stream().map(g -> get(g.id())).toList(), rows.size(), page, size);
+    }
+    public record Projection(UUID id, long revision, String status, String name, boolean favorite,
+            Map<String,List<String>> fields, String family, boolean wearingConfirmed) {}
+    /** Lightweight authoritative projection; no images, tasks or model calls. */
+    public List<Projection> projection(String owner) {
+        return jdbc.query("SELECT id,revision,closet_status,name,favorite,automatic_json,overrides_json FROM garment WHERE owner_username=? ORDER BY updated_at_ms DESC,id DESC", (rs,n) -> {
+            var automatic=rs.getString("automatic_json")==null?null:json.readValue(rs.getString("automatic_json"),Recognition.Result.class);
+            var userValues=overrides(rs.getString("overrides_json"));var fields=effective(automatic,userValues);
+            return new Projection(UUID.fromString(rs.getString("id")),rs.getLong("revision"),rs.getString("closet_status"),rs.getString("name"),rs.getBoolean("favorite"),fields,ClosetClassification.family(fields.getOrDefault("category",List.of())),List.of("fit","thickness","wearingModes").stream().allMatch(k -> userValues.containsKey(k)&&!userValues.get(k).isEmpty()));
+        },owner);
+    }
+    public static boolean matches(Projection item,String query,String category,String color,String season) {
+        var f=item.fields();
+        if(category!=null&&!category.isBlank()&&!ClosetClassification.matches(f.getOrDefault("category",List.of()),category))return false;
+        if(color!=null&&!color.isBlank()&&!MetadataValues.matchesColor(f.getOrDefault("primaryColor",List.of()),color))return false;
+        if(season!=null&&!season.isBlank()&&!f.getOrDefault("seasons",List.of()).contains(MetadataValues.canonical("seasons",season)))return false;
+        String q=query==null?"":query.strip().toLowerCase(Locale.ROOT);
+        return q.isBlank()||Objects.toString(item.name(),"").toLowerCase(Locale.ROOT).contains(q)||f.values().stream().flatMap(Collection::stream).anyMatch(v -> v.toLowerCase(Locale.ROOT).contains(q))||ClosetClassification.matches(f.getOrDefault("category",List.of()),q);
+    }
+    public record BasicEdit(Long revision,String name,Boolean favorite) {}
+    public View editBasic(String owner,UUID id,BasicEdit request) {
+        if(request==null||request.revision()==null)throw ProcessingException.invalid("需要当前 revision。");
+        if(request.name()!=null&&(request.name().isBlank()||request.name().length()>100))throw ProcessingException.invalid("名称为 1 到 100 字。");
+        tx.executeWithoutResult(t -> {
+            var current=row(id,true);checkRevision(current,request.revision());
+            if(jdbc.queryForObject("SELECT COUNT(*) FROM garment WHERE id=? AND owner_username=?",Integer.class,id.toString(),owner)!=1)throw new ProcessingException(HttpStatus.NOT_FOUND,"GARMENT_NOT_FOUND","没有找到该衣物。");
+            if(request.name()!=null)jdbc.update("UPDATE garment SET name=? WHERE id=?",request.name().strip(),id.toString());
+            if(request.favorite()!=null)jdbc.update("UPDATE garment SET favorite=? WHERE id=?",request.favorite(),id.toString());
+            jdbc.update("UPDATE garment SET revision=revision+1,updated_at_ms=? WHERE id=?",System.currentTimeMillis(),id.toString());
+        });return get(id);
     }
     /** Only confirmed, currently visible clothes contribute reusable account-specific choices. */
     public Map<String, List<String>> metadataOptions(String owner) {

@@ -23,6 +23,8 @@ public class AgentCanvasRuns {
         final Map<String,Integer> versions = new HashMap<>();
         final Map<String,Set<String>> garments = new HashMap<>();
         final Map<String,JsonNode> scenes = new HashMap<>();
+        final Map<String,Long> garmentVersions = new HashMap<>();
+        boolean edit;
         volatile boolean cancelled;
         volatile String failureMessage;
         volatile Command pending;
@@ -37,6 +39,7 @@ public class AgentCanvasRuns {
         Command(String board,String kind,String label,int sequence,int expected){this.board=board;this.kind=kind;this.label=label;this.sequence=sequence;this.expected=expected;}
     }
     private final ConcurrentHashMap<String,Run> runs=new ConcurrentHashMap<>();
+    @org.springframework.beans.factory.annotation.Autowired private com.smartcloset.garment.GarmentRepository garmentRepository;
     private final OutfitRepository outfits;
     private final ObjectMapper json;
     private final AgentTraceService traces;
@@ -44,8 +47,9 @@ public class AgentCanvasRuns {
     public AgentCanvasRuns(OutfitRepository outfits,ObjectMapper json,AgentProperties config,AgentTraceService traces){this.outfits=outfits;this.json=json;this.config=config;this.traces=traces;}
 
     public Object build(String owner,String session,JsonNode source,JsonNode args,boolean edit,BiConsumer<String,Object> emit) {
-        var run=new Run(owner,session,emit,System.currentTimeMillis()+config.timeoutSeconds()*1000L);
+        var run=new Run(owner,session,emit,System.currentTimeMillis()+config.timeoutSeconds()*1000L);run.edit=edit;
         if(runs.values().stream().anyMatch(r->r.owner.equals(owner)&&r.workspace.equals(run.workspace)&&!r.cancelled))throw AgentRepository.busy();
+        for(var item:garmentRepository.projection(owner))if(item.status().equals("ACTIVE"))run.garmentVersions.put(item.id().toString(),item.revision());
         runs.put(run.id,run);
         String status="FAILED",message="搭台操作未完成，已执行的内容仍保留为本机草稿。";
         try {
@@ -93,7 +97,9 @@ public class AgentCanvasRuns {
             run.cancelled=true;runs.remove(run.id);
             run.emit.accept("workspace_result",Map.of("runId",run.id,"workspaceId",run.workspace,"sessionId",session,"boardIds",List.copyOf(run.boardIds),"status",status,"message",message));
         }
-        return Map.of("status",status,"message",message,"workspaceId",run.workspace,"boardIds",run.boardIds);
+        var result=new LinkedHashMap<String,Object>();result.put("status",status);result.put("message",message);result.put("workspaceId",run.workspace);result.put("boardIds",run.boardIds);
+        if(status.equals("COMPLETE")&&!run.boardIds.isEmpty()){String last=run.boardIds.getLast();result.put("latestContext",Map.of("route","/outfits/workspace","workspaceId",run.workspace,"boardId",last,"contentVersion",run.versions.getOrDefault(last,0),"scene",run.scenes.get(last),"selectedIds",List.of()));}
+        return result;
     }
 
     private Ack command(Run run,String board,String kind,String label,Object payload) throws Exception {
@@ -136,6 +142,9 @@ public class AgentCanvasRuns {
                     var scene=json.treeToValue(ack.scene(),OutfitRepository.SceneWrite.class);
                     outfits.validatePreview(scene,owner);
                     var ids=garmentIds(ack.scene());
+                    var clothes=new ArrayList<Map<String,List<String>>>();
+                    for(String garmentId:ids){var garment=garmentRepository.get(UUID.fromString(garmentId));if(!Objects.equals(run.garmentVersions.get(garmentId),garment.revision()))throw AgentRepository.invalid("衣物资料在执行期间变化，请重新核对搭配。");var fields=new LinkedHashMap<>(garment.effective());fields.put("_layeringConfirmed",List.of("fit","thickness","wearingModes").stream().allMatch(k -> garment.overrides().containsKey(k)&&!garment.overrides().get(k).isEmpty())?List.of("yes"):List.of());clothes.add(fields);}
+                    if(!run.edit||command.kind.equals("finish"))OutfitRules.validate(clothes,!run.edit&&command.kind.equals("finish"));
                     if(!ids.equals(run.garments.get(command.board)))throw AgentRepository.invalid("画板衣物与授权操作不符。");
                     JsonNode previous=run.scenes.get(command.board);
                     if(previous!=null) {

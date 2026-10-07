@@ -1,0 +1,46 @@
+{
+  "backend": {
+    "tests": 223,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 7
+  },
+  "frontend": {
+    "tests": 49,
+    "passed": 49
+  },
+  "runtime": {
+    "tests": 16,
+    "passed": 16
+  },
+  "realGenerationRequests": 7,
+  "realRecognitionRequests": 1,
+  "agentUserRequests": 8,
+  "generationResults": [
+    {
+      "case": "male",
+      "status": "SUCCEEDED"
+    },
+    {
+      "case": "female",
+      "status": "SUCCEEDED"
+    },
+    {
+      "case": "full",
+      "status": "SUCCEEDED"
+    },
+    {
+      "case": "half-valid",
+      "status": "SUCCEEDED"
+    },
+    {
+      "case": "complete",
+      "status": "SUCCEEDED"
+    },
+    {
+      "case": "dress-barefoot",
+      "status": "SUCCEEDED"
+    }
+  ],
+  "notes": "人物另一次无脸局部参考成功但不计相似度证据；另一个派发前取消；助手一次上游HTTP/2中断，修改复验成功且撤销；天气未真实接入。"
+}

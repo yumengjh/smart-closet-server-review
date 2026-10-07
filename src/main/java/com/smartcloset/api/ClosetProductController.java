@@ -39,6 +39,8 @@ public class ClosetProductController {
         this.ownership = ownership; this.models = models; this.jdbc = jdbc; this.files = files;
     }
 
+    @org.springframework.beans.factory.annotation.Autowired private com.smartcloset.garment.ClosetSummaryService summaries;
+    @GetMapping("/summary") public Object summary(@RequestParam(defaultValue="") String category,@RequestParam(defaultValue="") String season,@RequestParam(defaultValue="") String q,@RequestParam(defaultValue="") String color,@RequestParam(required=false) Boolean favorite){return summaries.summary(ClosetIdentity.username(),q,category,color,season,favorite);}
     @GetMapping("/metadata-options") public Map<String, List<String>> metadataOptions() { return garments.metadataOptions(ClosetIdentity.username()); }
 
     @GetMapping("/garments") public GarmentRepository.ClosetPage list(

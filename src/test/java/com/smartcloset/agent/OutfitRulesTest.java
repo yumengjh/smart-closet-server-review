@@ -41,4 +41,10 @@ class OutfitRulesTest {
         for(var category:List.of("连帽卫衣","带帽衬衫","hoodie"))assertEquals(OutfitRules.Role.TOP,OutfitRules.role(garment(category)),category);
         for(var category:List.of("背心裙","衬衫连衣裙","连体裤","dress"))assertEquals(OutfitRules.Role.ONE_PIECE,OutfitRules.role(garment(category)),category);
     }
+    @Test void jewelryPositionsAreKnownAndDoNotCollide(){
+        assertDoesNotThrow(()->OutfitRules.validate(clothes("衬衫","长裤","项链","耳环"),true));
+        assertThrows(ProcessingException.class,()->OutfitRules.validate(clothes("衬衫","长裤","项链","项链"),true));
+        assertThrows(ProcessingException.class,()->OutfitRules.validate(clothes("连衣裙","戒指"),true));
+        var ring=new HashMap<String,List<String>>(garment("戒指"));ring.put("_accessoryPosition",List.of("HAND_LEFT"));assertDoesNotThrow(()->OutfitRules.validate(List.of(garment("连衣裙"),ring),true));
+    }
 }

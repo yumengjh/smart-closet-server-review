@@ -94,9 +94,12 @@ public class GenerationService {
         }
         return new Prepared(r.provider(), model, r.prompt(), Collections.unmodifiableMap(params), p.protocol());
     }
-    public Output generate(Prepared r, byte[] input) {
+    public record Reference(String purpose,String label,byte[] png) {}
+    public Output generate(Prepared r, byte[] input) {return generateReferences(r,input==null?List.of():List.of(new Reference("INPUT","参考图片",input)));}
+    public Output generateReferences(Prepared r,List<Reference> references) {
+        if(references==null||references.size()>20||references.stream().mapToLong(v -> v.png().length).sum()>32L*1024*1024)throw ProcessingException.invalid("参考图片数量或总大小超限。");
         var p = provider(r.provider());
-        HttpRequest request = p.protocol() == Protocol.OPENAI_IMAGES ? openai(p, r, input) : gemini(p, r, input);
+        HttpRequest request = p.protocol() == Protocol.OPENAI_IMAGES ? openai(p, r, references) : gemini(p, r, references);
         var response = limited(r.provider(),()->http.send(request, BODY_LIMIT));
         JsonNode body = parse(response);
         byte[] image = null;
@@ -123,24 +126,29 @@ public class GenerationService {
         var b = HttpRequest.newBuilder(uri).timeout(Duration.ofSeconds(p.timeoutSeconds()));
         return p.protocol() == Protocol.GEMINI ? b.header("x-goog-api-key", p.apiKey()) : b.header("Authorization", "Bearer " + p.apiKey());
     }
-    private HttpRequest openai(Provider p, Prepared r, byte[] input) {
+    private HttpRequest openai(Provider p, Prepared r, List<Reference> references) {
         var fields = new LinkedHashMap<String, Object>(r.parameters());
         fields.put("model", r.model()); fields.put("prompt", r.prompt()); fields.put("n", 1);
-        if (input == null) return builder(p, p.endpoint("/images/generations")).header("Content-Type", "application/json")
+        if (references.isEmpty()) return builder(p, p.endpoint("/images/generations")).header("Content-Type", "application/json")
                 .POST(HttpRequest.BodyPublishers.ofByteArray(json.writeValueAsBytes(fields))).build();
         String boundary = "closet-" + UUID.randomUUID();
         var bytes = new ByteArrayOutputStream();
         fields.forEach((key, value) -> {
             bytes.writeBytes(("--" + boundary + "\r\nContent-Disposition: form-data; name=\"" + key + "\"\r\n\r\n" + value + "\r\n").getBytes(StandardCharsets.UTF_8));
         });
-        bytes.writeBytes(("--" + boundary + "\r\nContent-Disposition: form-data; name=\"image\"; filename=\"input.png\"\r\nContent-Type: image/png\r\n\r\n").getBytes(StandardCharsets.UTF_8));
-        bytes.writeBytes(input); bytes.writeBytes(("\r\n--" + boundary + "--\r\n").getBytes(StandardCharsets.UTF_8));
+        for(int index=0;index<references.size();index++) {
+            var reference=references.get(index);
+            String filename = references.size()==1 && reference.purpose().equals("INPUT") ? "input.png" : "reference-"+index+".png";
+            bytes.writeBytes(("--"+boundary+"\r\nContent-Disposition: form-data; name=\""+(references.size()==1?"image":"image[]")+"\"; filename=\""+filename+"\"\r\nContent-Type: image/png\r\n\r\n").getBytes(StandardCharsets.UTF_8));
+            bytes.writeBytes(reference.png());bytes.writeBytes("\r\n".getBytes(StandardCharsets.UTF_8));
+        }
+        bytes.writeBytes(("--"+boundary+"--\r\n").getBytes(StandardCharsets.UTF_8));
         return builder(p, p.endpoint("/images/edits")).header("Content-Type", "multipart/form-data; boundary=" + boundary)
                 .POST(HttpRequest.BodyPublishers.ofByteArray(bytes.toByteArray())).build();
     }
-    private HttpRequest gemini(Provider p, Prepared r, byte[] input) {
+    private HttpRequest gemini(Provider p, Prepared r, List<Reference> references) {
         var parts = new ArrayList<Map<String, Object>>(); parts.add(Map.of("text", r.prompt()));
-        if (input != null) parts.add(Map.of("inlineData", Map.of("mimeType", "image/png", "data", Base64.getEncoder().encodeToString(input))));
+        for(var reference:references){if(!reference.purpose().equals("INPUT"))parts.add(Map.of("text",reference.purpose()+": "+reference.label()));parts.add(Map.of("inlineData",Map.of("mimeType","image/png","data",Base64.getEncoder().encodeToString(reference.png()))));}
         var body = Map.of("contents", List.of(Map.of("role", "user", "parts", parts)), "generationConfig", r.parameters());
         String model = r.model().startsWith("models/") ? r.model().substring(7) : r.model();
         if (model.contains("/")) throw ProcessingException.invalid("Gemini 模型名称不应包含路径。");

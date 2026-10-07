@@ -114,3 +114,36 @@ test('outfit selection uses server candidate IDs without arbitrary garment compo
     assert.equal(requests, 3); assert.deepEqual(callbacks, ['get_outfit_candidates', 'build_outfits'])
   } finally { server.closeAllConnections(); await new Promise<void>(resolve => server.close(() => resolve())) }
 })
+
+test('read-only binding rejects a fabricated write without a callback and counts the attempt', async () => {
+  let models=0;let callbacks=0;const frames:Frame[]=[]
+  const server=createServer(async(req,res)=>{
+    let raw='';for await(const chunk of req)raw+=chunk;const body=JSON.parse(raw)
+    res.setHeader('Content-Type','application/json')
+    if(req.url==='/permits'){res.end(JSON.stringify({status:'GRANTED',permit:'local-only'}));return}
+    if(req.url==='/callback'){callbacks++;res.end('{}');return}
+    models++
+    if(models===1)assert.deepEqual(body.tools.map((t:any)=>t.function.name),['closet_summary'])
+    else assert.equal(body.tools,undefined)
+    const delta=models===1?{role:'assistant',tool_calls:[{index:0,id:'blocked',type:'function',function:{name:'build_outfits',arguments:'{}'}}]}:{role:'assistant',content:'此轮只查询，不创建搭配。'}
+    res.setHeader('Content-Type','text/event-stream');res.end('data: '+JSON.stringify({id:'readonly',choices:[{index:0,delta,finish_reason:null}]})+'\n\ndata: [DONE]\n\n')
+  })
+  const url=await listen(server)
+  try{await runAgent({model:'gpt-6-luna',apiKey:'fake',baseURL:url+'/v1',permitURL:url+'/permits',callbackURL:url+'/callback',callbackToken:'local',maxToolCalls:1,maxModelCalls:2,allowedTools:['closet_summary'],timeoutSeconds:5,context:{route:'/wardrobe'},memories:[],messages:[{role:'user',content:'我有多少衣服'}]},f=>frames.push(f),AbortSignal.timeout(10000));assert.equal(models,2);assert.equal(callbacks,0);assert.deepEqual(frames.at(-1)?.data,{toolCalls:1,usage:null})}
+  finally{server.closeAllConnections();await new Promise<void>(resolve=>server.close(()=>resolve()))}
+})
+
+test('memory epoch change ends the turn without another model call or a second action',async()=>{
+  let models=0;const callbacks:string[]=[]
+  const server=createServer(async(req,res)=>{
+    let raw='';for await(const chunk of req)raw+=chunk;const body=JSON.parse(raw)
+    res.setHeader('Content-Type','application/json')
+    if(req.url==='/permits'){res.end(JSON.stringify({status:'GRANTED',permit:'local-only'}));return}
+    if(req.url==='/callback'){callbacks.push(body.name);res.end(JSON.stringify({contextChanged:true,status:'SUCCEEDED'}));return}
+    models++;const delta={role:'assistant',tool_calls:[{index:0,id:'memory',type:'function',function:{name:'remember_preference',arguments:'{"content":"我喜欢蓝色","category":"COLOR","evidence":"记住我喜欢蓝色"}'}},{index:1,id:'later',type:'function',function:{name:'search_help',arguments:'{"query":"搭配"}'}}]}
+    res.setHeader('Content-Type','text/event-stream');res.end('data: '+JSON.stringify({id:'memory',choices:[{index:0,delta,finish_reason:null}]})+'\n\ndata: [DONE]\n\n')
+  })
+  const url=await listen(server)
+  try{await runAgent({model:'gpt-6-luna',apiKey:'fake',baseURL:url+'/v1',permitURL:url+'/permits',callbackURL:url+'/callback',callbackToken:'local',maxToolCalls:5,allowedTools:['remember_preference','search_help'],timeoutSeconds:5,context:{route:'/wardrobe'},memories:[],messages:[{role:'user',content:'记住我喜欢蓝色'}]},()=>{},AbortSignal.timeout(10000));assert.equal(models,1);assert.deepEqual(callbacks,['remember_preference'])}
+  finally{server.closeAllConnections();await new Promise<void>(resolve=>server.close(()=>resolve()))}
+})

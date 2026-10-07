@@ -17,6 +17,7 @@ public class AgentRepository {
     public record Message(String id, String role, String content, String status, JsonNode events, long createdAt, String requestId) {}
     public record Memory(String id, String content, String category, long createdAt, long updatedAt) {}
     public record Proposal(String id, String kind, JsonNode payload, JsonNode context, boolean consumed) {}
+    @org.springframework.beans.factory.annotation.Autowired private AgentMemoryDocuments documents;
     private final JdbcTemplate db;
     private final ObjectMapper json;
     private final TransactionTemplate tx;
@@ -94,6 +95,7 @@ public class AgentRepository {
             long now=System.currentTimeMillis();
             db.update("INSERT INTO agent_message(id,session_id,role,content,status,events_json,created_at) VALUES(?,?,?,?,'COMPLETE','[]',?)",requestId,id,"user",content,now);
             db.update("INSERT INTO agent_message(id,session_id,role,content,status,events_json,created_at,request_id) VALUES(?,?,'assistant','','RUNNING','[]',?,?)",UUID.randomUUID().toString(),id,now+1,requestId);
+            db.update("UPDATE agent_message SET context_epoch=(SELECT context_epoch FROM agent_session WHERE id=?) WHERE session_id=? AND (id=? OR request_id=?)",id,id,requestId,requestId);
             db.update("UPDATE agent_session SET active_run=?,active_at=?,updated_at=?,title=CASE WHEN title='新对话' THEN ? ELSE title END WHERE id=? AND owner_username=?",requestId,now,now,content.substring(0,Math.min(30,content.length())),id,owner);
         });
     }
@@ -128,9 +130,12 @@ public class AgentRepository {
     public List<Memory> memories(String owner) {
         return db.query("SELECT * FROM agent_memory WHERE owner_username=? ORDER BY updated_at DESC LIMIT 100",(r,n)->new Memory(r.getString("id"),r.getString("content"),r.getString("category"),r.getLong("created_at"),r.getLong("updated_at")),owner);
     }
-    public Memory memory(String owner,String id,String content,String category) {
+    public Memory memory(String owner,String id,String content,String category) {return tx.execute(t->{db.queryForObject("SELECT username FROM closet_user WHERE username=? FOR UPDATE",String.class,owner);return memoryLocked(owner,id,content,category);});}
+    private Memory memoryLocked(String owner,String id,String content,String category) {
         content=clean(content,500);
         if(!Set.of("STYLE","COLOR","OCCASION","PERSONAL").contains(category))throw invalid("记忆分类无效。");
+        final String originalId=id;var before=id==null?null:memories(owner).stream().filter(m -> m.id().equals(originalId)).findFirst().orElseThrow(AgentRepository::notFound);
+        documents.list(owner);
         long now=System.currentTimeMillis();
         if(id==null){
             var same=db.query("SELECT id FROM agent_memory WHERE owner_username=? AND content=?",(r,n)->r.getString(1),owner,content);
@@ -138,10 +143,17 @@ public class AgentRepository {
             if(memories(owner).size()>=100)throw invalid("记忆已达 100 条，请先整理已有记忆。");
             id=UUID.randomUUID().toString();db.update("INSERT INTO agent_memory VALUES(?,?,?,?,?,?)",id,owner,content,category,now,now);
         } else if(db.update("UPDATE agent_memory SET content=?,category=?,updated_at=? WHERE id=? AND owner_username=?",content,category,now,id,owner)!=1)throw notFound();
+        if(before!=null&&!before.category().equals(category))documents.legacyChange(owner,before.category(),before.content(),null);
+        documents.legacyChange(owner,category,before==null||!before.category().equals(category)?null:before.content(),content);
         final String key=id;return memories(owner).stream().filter(m->m.id().equals(key)).findFirst().orElseThrow(AgentRepository::notFound);
     }
-    public void deleteMemory(String owner,String id) { if(db.update("DELETE FROM agent_memory WHERE id=? AND owner_username=?",id,owner)!=1)throw notFound(); }
+    public void deleteMemory(String owner,String id) {tx.executeWithoutResult(t->{db.queryForObject("SELECT username FROM closet_user WHERE username=? FOR UPDATE",String.class,owner); var before=memories(owner).stream().filter(m -> m.id().equals(id)).findFirst().orElseThrow(AgentRepository::notFound);documents.list(owner);if(db.update("DELETE FROM agent_memory WHERE id=? AND owner_username=?",id,owner)!=1)throw notFound();documents.legacyChange(owner,before.category(),before.content(),null); });}
     public Proposal propose(String owner,String session,String kind,JsonNode payload,JsonNode context) {
+        var versions=json.createObjectNode();var ids=new LinkedHashSet<String>();
+        for(var c:payload.path("candidates"))for(var g:c.path("garmentIds"))ids.add(g.asText());
+        for(var e:context.path("scene").path("elements"))if(!e.path("garmentId").asText().isBlank())ids.add(e.path("garmentId").asText());
+        for(String garment:ids){var revisions=db.query("SELECT revision FROM garment WHERE id=? AND owner_username=?",(r,n)->r.getLong(1),garment,owner);if(revisions.isEmpty())throw notFound();versions.put(garment,revisions.getFirst());}
+        if(payload.isObject()){payload=payload.deepCopy();((tools.jackson.databind.node.ObjectNode)payload).set("_garmentRevisions",versions);}
         var id=UUID.randomUUID().toString(); db.update("INSERT INTO agent_proposal(id,session_id,owner_username,kind,payload_json,context_json,created_at) VALUES(?,?,?,?,?,?,?)",id,session,owner,kind,json.writeValueAsString(payload),json.writeValueAsString(context),System.currentTimeMillis());
         return new Proposal(id,kind,payload,context,false);
     }
@@ -150,6 +162,8 @@ public class AgentRepository {
     }
     public Proposal consume(String owner,String id) {
         var p=proposal(owner,id);
+        for(var entry:p.payload().path("_garmentRevisions").properties())if(db.queryForObject("SELECT COUNT(*) FROM garment WHERE id=? AND owner_username=? AND revision=?",Integer.class,entry.getKey(),owner,entry.getValue().asLong())!=1)throw new ProcessingException(HttpStatus.CONFLICT,"AGENT_PROPOSAL_CHANGED","衣物资料已变化，请重新准备建议。");
+        var created=db.queryForObject("SELECT created_at FROM agent_proposal WHERE id=? AND owner_username=?",Long.class,id,owner);if(created+600000<System.currentTimeMillis())throw new ProcessingException(HttpStatus.CONFLICT,"AGENT_PROPOSAL_EXPIRED","建议已过期，请重新准备。");
         if(db.update("UPDATE agent_proposal SET consumed=TRUE WHERE id=? AND owner_username=? AND consumed=FALSE",id,owner)!=1)
             throw new ProcessingException(HttpStatus.CONFLICT,"AGENT_PROPOSAL_USED","此建议已经应用，不能重复操作。");
         return p;

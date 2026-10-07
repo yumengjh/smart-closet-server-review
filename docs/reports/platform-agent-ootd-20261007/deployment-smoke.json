@@ -1,0 +1,73 @@
+{
+  "ootdRefreshStatus": 200,
+  "htmlMatchesBuild": true,
+  "entry": "/assets/index-BEqHDuY_.js",
+  "entryMatchesBuild": true,
+  "platformWelcomeIncluded": true,
+  "existingLoginSessionWorks": true,
+  "wardrobe": {
+    "count": 38,
+    "totalActive": 38,
+    "statuses": {
+      "ACTIVE": 38,
+      "DRAFT": 16,
+      "TRASHED": 8
+    },
+    "skirtCount": 15,
+    "unknownCategoryCount": 4
+  },
+  "profileReadable": true,
+  "memoryDocumentsReadable": true,
+  "unverifiedGenerationClosed": true,
+  "privateRenderTasksReadable": true,
+  "quickIntake": true,
+  "baselineCount": 0,
+  "ootdCount": 0,
+  "newAiCalls": 0,
+  "executorRunning": {},
+  "executionStatuses": [
+    {
+      "POOL": "CPU",
+      "STATUS": "CANCELLED",
+      "TOTAL": 1
+    },
+    {
+      "POOL": "RECOGNITION",
+      "STATUS": "FAILED",
+      "TOTAL": 1
+    },
+    {
+      "POOL": "CPU",
+      "STATUS": "SKIPPED",
+      "TOTAL": 3
+    },
+    {
+      "POOL": "CPU",
+      "STATUS": "SUCCEEDED",
+      "TOTAL": 28
+    },
+    {
+      "POOL": "GENERATION",
+      "STATUS": "SUCCEEDED",
+      "TOTAL": 12
+    },
+    {
+      "POOL": "RECOGNITION",
+      "STATUS": "SUCCEEDED",
+      "TOTAL": 15
+    },
+    {
+      "POOL": "RECOGNITION",
+      "STATUS": "UNKNOWN",
+      "TOTAL": 3
+    }
+  ],
+  "publicResourceFilesCompared": 1032,
+  "resourceMismatches": [],
+  "dispatchAttemptCountUnchanged": true,
+  "dispatchAttemptsBefore": 31,
+  "dispatchAttemptsAfter": 31,
+  "databaseVersion": 13,
+  "globalGarmentCount": 62,
+  "globalAssetCount": 355
+}

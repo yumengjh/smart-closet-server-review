@@ -3,6 +3,9 @@ package com.smartcloset.processing;
 public interface ProcessingHandler {
     record Candidate(String kind,String businessId,int stage,String owner,String pool,String account,int priority) {}
     String kind();
+    default String frozenInput(Candidate candidate){return null;}
+    default String result(ProcessingStore.Task task){return null;}
+    default boolean autoRetryRejected(){return true;}
     java.util.List<Candidate> candidates();
     void execute(ProcessingStore.Task task) throws Exception;
     default int quotaUnits(ProcessingStore.Task task){return 0;}

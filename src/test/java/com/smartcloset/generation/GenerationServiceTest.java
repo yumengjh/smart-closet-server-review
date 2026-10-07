@@ -133,4 +133,12 @@ class GenerationServiceTest {
         status=401;var auth=assertThrows(ProcessingException.class,()->service.generate(prepared,null));assertTrue(auth.getMessage().contains("认证或访问权限"));
     }
 
+    @Test void purposeLabeledReferencesAreSentTogetherWithoutDroppingItems()throws Exception {
+        var service=service(Protocol.OPENAI_IMAGES);var prepared=service.prepare(spec(Map.of()));
+        service.generateReferences(prepared,List.of(new GenerationService.Reference("PERSON_BASELINE","人物",image()),new GenerationService.Reference("GARMENT","上衣",image()),new GenerationService.Reference("GARMENT","裤子",image())));
+        assertTrue(request.get().contains("filename=\"reference-0.png\""));assertTrue(request.get().contains("filename=\"reference-1.png\""));assertTrue(request.get().contains("filename=\"reference-2.png\""));assertTrue(request.get().contains("name=\"image[]\""));
+        var gemini=service(Protocol.GEMINI);response="{\"candidates\":[{\"content\":{\"parts\":[{\"inlineData\":{\"mimeType\":\"image/png\",\"data\":\""+Base64.getEncoder().encodeToString(image())+"\"}}]}}]}";
+        gemini.generateReferences(gemini.prepare(spec(Map.of())),List.of(new GenerationService.Reference("PERSON_BASELINE","人物",image()),new GenerationService.Reference("GARMENT","上衣",image())));
+        var parts=json.readTree(request.get()).at("/contents/0/parts");assertEquals(5,parts.size());assertTrue(parts.get(1).path("text").asText().contains("PERSON_BASELINE"));assertTrue(parts.get(3).path("text").asText().contains("GARMENT"));
+    }
 }

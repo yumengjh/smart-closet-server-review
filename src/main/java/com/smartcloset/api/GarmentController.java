@@ -45,6 +45,7 @@ public class GarmentController {
     }
     @GetMapping("/garments/{id}") public GarmentRepository.View get(@PathVariable UUID id) { ownership.garment(id); return garments.get(id); }
     @PatchMapping("/garments/{id}/metadata") public GarmentRepository.View edit(@PathVariable UUID id, @RequestBody GarmentRepository.Edit request) { ownership.garment(id); return garments.edit(id, request); }
+    @PatchMapping("/garments/{id}") public GarmentRepository.View basic(@PathVariable UUID id,@RequestBody GarmentRepository.BasicEdit request){ownership.garment(id);return garments.editBasic(ClosetIdentity.username(),id,request);}
     @PostMapping("/garments/{id}/display-image") public GarmentRepository.View select(@PathVariable UUID id, @RequestBody GarmentRepository.SelectImage request) throws IOException {
         ownership.garment(id); if (request != null && request.assetId() != null) ownership.asset(request.assetId());
         if (request != null && request.assetId() != null) files.readVerified(repository.asset(request.assetId()));

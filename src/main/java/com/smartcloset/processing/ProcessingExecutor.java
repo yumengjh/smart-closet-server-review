@@ -24,7 +24,7 @@ public class ProcessingExecutor {
     @EventListener(ApplicationReadyEvent.class) public void start(){store.recover();ticker.scheduleWithFixedDelay(this::tick,50,250,TimeUnit.MILLISECONDS);}
     private synchronized void tick(){if(closing)return;try{
         for(var h:handlers.values()){
-            try{for(var c:h.candidates())store.enqueue(c.kind(),c.businessId(),c.stage(),c.owner(),c.pool(),c.account(),c.priority());}
+            try{for(var c:h.candidates())store.enqueue(c.kind(),c.businessId(),c.stage(),c.owner(),c.pool(),c.account(),c.priority(),h.frozenInput(c));}
             catch(Exception e){LoggerFactory.getLogger(getClass()).error("Processing candidate scan failed for {}; other durable tasks continue",h.kind(),e);}
         }
         var cfg=store.config();var due=store.due();var blockedAccounts=new HashSet<String>();
@@ -51,7 +51,7 @@ public class ProcessingExecutor {
         }catch(Exception e){error=e instanceof ProcessingException?e.getMessage():"阶段处理失败，已完成的成果保留。";outcome="FAILED";
             String code=e instanceof ProcessingException p?p.code():"LOCAL_FAILED";
             if(code.equals("PROVIDER_HTTP_429"))resources.backoff(permit,e instanceof ProcessingException p?p.retryAfterMillis():1000);
-            if(code.equals("PROVIDER_HTTP_429")||code.equals("RESOURCE_WAIT")||code.equals("PROCESSOR_BUSY")){store.defer(t,"QUEUED",System.currentTimeMillis()+(code.equals("PROCESSOR_BUSY")?500:e instanceof ProcessingException p?Math.max(1000,p.retryAfterMillis()):30000),"资源繁忙或上游限流，稍后继续");outcome="DEFERRED";}
+            if(code.equals("PROVIDER_HTTP_429")&&h.autoRetryRejected()||code.equals("RESOURCE_WAIT")||code.equals("PROCESSOR_BUSY")){store.defer(t,"QUEUED",System.currentTimeMillis()+(code.equals("PROCESSOR_BUSY")?500:e instanceof ProcessingException p?Math.max(1000,p.retryAfterMillis()):30000),"资源繁忙或上游限流，稍后继续");outcome="DEFERRED";}
             else if(code.startsWith("PROVIDER_HTTP_5")||Set.of("PROVIDER_TIMEOUT","PROVIDER_CONNECTION_FAILED","PROVIDER_INVALID_RESPONSE","PROVIDER_INTERRUPTED").contains(code)){outcome="UNKNOWN";unknown=Set.of("PROVIDER_TIMEOUT","PROVIDER_CONNECTION_FAILED","PROVIDER_INTERRUPTED").contains(code);}
             LoggerFactory.getLogger(getClass()).warn("Processing stage {} {}",t.id(),code,e);
         }finally{if(store.get(t.id()).status().equals("CANCEL_REQUESTED")){h.cancel(t);outcome="CANCELLED";}store.finishAttempt(attempt,outcome,error);if(!outcome.equals("DEFERRED"))store.outcome(t,token,outcome,error);resources.finish(permit,unknown||outcome.equals("UNKNOWN")&&h.unknownResource(t));resources.clear();SecurityContextHolder.clearContext();running.merge(t.pool(),-1,Integer::sum);}

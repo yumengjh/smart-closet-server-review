@@ -1,0 +1,40 @@
+{
+  "health": {
+    "status": "UP"
+  },
+  "agent": {
+    "status": "ok",
+    "framework": "langgraph"
+  },
+  "actualJar": "/Users/yaopinxin/project/smart-closet-server/.local/runtime/smart-closet-person-ai-20261007-101610.jar",
+  "jarSha256": "d931d96e924409ce863ae5ea544e5e47598b226cbafc6f11598ccfd5409b4899",
+  "javaPid": 95843,
+  "nodePid": 95828,
+  "staticMatchesJar": true,
+  "activeCount": 38,
+  "closetStatuses": {
+    "ACTIVE": 38,
+    "DRAFT": 16,
+    "TRASHED": 8
+  },
+  "globalGarments": 62,
+  "privateEndpoints": true,
+  "publicFiles": 1031,
+  "changedPublicFiles": [],
+  "capabilities": [
+    {
+      "purpose": "BASELINE",
+      "verified": true,
+      "provider": "yumg",
+      "model": "gpt-image-2.5-flare",
+      "maxReferences": 1
+    },
+    {
+      "purpose": "OOTD",
+      "verified": true,
+      "provider": "yumg",
+      "model": "gpt-image-2.5-flare",
+      "maxReferences": 5
+    }
+  ]
+}

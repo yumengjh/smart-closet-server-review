@@ -49,8 +49,8 @@ public class OutfitRepository {
 
     public List<View> list(String owner) {
         return jdbc.query("SELECT id,name,revision,created_at_ms,updated_at_ms,scene_version,scene_json FROM outfit WHERE owner_username=? ORDER BY updated_at_ms DESC,id DESC",
-                (rs, n) -> view(new OutfitRow(UUID.fromString(rs.getString(1)), rs.getString(2), rs.getLong(3),
-                        rs.getLong(4), rs.getLong(5), rs.getInt(6), rs.getString(7)), owner), owner);
+                (rs, n) -> new OutfitRow(UUID.fromString(rs.getString(1)), rs.getString(2), rs.getLong(3),
+                        rs.getLong(4), rs.getLong(5), rs.getInt(6), rs.getString(7)), owner).stream().map(row -> view(row, owner)).toList();
     }
 
     public View get(UUID id, String owner) {
