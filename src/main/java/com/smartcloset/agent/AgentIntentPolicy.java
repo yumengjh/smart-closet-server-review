@@ -8,7 +8,9 @@ import org.springframework.http.HttpStatus;
 /** Conservative user-expression gate. Model routing can narrow, never enlarge this capability set.
  * Actual writes additionally pass owner, command, confirmation and revision checks. */
 public final class AgentIntentPolicy {
-    private static final Set<String> READ=Set.of("search_help","search_wardrobe","closet_summary","get_garment","get_outfit","list_outfits","list_tasks","review_outfit","get_personal_status");
+    // recommend_outfits/present_outfits only compute and show a card (nothing is written; opening it on a board or saving
+    // needs the user's click), so they are always available: a missed phrase must never leave the user without outfits.
+    private static final Set<String> READ=Set.of("search_help","search_wardrobe","closet_summary","get_garment","get_outfit","list_outfits","list_tasks","review_outfit","get_personal_status","recommend_outfits","present_outfits");
     public record Turn(Set<String> tools,Set<String> purposes) {}
     private static boolean has(String text,String pattern){return Pattern.compile(pattern,Pattern.CASE_INSENSITIVE).matcher(text).find();}
     public static Turn classify(String text) { return classify(text,false); }

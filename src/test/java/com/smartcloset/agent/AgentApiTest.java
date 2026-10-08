@@ -275,11 +275,15 @@ class AgentApiTest {
    var failure=new java.util.concurrent.atomic.AtomicReference<Throwable>();
    runtime.createContext("/run",exchange->{String frame;try{
     var input=json.readTree(exchange.getRequestBody().readAllBytes());String token=input.path("callbackToken").asText();
-    assertEquals(recommendation,strings(input.path("allowedTools")).contains("recommend_outfits"));
+    assertTrue(strings(input.path("allowedTools")).contains("recommend_outfits"),"cards are always available");
+    assertEquals(recommendation,strings(input.path("allowedTools")).contains("build_outfits"),"only a recognised outfit request may build boards");
     if(recommendation){
      String history=input.path("messages").toString();assertTrue(history.contains("garmentIds"));assertTrue(history.contains("outfits"));assertFalse(history.contains("dimensions"));assertFalse(history.contains("evidence"));assertFalse(history.contains("candidates"));
      assertNotNull(service.tool(token,new AgentService.ToolRequest("recommend_outfits",json.createObjectNode())));
-    }else assertThrows(com.smartcloset.image.ProcessingException.class,()->service.tool(token,new AgentService.ToolRequest("recommend_outfits",json.createObjectNode())));
+    }else{
+     var shown=json.valueToTree(service.tool(token,new AgentService.ToolRequest("recommend_outfits",json.readTree("{\"open\":\"WORKSPACE\"}"))));
+     assertNotEquals("WORKSPACE",shown.path("presented").path("mode").asText(),"without an outfit request the board is not opened");
+    }
     frame="{\"event\":\"done\",\"data\":{}}\n";
    }catch(Throwable e){failure.set(e);frame="{\"event\":\"error\",\"data\":{}}\n";}byte[] out=frame.getBytes(StandardCharsets.UTF_8);exchange.sendResponseHeaders(200,out.length);exchange.getResponseBody().write(out);exchange.close();});
    try{var response=send("POST","/api/agent/sessions/"+session.id()+"/messages",Map.of("requestId",UUID.randomUUID().toString(),"content","不要那双","context",Map.of("route","/wardrobe")));if(failure.get()!=null)throw new AssertionError(failure.get());assertTrue(response.body().contains("event: done"),response.body());}

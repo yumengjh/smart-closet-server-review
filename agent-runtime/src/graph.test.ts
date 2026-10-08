@@ -40,7 +40,7 @@ async function exercise(budget = 8, navigation = false, avatarMode?: string, tra
       assert.equal(traces.filter(t => t.phase === 'input').length, requests.length)
       assert.equal(traces.filter(t => t.phase === 'model_output').length, requests.length)
       const inputs = traces.filter(t => t.phase === 'input')
-      assert.equal(inputs[0].detail.promptVersion, 'platform-agent-v4')
+      assert.equal(inputs[0].detail.promptVersion, 'platform-agent-v6')
       assert.equal(inputs[0].detail.messages[0].content, requests[0].messages[0].content)
       assert.equal(inputs[0].detail.tools[0].parameters.type, 'object')
       assert.equal(inputs[1].detail.messages.find((m: any) => m.role === 'tool').content, returned.content)
@@ -192,7 +192,7 @@ test('follow-up forwards basedOnPrevious and traces the v3 prompt without openin
     assert.equal(callbacks[0].args.basedOnPrevious, true); assert.deepEqual(callbacks[0].args.intent, { avoidColors: ['红色'] })
     const schema = requests[0].tools.find((t: any) => t.function.name === 'recommend_outfits').function
     assert.equal(schema.parameters.properties.basedOnPrevious.type, 'boolean'); assert.match(schema.description, /basedOnPrevious=true/)
-    assert.equal(traces.find(t => t.phase === 'input').detail.promptVersion, 'platform-agent-v4')
+    assert.equal(traces.find(t => t.phase === 'input').detail.promptVersion, 'platform-agent-v6')
     assert.equal(frames.filter(f => f.event === 'proposal').length, 1)
   } finally { globalThis.fetch = originalFetch }
 })

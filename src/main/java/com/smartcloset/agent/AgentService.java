@@ -400,6 +400,7 @@ public class AgentService {
             case "navigate" -> {String path=validRoute(owner,a.path("path").asText());yield Map.of("path",path);}
             case "recommend_outfits" -> {
                 var intent=agentIntent(owner,grant,a);
+                intent=assistantStyles(intent,a.path("intent").path("styleTags"));
                 var exclusions=new LinkedHashSet<>(intent.excludedGarmentIds());
                 if(a.path("basedOnPrevious").asBoolean(false)&&grant.previous()!=null) {
                     var shown=new LinkedHashSet<>(grant.previous().garmentIds());shown.removeAll(intent.requiredGarmentIds());exclusions.addAll(shown);
@@ -415,7 +416,7 @@ public class AgentService {
                 if(view.outfits().isEmpty()){result.put("shown",List.of());result.put("emptyReason",view.emptyReason());result.put("note","没有可靠组合：如实说明 emptyReason 与 limits，不要自行拼凑或重复调用。");yield result;}
                 result.put("shown",view.outfits().stream().map(this::compactOutfit).toList());
                 result.put("alternatives",recommendations.peek(owner,view.runId(),view.outfits().size(),com.smartcloset.recommend.RecommendationEngine.MODEL_POOL).stream().map(this::compactOutfit).toList());
-                result.put("presented",presentRecommendation(owner,grant,view.runId(),String.valueOf(view.intent().get("description")),view.outfits(),Map.of(),a.path("open").asText("CARDS"),limits,view.notes()));
+                result.put("presented",presentRecommendation(owner,grant,view.runId(),String.valueOf(view.intent().get("description")),view.outfits(),Map.of(),openMode(grant,a),limits,view.notes()));
                 result.put("note","推荐卡片已展示给用户，依据由系统计算。用一两句话概括亮点即可，不要逐条复述，不编造衣物或颜色；用户想换某一套时再用 present_outfits 从 alternatives 中选择。");
                 yield result;
             }
@@ -436,7 +437,7 @@ public class AgentService {
                     if(picked.stream().noneMatch(p->p.key().equals(key)))picked.add(view);
                 }
                 var shown=recommendations.present(owner,runId,picked.stream().map(com.smartcloset.recommend.RecommendationService.OutfitView::key).toList(),"AGENT");
-                yield Map.of("runId",runId,"shown",shown.stream().map(this::compactOutfit).toList(),"presented",presentRecommendation(owner,grant,runId,"",shown,reasons,a.path("open").asText("CARDS"),List.of(),List.of()));
+                yield Map.of("runId",runId,"shown",shown.stream().map(this::compactOutfit).toList(),"presented",presentRecommendation(owner,grant,runId,"",shown,reasons,openMode(grant,a),List.of(),List.of()));
             }
             case "build_outfits", "propose_outfits" -> {
                 var candidates=a.path("candidates");if(!candidates.isArray()||candidates.isEmpty()||candidates.size()>5)throw AgentRepository.invalid("请给出一至五套不同搭配。");
@@ -561,8 +562,25 @@ public class AgentService {
         catch(RuntimeException e){detail.put("message",e.getMessage());emitTrace(grant,"validation","REJECTED","穿着结构校验拒绝",detail);throw e;}
     }
     private UUID uuid(String value){try{return UUID.fromString(value);}catch(Exception e){throw AgentRepository.invalid("对象 ID 无效。");}}
+    /**
+     * The model reads the message anyway, so it also places unfamiliar style words into the vocabulary (styleTags) in the
+     * same call; that classification is used now and learned for pages and search. Dictionary words are left alone.
+     */
+    @org.springframework.beans.factory.annotation.Autowired private com.smartcloset.semantic.StyleResolver styleResolver;
+    private com.smartcloset.recommend.Intent assistantStyles(com.smartcloset.recommend.Intent intent,JsonNode tags){
+        var vocabulary=com.smartcloset.recommend.FeatureTables.defaults().styleFormality.keySet();
+        var styles=strings(tags).stream().filter(vocabulary::contains).distinct().toList();
+        if(styles.isEmpty())return intent;
+        var unknown=intent.wantStyles().stream().filter(w->com.smartcloset.recommend.FeatureTables.defaults().canonicalStyles(w).isEmpty()).toList();
+        if(unknown.size()==1)styleResolver.learn(unknown.getFirst(),styles);
+        var evidence=new LinkedHashMap<String,String>();for(String w:unknown)evidence.put(w,"≈"+String.join("/",styles)+"（助手判断）");
+        var merged=new ArrayList<>(intent.inferredStyles());styles.forEach(st->{if(!merged.contains(st))merged.add(st);});
+        return intent.withInferredStyles(merged,evidence);
+    }
+    /** Opening outfits on the board writes a workspace, so it needs an outfit request this turn; cards are always fine. */
+    private String openMode(Grant grant,JsonNode a){return "WORKSPACE".equals(a.path("open").asText("CARDS"))&&grant.turn().purposes().contains("OUTFIT")?"WORKSPACE":"CARDS";}
     private com.smartcloset.recommend.Intent withExclusions(com.smartcloset.recommend.Intent intent,List<String> excluded) {
-        return new com.smartcloset.recommend.Intent(intent.occasion(),intent.temperatureC(),intent.season(),intent.formality(),intent.wantStyles(),intent.wantColors(),intent.avoidColors(),intent.freeText(),intent.requiredGarmentIds(),excluded,intent.count(),intent.sources(),intent.wantCategories());
+        return new com.smartcloset.recommend.Intent(intent.occasion(),intent.temperatureC(),intent.season(),intent.formality(),intent.wantStyles(),intent.wantColors(),intent.avoidColors(),intent.freeText(),intent.requiredGarmentIds(),excluded,intent.count(),intent.sources(),intent.wantCategories(),intent.inferredStyles());
     }
     private com.smartcloset.recommend.Intent agentIntent(String owner,Grant grant,JsonNode a){
         var i=json.createObjectNode();var sources=new HashMap<String,String>();
