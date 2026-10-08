@@ -258,6 +258,8 @@ class AgentApiTest {
    if(failure.get()!=null)throw new AssertionError(failure.get());
    assertTrue(response.body().contains("event: proposal"),response.body());
    assertTrue(db.queryForObject("SELECT COUNT(*) FROM recommendation_log WHERE owner_username=? AND source='AGENT'",Integer.class,owner)>=2);
+   for(int n=0;n<40&&db.queryForObject("SELECT COUNT(*) FROM model_usage WHERE owner_username=?",Integer.class,owner)==0;n++)Thread.sleep(25);
+   assertEquals(1,db.queryForObject("SELECT COUNT(*) FROM model_usage WHERE owner_username=? AND feature='AGENT'",Integer.class,owner));
    assertNotNull(service.accept(owner,proposalId.get(),json.readTree("{\"route\":\"/wardrobe\"}"),false));
   } finally {runtime.removeContext("/run");}
  }

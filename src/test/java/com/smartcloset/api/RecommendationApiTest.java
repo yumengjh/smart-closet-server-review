@@ -335,4 +335,31 @@ class RecommendationApiTest {
         assertTrue(colors.pendingOwners().containsKey(owner), "a new display image is measured again");
         assertTrue(colors.palettes(owner).isEmpty(), "a palette measured on an old display image is not used");
     }
+
+    @Test void statsCountAdoptionLikesSwapsAndCostWithoutModelCalls() throws Exception {
+        String owner = "rec-stats-" + UUID.randomUUID().toString().substring(0, 8);
+        var me = signIn(owner); seed(owner);
+        var view = me.ok("POST", "/api/recommendations", Map.of("occasion", "COMMUTE", "temperatureC", 18));
+        var outfits = view.path("outfits");
+        assertEquals(3, outfits.size());
+        me.ok("POST", "/api/recommendations/logs/" + outfits.get(0).path("logId").asText() + "/feedback", Map.of("verdict", "UP"));
+        me.ok("POST", "/api/recommendations/logs/" + outfits.get(1).path("logId").asText() + "/feedback", Map.of("verdict", "DOWN", "reasons", List.of("COLOR_CLASH")));
+        me.ok("POST", "/api/recommendations/events", Map.of("events", List.of(Map.of("kind", "OPEN_WORKSPACE", "logId", outfits.get(1).path("logId").asText()))));
+        var worn = new ArrayList<String>(); for (var g : outfits.get(2).path("garments")) worn.add(g.path("id").asText());
+        me.ok("POST", "/api/wear-logs", Map.of("garmentIds", worn));
+        db.update("INSERT INTO model_usage(id,owner_username,feature,model,input_tokens,output_tokens,created_at_ms) VALUES(?,?,'AGENT','m',1200,80,?)", UUID.randomUUID().toString(), owner, System.currentTimeMillis());
+        var stats = me.ok("GET", "/api/recommendations/stats?days=7", null);
+        var effect = stats.path("effect");
+        assertEquals(3, effect.path("shown").asInt());
+        assertEquals(3, effect.path("adopted").asInt(), stats.toString());
+        assertEquals(1.0, effect.path("adoptionRate").asDouble(), 0.001);
+        assertEquals(0.5, effect.path("likeRate").asDouble(), 0.001);
+        assertEquals(1, effect.path("wornWithin3Days").asInt());
+        assertEquals(3, effect.path("bySource").path("PAGE").path("shown").asInt());
+        assertEquals(1200, stats.path("cost").path("inputTokens").asLong());
+        assertEquals(3, stats.path("cost").path("zeroModelRecommendations").asLong());
+        assertEquals(400, me.send("GET", "/api/recommendations/stats?days=0", null, true).statusCode());
+        var other = signIn("rec-stats-o-" + UUID.randomUUID().toString().substring(0, 8));
+        assertEquals(0, other.ok("GET", "/api/recommendations/stats", null).path("effect").path("shown").asInt());
+    }
 }

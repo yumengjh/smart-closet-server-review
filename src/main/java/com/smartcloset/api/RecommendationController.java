@@ -32,6 +32,12 @@ public class RecommendationController {
         return recommendations.recommend(ClosetIdentity.username(), request.intent(), "PAGE");
     }
 
+    @org.springframework.beans.factory.annotation.Autowired private com.smartcloset.recommend.RecommendationStats stats;
+
+    /** 效果与成本统计 (P4). */
+    @GetMapping("/api/recommendations/stats")
+    public Map<String, Object> stats(@RequestParam(defaultValue = "30") int days) { return stats.stats(ClosetIdentity.username(), days); }
+
     /** 今日灵感 (P4): reviewed templates filled with the user's clothes; zero model calls. */
     @GetMapping("/api/recommendations/inspiration")
     public RecommendationService.InspirationView inspiration(@RequestParam(required = false) Double temperatureC) {

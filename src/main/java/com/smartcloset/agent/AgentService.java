@@ -228,7 +228,7 @@ public class AgentService {
                             else if(!event.equals("status")&&!event.equals("done")){
                                 if(events.size()>=256)throw new IOException("too-many-events");events.add(Map.of("event",event,"data",data));
                             }
-                            if(event.equals("done")){done=true;status="COMPLETE";usage=data.path("usage");repo.finish(owner,session,request.requestId(),text.toString(),status,events);send(output,event,Map.of("model",model,"quota",repo.quota(owner),"usage",usage,"requestId",request.requestId()));}
+                            if(event.equals("done")){done=true;status="COMPLETE";usage=data.path("usage");repo.finish(owner,session,request.requestId(),text.toString(),status,events);recordUsage(owner,model,usage);send(output,event,Map.of("model",model,"quota",repo.quota(owner),"usage",usage,"requestId",request.requestId()));}
                             else send(output,event,data);
                             if(event.equals("error"))throw new IOException("runtime-error");
                         }
@@ -667,6 +667,12 @@ public class AgentService {
         if(!limits.isEmpty())payload.set("limits",json.valueToTree(limits));if(!notes.isEmpty())payload.set("notes",json.valueToTree(notes));
         if("WORKSPACE".equals(open))return Map.of("mode","WORKSPACE","workspace",canvasRuns.build(owner,grant.session(),contextFor(grant),payload,false,grant.channel()::send));
         return Map.of("mode","CARDS","proposal",repo.propose(owner,grant.session(),"RECOMMENDATION",payload,contextFor(grant)));
+    }
+    /** Cost statistics (P4): token counts only, never content. Missing usage is stored as unknown (null). */
+    private void recordUsage(String owner,String model,JsonNode usage){
+        try{db.update("INSERT INTO model_usage(id,owner_username,feature,model,input_tokens,output_tokens,created_at_ms) VALUES(?,?,'AGENT',?,?,?,?)",UUID.randomUUID().toString(),owner,model,
+            usage.path("inputTokens").isNumber()?usage.path("inputTokens").asLong():null,usage.path("outputTokens").isNumber()?usage.path("outputTokens").asLong():null,System.currentTimeMillis());}
+        catch(RuntimeException e){org.slf4j.LoggerFactory.getLogger(getClass()).warn("model usage not recorded: {}",e.getClass().getSimpleName());}
     }
     private Set<String> pinned(Grant grant){
         var out=new HashSet<String>();if(!grant.request().content().matches("(?s).*(这件|这些|这条|这双|选中).*"))return out;
