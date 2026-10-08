@@ -663,6 +663,7 @@ public class AgentService {
             c.set("recommendation",json.valueToTree(v));candidates.add(c);
         }
         var payload=json.createObjectNode();payload.put("runId",runId);payload.put("intent",intent);payload.set("candidates",candidates);
+        try{payload.set("intentInput",json.valueToTree(recommendations.intentInput(owner,runId)));}catch(ProcessingException ignored){}
         if(!limits.isEmpty())payload.set("limits",json.valueToTree(limits));if(!notes.isEmpty())payload.set("notes",json.valueToTree(notes));
         if("WORKSPACE".equals(open))return Map.of("mode","WORKSPACE","workspace",canvasRuns.build(owner,grant.session(),contextFor(grant),payload,false,grant.channel()::send));
         return Map.of("mode","CARDS","proposal",repo.propose(owner,grant.session(),"RECOMMENDATION",payload,contextFor(grant)));
