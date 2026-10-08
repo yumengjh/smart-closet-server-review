@@ -1,0 +1,536 @@
+{
+ "version": "golden-v1",
+ "note": "人工认定的好/坏搭配考试题。每题要求：好搭配不违反硬规则且总分不低于 minGood；坏搭配要么被硬规则排除，要么比该题最差的好搭配低至少 margin 分。改规则导致失败时先判断是题错了还是规则错了。",
+ "minGood": 60,
+ "margin": 5,
+ "wardrobe": [
+  {
+   "id": "shirt-white",
+   "category": "衬衫",
+   "color": "白色",
+   "styles": "通勤/正式",
+   "seasons": "春/秋",
+   "patterns": "纯色",
+   "sleeveLength": "长袖"
+  },
+  {
+   "id": "shirt-blue",
+   "category": "衬衫",
+   "color": "浅蓝色",
+   "styles": "通勤",
+   "seasons": "春/秋",
+   "patterns": "纯色",
+   "sleeveLength": "长袖"
+  },
+  {
+   "id": "tee-white",
+   "category": "T恤",
+   "color": "白色",
+   "styles": "休闲",
+   "seasons": "春/夏/秋",
+   "patterns": "纯色",
+   "sleeveLength": "短袖"
+  },
+  {
+   "id": "tee-black",
+   "category": "T恤",
+   "color": "黑色",
+   "styles": "休闲",
+   "seasons": "春/夏/秋",
+   "patterns": "纯色",
+   "sleeveLength": "短袖"
+  },
+  {
+   "id": "tee-red",
+   "category": "T恤",
+   "color": "红色",
+   "styles": "休闲",
+   "seasons": "夏",
+   "patterns": "纯色",
+   "sleeveLength": "短袖"
+  },
+  {
+   "id": "tee-floral",
+   "category": "T恤",
+   "color": "多色",
+   "styles": "休闲",
+   "seasons": "夏",
+   "patterns": "花卉",
+   "sleeveLength": "短袖"
+  },
+  {
+   "id": "tank",
+   "category": "背心",
+   "color": "白色",
+   "styles": "休闲",
+   "seasons": "夏",
+   "patterns": "纯色",
+   "sleeveLength": "无袖"
+  },
+  {
+   "id": "sweater-navy",
+   "category": "毛衣",
+   "color": "藏蓝色",
+   "styles": "休闲/通勤",
+   "seasons": "秋/冬",
+   "patterns": "纯色",
+   "sleeveLength": "长袖"
+  },
+  {
+   "id": "hoodie-gray",
+   "category": "卫衣",
+   "color": "灰色",
+   "styles": "休闲/运动",
+   "seasons": "春/秋/冬",
+   "patterns": "纯色",
+   "sleeveLength": "长袖"
+  },
+  {
+   "id": "knit-beige",
+   "category": "针织衫",
+   "color": "米色",
+   "styles": "通勤/甜美",
+   "seasons": "春/秋",
+   "patterns": "纯色",
+   "sleeveLength": "长袖"
+  },
+  {
+   "id": "trousers-black",
+   "category": "西裤",
+   "color": "黑色",
+   "styles": "通勤/正式",
+   "seasons": "春/秋/冬",
+   "patterns": "纯色"
+  },
+  {
+   "id": "chinos",
+   "category": "长裤",
+   "color": "卡其色",
+   "styles": "休闲/通勤",
+   "seasons": "春/秋",
+   "patterns": "纯色"
+  },
+  {
+   "id": "jeans",
+   "category": "牛仔裤",
+   "color": "蓝色",
+   "styles": "休闲",
+   "seasons": "春/秋/冬",
+   "patterns": "纯色"
+  },
+  {
+   "id": "pants-green",
+   "category": "长裤",
+   "color": "绿色",
+   "styles": "休闲",
+   "seasons": "春/秋",
+   "patterns": "纯色"
+  },
+  {
+   "id": "pants-purple",
+   "category": "长裤",
+   "color": "紫色",
+   "styles": "休闲",
+   "seasons": "春/秋",
+   "patterns": "纯色"
+  },
+  {
+   "id": "pants-check",
+   "category": "长裤",
+   "color": "灰色",
+   "styles": "休闲",
+   "seasons": "春/秋",
+   "patterns": "格纹"
+  },
+  {
+   "id": "sweatpants",
+   "category": "运动裤",
+   "color": "黑色",
+   "styles": "运动",
+   "seasons": "春/秋/冬",
+   "patterns": "纯色"
+  },
+  {
+   "id": "shorts",
+   "category": "短裤",
+   "color": "灰色",
+   "styles": "休闲/运动",
+   "seasons": "夏",
+   "patterns": "纯色"
+  },
+  {
+   "id": "denim-shorts",
+   "category": "牛仔短裤",
+   "color": "蓝色",
+   "styles": "休闲",
+   "seasons": "夏",
+   "patterns": "纯色"
+  },
+  {
+   "id": "skirt-pleat",
+   "category": "半身裙",
+   "color": "米色",
+   "styles": "甜美/通勤",
+   "seasons": "春/秋",
+   "patterns": "纯色"
+  },
+  {
+   "id": "dress-black",
+   "category": "连衣裙",
+   "color": "黑色",
+   "styles": "通勤/正式",
+   "seasons": "春/夏/秋",
+   "patterns": "纯色"
+  },
+  {
+   "id": "dress-floral",
+   "category": "连衣裙",
+   "color": "多色",
+   "styles": "甜美",
+   "seasons": "夏",
+   "patterns": "花卉"
+  },
+  {
+   "id": "sneaker-white",
+   "category": "运动鞋",
+   "color": "白色",
+   "styles": "休闲/运动",
+   "seasons": "春/夏/秋"
+  },
+  {
+   "id": "loafers",
+   "category": "皮鞋",
+   "color": "黑色",
+   "styles": "通勤/正式",
+   "seasons": "春/秋/冬"
+  },
+  {
+   "id": "heels",
+   "category": "高跟鞋",
+   "color": "红色",
+   "styles": "正式",
+   "seasons": "春/夏/秋"
+  },
+  {
+   "id": "boots",
+   "category": "靴子",
+   "color": "棕色",
+   "styles": "复古",
+   "seasons": "秋/冬"
+  },
+  {
+   "id": "sandals",
+   "category": "凉鞋",
+   "color": "黑色",
+   "styles": "休闲",
+   "seasons": "夏"
+  },
+  {
+   "id": "slippers",
+   "category": "拖鞋",
+   "color": "灰色",
+   "styles": "休闲",
+   "seasons": "夏"
+  },
+  {
+   "id": "shoe-yellow",
+   "category": "运动鞋",
+   "color": "黄色",
+   "styles": "休闲",
+   "seasons": "春/夏/秋"
+  }
+ ],
+ "cases": [
+  {
+   "name": "通勤 18°C：正装组合胜过运动装配高跟鞋",
+   "occasion": "COMMUTE",
+   "temperatureC": 18,
+   "sex": "FEMALE",
+   "good": [
+    [
+     "shirt-white",
+     "trousers-black",
+     "loafers"
+    ],
+    [
+     "shirt-blue",
+     "chinos",
+     "loafers"
+    ]
+   ],
+   "bad": [
+    [
+     "hoodie-gray",
+     "sweatpants",
+     "heels"
+    ],
+    [
+     "tee-floral",
+     "pants-check",
+     "sandals"
+    ]
+   ]
+  },
+  {
+   "name": "30°C 日常：清爽短袖胜过毛衣配短裤",
+   "occasion": "DAILY",
+   "temperatureC": 30,
+   "sex": "UNSET",
+   "good": [
+    [
+     "tee-white",
+     "denim-shorts",
+     "sandals"
+    ],
+    [
+     "tee-black",
+     "shorts",
+     "sneaker-white"
+    ]
+   ],
+   "bad": [
+    [
+     "sweater-navy",
+     "shorts",
+     "boots"
+    ],
+    [
+     "sweater-navy",
+     "jeans",
+     "boots"
+    ]
+   ]
+  },
+  {
+   "name": "5°C 日常：毛衣长裤靴子胜过背心短裤凉鞋",
+   "occasion": "DAILY",
+   "temperatureC": 5,
+   "sex": "UNSET",
+   "good": [
+    [
+     "sweater-navy",
+     "jeans",
+     "boots"
+    ]
+   ],
+   "bad": [
+    [
+     "tank",
+     "shorts",
+     "sandals"
+    ],
+    [
+     "tee-white",
+     "denim-shorts",
+     "slippers"
+    ]
+   ]
+  },
+  {
+   "name": "运动：卫衣运动裤运动鞋胜过正装配高跟鞋",
+   "occasion": "SPORT",
+   "temperatureC": 20,
+   "sex": "FEMALE",
+   "good": [
+    [
+     "hoodie-gray",
+     "sweatpants",
+     "sneaker-white"
+    ]
+   ],
+   "bad": [
+    [
+     "shirt-white",
+     "trousers-black",
+     "heels"
+    ],
+    [
+     "dress-black",
+     "heels"
+    ]
+   ]
+  },
+  {
+   "name": "约会（女）：裙装胜过运动装配拖鞋",
+   "occasion": "DATE",
+   "temperatureC": 22,
+   "sex": "FEMALE",
+   "good": [
+    [
+     "knit-beige",
+     "skirt-pleat",
+     "sneaker-white"
+    ],
+    [
+     "dress-black",
+     "heels"
+    ]
+   ],
+   "bad": [
+    [
+     "hoodie-gray",
+     "sweatpants",
+     "slippers"
+    ]
+   ]
+  },
+  {
+   "name": "男性通勤：不出现女款",
+   "occasion": "COMMUTE",
+   "temperatureC": 18,
+   "sex": "MALE",
+   "good": [
+    [
+     "shirt-white",
+     "trousers-black",
+     "loafers"
+    ]
+   ],
+   "bad": [
+    [
+     "shirt-white",
+     "skirt-pleat",
+     "heels"
+    ],
+    [
+     "dress-black",
+     "loafers"
+    ]
+   ]
+  },
+  {
+   "name": "配色：中性色加一个强调色胜过撞色与多强调色",
+   "occasion": "DAILY",
+   "temperatureC": 20,
+   "sex": "UNSET",
+   "good": [
+    [
+     "tee-white",
+     "jeans",
+     "sneaker-white"
+    ],
+    [
+     "tee-red",
+     "jeans",
+     "sneaker-white"
+    ]
+   ],
+   "bad": [
+    [
+     "tee-red",
+     "pants-green",
+     "sneaker-white"
+    ],
+    [
+     "tee-red",
+     "pants-purple",
+     "shoe-yellow"
+    ]
+   ]
+  },
+  {
+   "name": "花纹：单件花纹胜过花纹叠格纹",
+   "occasion": "DAILY",
+   "temperatureC": 22,
+   "sex": "UNSET",
+   "good": [
+    [
+     "tee-floral",
+     "jeans",
+     "sneaker-white"
+    ]
+   ],
+   "bad": [
+    [
+     "tee-floral",
+     "pants-check",
+     "sneaker-white"
+    ]
+   ]
+  },
+  {
+   "name": "正式（女）：小黑裙胜过花T短裤拖鞋",
+   "occasion": "FORMAL",
+   "temperatureC": 22,
+   "sex": "FEMALE",
+   "good": [
+    [
+     "dress-black",
+     "heels"
+    ],
+    [
+     "shirt-white",
+     "trousers-black",
+     "loafers"
+    ]
+   ],
+   "bad": [
+    [
+     "tee-floral",
+     "denim-shorts",
+     "slippers"
+    ]
+   ]
+  },
+  {
+   "name": "居家：舒适胜过正装",
+   "occasion": "HOME",
+   "temperatureC": 20,
+   "sex": "UNSET",
+   "good": [
+    [
+     "hoodie-gray",
+     "sweatpants",
+     "slippers"
+    ]
+   ],
+   "bad": [
+    [
+     "shirt-white",
+     "trousers-black",
+     "loafers"
+    ]
+   ]
+  },
+  {
+   "name": "上下冷暖协调：毛衣配长裤胜过毛衣配短裤",
+   "occasion": "DAILY",
+   "temperatureC": 16,
+   "sex": "UNSET",
+   "good": [
+    [
+     "sweater-navy",
+     "chinos",
+     "sneaker-white"
+    ]
+   ],
+   "bad": [
+    [
+     "sweater-navy",
+     "denim-shorts",
+     "sneaker-white"
+    ]
+   ]
+  },
+  {
+   "name": "高跟鞋（女）：配裙胜过配运动裤",
+   "occasion": "DATE",
+   "temperatureC": 22,
+   "sex": "FEMALE",
+   "good": [
+    [
+     "knit-beige",
+     "skirt-pleat",
+     "heels"
+    ]
+   ],
+   "bad": [
+    [
+     "knit-beige",
+     "sweatpants",
+     "heels"
+    ]
+   ]
+  }
+ ]
+}
