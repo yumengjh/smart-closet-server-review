@@ -63,6 +63,18 @@ public class RecommendationController {
         return recommendations.wear(ClosetIdentity.username(), request.outfitId(), request.garmentIds(), request.wornOn());
     }
 
+    /** "为什么没推荐它 / 为什么排第几" from the cached run's rule trace (D27, D33). Zero model calls. */
+    @GetMapping("/api/recommendations/{runId}/explain")
+    public Map<String, Object> explain(@PathVariable String runId, @RequestParam(required = false) String garmentId, @RequestParam(required = false) String outfitKey) {
+        return recommendations.explain(ClosetIdentity.username(), runId, garmentId, outfitKey);
+    }
+
+    @GetMapping("/api/wear-logs/garments/{garmentId}")
+    public Map<String, Object> garmentWear(@PathVariable String garmentId) { return recommendations.wearSummary(ClosetIdentity.username(), garmentId); }
+
+    @GetMapping("/api/wear-logs/outfits")
+    public Map<String, String> outfitWear() { return recommendations.outfitWearDates(ClosetIdentity.username()); }
+
     @GetMapping("/api/style-profile")
     public Map<String, Object> profile() { return recommendations.profile(ClosetIdentity.username()); }
 
