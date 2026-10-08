@@ -21,7 +21,7 @@ public final class AgentIntentPolicy {
         // Right after a recommendation card, "能不能重新搭配？/你能换一批吗" is a polite request, not a capability question.
         boolean politeFollowUp=followsRecommendation&&!has(direct,"怎么|如何|什么功能|能做什么")&&has(direct,"重新|换|再|别的");
         if(politeFollowUp)ability=false;
-        boolean outfitNegative=has(direct,"(不要|别|不需要|不想|不能|禁止|不用|不允许)(再|自动|给我|帮我|为我|给|帮|重新|继续|进行|做|任何|你|我|\\s)*(搭配|推荐|搭建|组合|准备穿搭|换一批|换几套|换一套|来)|不喜欢.{0,8}(搭配|推荐).{0,8}(功能|服务)");
+        boolean outfitNegative=has(direct,"(不要|别|不需要|不想|(?<!能)不能|禁止|不用|不允许)(再|自动|给我|帮我|为我|给|帮|重新|继续|进行|做|任何|你|我|\\s)*(搭配|推荐|搭建|组合|准备穿搭|换一批|换几套|换一套|来)|不喜欢.{0,8}(搭配|推荐).{0,8}(功能|服务)");
         if(!outfitNegative&&!ability) {
             boolean outfit=has(direct,"(帮我|给我|请|想要|需要|来)(搭配|推荐|搭建|组合|准备穿搭)|(^|[，,。！!？? ])(搭配|推荐|搭建|组合).{0,12}(衣服|穿搭|搭配|一套|三套|几套)|用.{0,20}(搭配|组合).{0,10}套|搭配一下|再来.{0,6}套|再搭.{0,10}套|怎么穿|穿什么|重新(搭配|推荐|来)|换(一批|几套|一套)|再推荐|再搭|再来几套|都不喜欢|还有别的吗");
             outfit|=followsRecommendation&&direct.strip().length()<=60&&has(direct,"重新|换|再|别的|不喜欢|不要");

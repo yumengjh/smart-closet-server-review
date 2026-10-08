@@ -263,7 +263,7 @@ class AgentApiTest {
  @Test void shortRecommendationFollowUpUsesLatestAssistantAndCompactHistory()throws Exception {
   for(boolean recommendation:new boolean[]{true,false}){
    String owner=login();var session=repo.create(owner);String request=UUID.randomUUID().toString();
-   var payload=json.valueToTree(Map.of("runId",UUID.randomUUID().toString(),"intent","通勤 · 18°C","candidates",List.of(Map.of("name","通勤方案","garmentIds",List.of(UUID.randomUUID().toString()),"recommendation",Map.of("dimensions",List.of("不应进入模型历史"),"evidence","完整评分")))));
+   var payload=json.valueToTree(Map.of("runId",UUID.randomUUID().toString(),"intent","通勤 · 18°C","candidates",List.of(Map.of("name","通勤方案","garmentIds",List.of(clothing(owner,"ACTIVE","衬衫")),"recommendation",Map.of("dimensions",List.of("不应进入模型历史"),"evidence","完整评分")))));
    var card=repo.propose(owner,session.id(),"RECOMMENDATION",payload,json.createObjectNode());
    repo.begin(owner,session.id(),request,"帮我搭配通勤穿的");repo.finish(owner,session.id(),request,"推荐好了","COMPLETE",List.of(Map.of("event","proposal","data",card)));
    if(!recommendation){

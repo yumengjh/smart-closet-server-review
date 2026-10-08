@@ -402,7 +402,7 @@ public class AgentService {
                 if(view.outfits().isEmpty()){result.put("shown",List.of());result.put("emptyReason",view.emptyReason());result.put("note","没有可靠组合：如实说明 emptyReason 与 limits，不要自行拼凑或重复调用。");yield result;}
                 result.put("shown",view.outfits().stream().map(this::compactOutfit).toList());
                 result.put("alternatives",recommendations.peek(owner,view.runId(),view.outfits().size(),com.smartcloset.recommend.RecommendationEngine.MODEL_POOL).stream().map(this::compactOutfit).toList());
-                result.put("presented",presentRecommendation(owner,grant,view.runId(),String.valueOf(view.intent().get("description")),view.outfits(),Map.of(),a.path("open").asText("CARDS")));
+                result.put("presented",presentRecommendation(owner,grant,view.runId(),String.valueOf(view.intent().get("description")),view.outfits(),Map.of(),a.path("open").asText("CARDS"),limits,view.notes()));
                 result.put("note","推荐卡片已展示给用户，依据由系统计算。用一两句话概括亮点即可，不要逐条复述，不编造衣物或颜色；用户想换某一套时再用 present_outfits 从 alternatives 中选择。");
                 yield result;
             }
@@ -423,7 +423,7 @@ public class AgentService {
                     if(picked.stream().noneMatch(p->p.key().equals(key)))picked.add(view);
                 }
                 var shown=recommendations.present(owner,runId,picked.stream().map(com.smartcloset.recommend.RecommendationService.OutfitView::key).toList(),"AGENT");
-                yield Map.of("runId",runId,"shown",shown.stream().map(this::compactOutfit).toList(),"presented",presentRecommendation(owner,grant,runId,"",shown,reasons,a.path("open").asText("CARDS")));
+                yield Map.of("runId",runId,"shown",shown.stream().map(this::compactOutfit).toList(),"presented",presentRecommendation(owner,grant,runId,"",shown,reasons,a.path("open").asText("CARDS"),List.of(),List.of()));
             }
             case "build_outfits", "propose_outfits" -> {
                 var candidates=a.path("candidates");if(!candidates.isArray()||candidates.isEmpty()||candidates.size()>5)throw AgentRepository.invalid("请给出一至五套不同搭配。");
@@ -581,7 +581,8 @@ public class AgentService {
             "items",v.garments().stream().map(g->g.name()+"（"+g.color()+"）").toList(),"highlights",v.highlights(),"warnings",v.warnings(),"tags",v.tags());
     }
     /** Shows recommendations as a confirmation card (default) or opens them on the temporary workspace. */
-    private Object presentRecommendation(String owner,Grant grant,String runId,String intent,List<com.smartcloset.recommend.RecommendationService.OutfitView> outfits,Map<String,String> reasons,String open){
+    /** limits and notes go to the card only; the model sees limits through the tool result and never sees notes (wearer sex). */
+    private Object presentRecommendation(String owner,Grant grant,String runId,String intent,List<com.smartcloset.recommend.RecommendationService.OutfitView> outfits,Map<String,String> reasons,String open,List<String> limits,List<String> notes){
         var candidates=json.createArrayNode();
         for(var v:outfits){
             var c=json.createObjectNode();c.put("name",v.name());c.put("reason",reasons.getOrDefault(v.key(),String.join("；",v.highlights())));
@@ -589,6 +590,7 @@ public class AgentService {
             c.set("recommendation",json.valueToTree(v));candidates.add(c);
         }
         var payload=json.createObjectNode();payload.put("runId",runId);payload.put("intent",intent);payload.set("candidates",candidates);
+        if(!limits.isEmpty())payload.set("limits",json.valueToTree(limits));if(!notes.isEmpty())payload.set("notes",json.valueToTree(notes));
         if("WORKSPACE".equals(open))return Map.of("mode","WORKSPACE","workspace",canvasRuns.build(owner,grant.session(),contextFor(grant),payload,false,grant.channel()::send));
         return Map.of("mode","CARDS","proposal",repo.propose(owner,grant.session(),"RECOMMENDATION",payload,contextFor(grant)));
     }
