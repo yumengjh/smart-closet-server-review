@@ -286,4 +286,26 @@ class RecommendationApiTest {
         assertEquals(0, other.ok("GET", "/api/garments/search?q=" + URLEncoder.encode("白色上衣", "UTF-8"), null).path("total").asInt());
         assertTrue(Set.of(401, 403).contains(new Session().send("GET", "/api/garments/search?q=x", null, false).statusCode()));
     }
+
+    @Test void dailyInspirationFillsApprovedTemplatesAndIsLoggedWithTheTemplate() throws Exception {
+        String owner = "rec-insp-" + UUID.randomUUID().toString().substring(0, 8);
+        var me = signIn(owner); var ids = seed(owner);
+        db.update("DELETE FROM outfit_template_review"); templates.reload();
+        var empty = me.ok("GET", "/api/recommendations/inspiration", null);
+        assertEquals(0, empty.path("approvedTemplates").asInt());
+        assertTrue(empty.path("view").path("emptyReason").asText().contains("还没有审核通过"), empty.toString());
+        try {
+            db.update("INSERT INTO outfit_template_review(template_id,review_status,enabled,bonus,updated_by,updated_at_ms) VALUES('white-shirt-black-trousers','APPROVED',TRUE,NULL,'test',0)");
+            templates.reload();
+            var view = me.ok("GET", "/api/recommendations/inspiration?temperatureC=18", null);
+            var outfits = view.path("view").path("outfits");
+            assertEquals(1, outfits.size(), view.toString());
+            var garments = new ArrayList<String>(); for (var g : outfits.get(0).path("garments")) garments.add(g.path("id").asText());
+            assertTrue(garments.containsAll(List.of(ids.get("shirt"), ids.get("trousers"))));
+            assertTrue(outfits.get(0).path("highlights").get(0).asText().startsWith("经典搭法："));
+            assertEquals("white-shirt-black-trousers", view.path("ideas").get(0).path("templateId").asText());
+            assertEquals("white-shirt-black-trousers", db.queryForObject("SELECT template_id FROM recommendation_log WHERE owner_username=? AND source='INSPIRATION'", String.class, owner));
+            me.ok("POST", "/api/recommendations/logs/" + outfits.get(0).path("logId").asText() + "/feedback", Map.of("verdict", "UP"));
+        } finally { db.update("DELETE FROM outfit_template_review"); templates.reload(); }
+    }
 }

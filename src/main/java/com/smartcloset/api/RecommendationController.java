@@ -32,6 +32,12 @@ public class RecommendationController {
         return recommendations.recommend(ClosetIdentity.username(), request.intent(), "PAGE");
     }
 
+    /** 今日灵感 (P4): reviewed templates filled with the user's clothes; zero model calls. */
+    @GetMapping("/api/recommendations/inspiration")
+    public RecommendationService.InspirationView inspiration(@RequestParam(required = false) Double temperatureC) {
+        return recommendations.inspiration(ClosetIdentity.username(), temperatureC);
+    }
+
     @GetMapping("/api/recommendations/{runId}/more")
     public RecommendationService.View more(@PathVariable String runId, @RequestParam(defaultValue = "3") int count) {
         return recommendations.more(ClosetIdentity.username(), runId, count);
