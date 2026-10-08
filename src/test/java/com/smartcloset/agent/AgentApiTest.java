@@ -226,6 +226,40 @@ class AgentApiTest {
   var review=reviews.review(owner,new CompositionReviews.Request(null,null,scene,null,null,false));assertTrue(review.passed());assertEquals(1,review.items().size());assertEquals("ONE_PIECE",review.items().getFirst().role());assertEquals("NO_SHOES",review.warnings().getFirst().code());
   var invalid=json.valueToTree(Map.of("elements",List.of(Map.of("garmentId",dress),Map.of("garmentId",coat,"role","TOP"),Map.of("garmentId",cardigan,"role","ACCESSORY"))));assertFalse(reviews.review(owner,new CompositionReviews.Request(null,null,invalid,null,null,false)).passed());
  }
+ @Test void recommendToolShowsAnExplainedCardChecksReasonsAndAcceptsLikeOutfits()throws Exception {
+  String owner=login();var session=repo.create(owner);
+  String shirt=clothing(owner,"ACTIVE","衬衫"),trousers=clothing(owner,"ACTIVE","长裤"),jeans=clothing(owner,"ACTIVE","牛仔裤"),tee=clothing(owner,"ACTIVE","T恤"),shoes=clothing(owner,"ACTIVE","运动鞋");
+  db.update("UPDATE garment SET overrides_json=? WHERE id=?",json.writeValueAsString(Map.of("category",List.of("衬衫"),"primaryColor",List.of("白色"))),shirt);
+  var failure=new java.util.concurrent.atomic.AtomicReference<Throwable>();var proposalId=new java.util.concurrent.atomic.AtomicReference<String>();
+  runtime.createContext("/run",exchange->{
+   String frame;
+   try {
+    var input=json.readTree(exchange.getRequestBody().readAllBytes());String token=input.path("callbackToken").asText();
+    assertTrue(input.path("allowedTools").toString().contains("recommend_outfits"));
+    var result=json.valueToTree(service.tool(token,new AgentService.ToolRequest("recommend_outfits",json.readTree("{\"intent\":{\"occasion\":\"COMMUTE\",\"temperatureC\":18},\"count\":2}"))));
+    assertEquals(2,result.path("shown").size());assertFalse(result.path("shown").get(0).path("highlights").isEmpty());
+    assertFalse(result.toString().contains("\"fields\""),"model must not receive full garment metadata");
+    var card=result.path("presented").path("proposal");assertEquals("RECOMMENDATION",card.path("kind").asText());proposalId.set(card.path("id").asText());
+    assertEquals(7,card.path("payload").path("candidates").get(0).path("recommendation").path("dimensions").size());
+    String runId=result.path("runId").asText(),key=result.path("shown").get(0).path("outfitKey").asText();
+    var invented=json.valueToTree(Map.of("runId",runId,"choices",List.of(Map.of("outfitKey",key,"reason","粉色大衣很温柔"))));
+    var error=assertThrows(com.smartcloset.image.ProcessingException.class,()->service.tool(token,new AgentService.ToolRequest("present_outfits",invented)));
+    assertTrue(error.getMessage().contains("粉色"),error.getMessage());
+    assertThrows(com.smartcloset.image.ProcessingException.class,()->service.tool(token,new AgentService.ToolRequest("present_outfits",json.valueToTree(Map.of("runId",runId,"choices",List.of(Map.of("outfitKey",UUID.randomUUID().toString())))))));
+    String first=result.path("shown").get(0).path("items").get(0).asText().replaceAll("（.*","");
+    assertNotNull(service.tool(token,new AgentService.ToolRequest("present_outfits",json.valueToTree(Map.of("runId",runId,"choices",List.of(Map.of("outfitKey",key,"reason",first+"更利落")))))));
+    frame=json.writeValueAsString(Map.of("event","proposal","data",card))+"\n{\"event\":\"done\",\"data\":{}}\n";
+   } catch(Throwable e) {failure.set(e);frame="{\"event\":\"error\",\"data\":{}}\n";}
+   byte[] bytes=frame.getBytes(StandardCharsets.UTF_8);exchange.sendResponseHeaders(200,bytes.length);exchange.getResponseBody().write(bytes);exchange.close();
+  });
+  try {
+   var response=send("POST","/api/agent/sessions/"+session.id()+"/messages",Map.of("requestId",UUID.randomUUID().toString(),"content","帮我搭配两套通勤穿的，18度","context",Map.of("route","/wardrobe")));
+   if(failure.get()!=null)throw new AssertionError(failure.get());
+   assertTrue(response.body().contains("event: proposal"),response.body());
+   assertTrue(db.queryForObject("SELECT COUNT(*) FROM recommendation_log WHERE owner_username=? AND source='AGENT'",Integer.class,owner)>=2);
+   assertNotNull(service.accept(owner,proposalId.get(),json.readTree("{\"route\":\"/wardrobe\"}"),false));
+  } finally {runtime.removeContext("/run");}
+ }
  @Test void countTurnRejectsEvenMaliciousModelWriteTool()throws Exception {
   String owner=login();String item=clothing(owner,"ACTIVE","衬衫");var session=repo.create(owner);var failure=new java.util.concurrent.atomic.AtomicReference<Throwable>();
   runtime.createContext("/run",exchange->{String frame;try{var input=json.readTree(exchange.getRequestBody().readAllBytes());String token=input.path("callbackToken").asText();assertFalse(input.path("allowedTools").toString().contains("build_outfits"));assertEquals(1,json.valueToTree(service.tool(token,new AgentService.ToolRequest("closet_summary",json.createObjectNode()))).path("count").asInt());for(String name:List.of("build_outfits","remember_preference","navigate","prepare_command"))assertThrows(com.smartcloset.image.ProcessingException.class,()->service.tool(token,new AgentService.ToolRequest(name,json.createObjectNode())));frame="{\"event\":\"done\",\"data\":{}}\n";}catch(Throwable e){failure.set(e);frame="{\"event\":\"error\",\"data\":{}}\n";}byte[] out=frame.getBytes(StandardCharsets.UTF_8);exchange.sendResponseHeaders(200,out.length);exchange.getResponseBody().write(out);exchange.close();});

@@ -48,6 +48,7 @@ public class AgentService {
     @org.springframework.beans.factory.annotation.Autowired private com.smartcloset.person.WearerProfiles wearerProfiles;
     @org.springframework.beans.factory.annotation.Autowired private com.smartcloset.recognition.RecognitionService recognitionService;
     @org.springframework.beans.factory.annotation.Autowired private com.smartcloset.generation.GenerationService generationService;
+    @org.springframework.beans.factory.annotation.Autowired private com.smartcloset.recommend.RecommendationService recommendations;
     private final AgentTraceService traces;
     private final AgentProperties config;
     private final GenerationProperties credentials;
@@ -349,6 +350,37 @@ public class AgentService {
                 yield modelContext(owner,json.valueToTree(Map.of("route","/outfits/"+outfit.id(),"outfitId",outfit.id().toString(),"name",outfit.name(),"revision",outfit.revision(),"scene",outfit.scene())));
             }
             case "navigate" -> {String path=validRoute(owner,a.path("path").asText());yield Map.of("path",path);}
+            case "recommend_outfits" -> {
+                var intent=agentIntent(owner,grant,a);
+                var view=recommendations.recommend(owner,intent,"AGENT");
+                var result=new LinkedHashMap<String,Object>();
+                result.put("runId",view.runId());result.put("intent",view.intent().get("description"));result.put("limits",view.limits());
+                if(view.outfits().isEmpty()){result.put("shown",List.of());result.put("emptyReason",view.emptyReason());result.put("note","没有可靠组合：如实说明 emptyReason 与 limits，不要自行拼凑或重复调用。");yield result;}
+                result.put("shown",view.outfits().stream().map(this::compactOutfit).toList());
+                result.put("alternatives",recommendations.peek(owner,view.runId(),view.outfits().size(),com.smartcloset.recommend.RecommendationEngine.MODEL_POOL).stream().map(this::compactOutfit).toList());
+                result.put("presented",presentRecommendation(owner,grant,view.runId(),String.valueOf(view.intent().get("description")),view.outfits(),Map.of(),a.path("open").asText("CARDS")));
+                result.put("note","推荐卡片已展示给用户，依据由系统计算。用一两句话概括亮点即可，不要逐条复述，不编造衣物或颜色；用户想换某一套时再用 present_outfits 从 alternatives 中选择。");
+                yield result;
+            }
+            case "present_outfits" -> {
+                String runId=a.path("runId").asText("");var choices=a.path("choices");
+                if(!choices.isArray()||choices.isEmpty()||choices.size()>5)throw AgentRepository.invalid("请选择一至五套。");
+                var ranked=recommendations.peek(owner,runId,0,com.smartcloset.recommend.RecommendationEngine.MODEL_POOL);
+                var byKey=new LinkedHashMap<String,com.smartcloset.recommend.RecommendationService.OutfitView>();ranked.forEach(v->byKey.put(v.key(),v));
+                var picked=new ArrayList<com.smartcloset.recommend.RecommendationService.OutfitView>();var reasons=new HashMap<String,String>();
+                for(var choice:choices){
+                    String key=choice.path("outfitKey").asText();var view=byKey.get(key);
+                    if(view==null)throw AgentRepository.invalid("只能选择本次推荐返回的前 "+com.smartcloset.recommend.RecommendationEngine.MODEL_POOL+" 套。");
+                    String reason=choice.path("reason").asText("").isBlank()?"":AgentRepository.clean(choice.path("reason").asText(""),300);
+                    if(view.rank()>3&&reason.strip().length()<6)throw AgentRepository.invalid("选择第 "+view.rank()+" 名方案需要写明理由，理由会展示给用户。");
+                    var wrong=recommendations.reasonMismatches(owner,runId,key,reason);
+                    if(!wrong.isEmpty())throw AgentRepository.invalid("理由提到了这套搭配里没有的："+String.join("、",wrong)+"。请只描述实际衣物，或留空使用系统依据。");
+                    if(!reason.isBlank())reasons.put(key,reason);
+                    if(picked.stream().noneMatch(p->p.key().equals(key)))picked.add(view);
+                }
+                var shown=recommendations.present(owner,runId,picked.stream().map(com.smartcloset.recommend.RecommendationService.OutfitView::key).toList(),"AGENT");
+                yield Map.of("runId",runId,"shown",shown.stream().map(this::compactOutfit).toList(),"presented",presentRecommendation(owner,grant,runId,"",shown,reasons,a.path("open").asText("CARDS")));
+            }
             case "build_outfits", "propose_outfits" -> {
                 var candidates=a.path("candidates");if(!candidates.isArray()||candidates.isEmpty()||candidates.size()>5)throw AgentRepository.invalid("请给出一至五套不同搭配。");
                 var resolved=json.createArrayNode();
@@ -472,6 +504,35 @@ public class AgentService {
         catch(RuntimeException e){detail.put("message",e.getMessage());emitTrace(grant,"validation","REJECTED","穿着结构校验拒绝",detail);throw e;}
     }
     private UUID uuid(String value){try{return UUID.fromString(value);}catch(Exception e){throw AgentRepository.invalid("对象 ID 无效。");}}
+    private com.smartcloset.recommend.Intent agentIntent(String owner,Grant grant,JsonNode a){
+        var i=a.path("intent");
+        com.smartcloset.recommend.Intent.Occasion occasion=null;
+        try{if(!i.path("occasion").asText("").isBlank())occasion=com.smartcloset.recommend.Intent.Occasion.valueOf(i.path("occasion").asText());}catch(IllegalArgumentException e){throw AgentRepository.invalid("场景无效。");}
+        var required=new LinkedHashSet<>(pinned(grant));
+        for(var id:i.path("requiredGarmentIds")){garment(owner,id.asText(),true);required.add(id.asText());}
+        var sources=new HashMap<String,String>();Double temperature=i.hasNonNull("temperatureC")?i.path("temperatureC").asDouble():null;
+        if(temperature!=null)sources.put("temperatureC","USER");
+        return new com.smartcloset.recommend.Intent(occasion,temperature,i.path("season").asText(""),i.hasNonNull("formality")?i.path("formality").asDouble():null,
+            strings(i.path("wantStyles")),strings(i.path("wantColors")),strings(i.path("avoidColors")),i.path("freeText").asText(""),List.copyOf(required),strings(i.path("excludedGarmentIds")),a.path("count").asInt(3),sources);
+    }
+    private List<String> strings(JsonNode node){var out=new ArrayList<String>();if(node.isArray())for(var n:node)out.add(n.asText());return out;}
+    /** Model-facing summary: a few lines per outfit instead of full garment metadata. */
+    private Map<String,Object> compactOutfit(com.smartcloset.recommend.RecommendationService.OutfitView v){
+        return Map.of("rank",v.rank(),"outfitKey",v.key(),"name",v.name(),"score",v.score(),
+            "items",v.garments().stream().map(g->g.name()+"（"+g.color()+"）").toList(),"highlights",v.highlights(),"warnings",v.warnings(),"tags",v.tags());
+    }
+    /** Shows recommendations as a confirmation card (default) or opens them on the temporary workspace. */
+    private Object presentRecommendation(String owner,Grant grant,String runId,String intent,List<com.smartcloset.recommend.RecommendationService.OutfitView> outfits,Map<String,String> reasons,String open){
+        var candidates=json.createArrayNode();
+        for(var v:outfits){
+            var c=json.createObjectNode();c.put("name",v.name());c.put("reason",reasons.getOrDefault(v.key(),String.join("；",v.highlights())));
+            c.set("garmentIds",json.valueToTree(v.garments().stream().map(com.smartcloset.recommend.RecommendationService.GarmentView::id).toList()));
+            c.set("recommendation",json.valueToTree(v));candidates.add(c);
+        }
+        var payload=json.createObjectNode();payload.put("runId",runId);payload.put("intent",intent);payload.set("candidates",candidates);
+        if("WORKSPACE".equals(open))return Map.of("mode","WORKSPACE","workspace",canvasRuns.build(owner,grant.session(),contextFor(grant),payload,false,grant.channel()::send));
+        return Map.of("mode","CARDS","proposal",repo.propose(owner,grant.session(),"RECOMMENDATION",payload,contextFor(grant)));
+    }
     private Set<String> pinned(Grant grant){
         var out=new HashSet<String>();if(!grant.request().content().matches("(?s).*(这件|这些|这条|这双|选中).*"))return out;
         var c=contextFor(grant);if(!c.path("garmentId").asText("").isBlank())out.add(c.path("garmentId").asText());
@@ -488,9 +549,10 @@ public class AgentService {
     }
     public AgentRepository.Proposal accept(String owner,String id,JsonNode context,boolean current) {
         var p=repo.proposal(owner,id);validateContext(owner,context);
-        if((current||!p.kind().equals("OUTFITS"))&&!p.context().equals(context))
+        boolean outfits=p.kind().equals("OUTFITS")||p.kind().equals("RECOMMENDATION");
+        if((current||!outfits)&&!p.context().equals(context))
             throw new ProcessingException(HttpStatus.CONFLICT,"AGENT_CONTEXT_CHANGED","当前页面、选中项或画布已经变化，请重新生成建议。");
-        if(p.kind().equals("OUTFITS"))for(var c:p.payload().path("candidates")) {
+        if(outfits)for(var c:p.payload().path("candidates")) {
             var clothes=new ArrayList<Map<String,List<String>>>();
             for(var garmentId:c.path("garmentIds"))clothes.add(ruleFields(garment(owner,garmentId.asText(),true)));
             OutfitRules.validate(clothes,true);

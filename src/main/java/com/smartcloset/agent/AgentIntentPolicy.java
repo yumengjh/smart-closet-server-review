@@ -20,7 +20,7 @@ public final class AgentIntentPolicy {
         if(!negative&&!ability) {
             boolean outfit=has(direct,"(帮我|给我|请|想要|需要|来)(搭配|推荐|搭建|组合|准备穿搭)|(^|[，,。！!？? ])(搭配|推荐|搭建|组合).{0,12}(衣服|穿搭|搭配|一套|三套|几套)|用.{0,20}(搭配|组合).{0,10}套|搭配一下|再来.{0,6}套|再搭.{0,10}套|怎么穿|穿什么");
             boolean edit=has(direct,"(调整|修改|替换|加入|移除|去掉|换掉|整理).{0,15}(画板|贴纸|搭配|外套|上衣|裤子|裙子|组合)|把.{0,18}(移除|去掉|换成|放大|缩小)");
-            if(outfit) {tools.addAll(Set.of("get_outfit_candidates","build_outfits","propose_outfits"));purposes.add("OUTFIT");}
+            if(outfit) {tools.addAll(Set.of("recommend_outfits","present_outfits","get_outfit_candidates","build_outfits","propose_outfits"));purposes.add("OUTFIT");}
             if(edit){tools.addAll(Set.of("edit_workspace","propose_edit"));purposes.add("OUTFIT");}
             if(has(direct,"(打开|带我去|跳转|前往|进入).{0,30}"))tools.add("navigate");
             if(has(direct,"(保存|存下).{0,20}(搭配|组合|画板|这套)|保存一下|保存当前"))tools.add("request_save");
