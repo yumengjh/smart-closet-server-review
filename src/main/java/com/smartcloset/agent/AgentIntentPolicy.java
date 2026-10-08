@@ -11,16 +11,24 @@ public final class AgentIntentPolicy {
     private static final Set<String> READ=Set.of("search_help","search_wardrobe","closet_summary","get_garment","get_outfit","list_outfits","list_tasks","review_outfit","get_personal_status");
     public record Turn(Set<String> tools,Set<String> purposes) {}
     private static boolean has(String text,String pattern){return Pattern.compile(pattern,Pattern.CASE_INSENSITIVE).matcher(text).find();}
-    public static Turn classify(String text) {
+    public static Turn classify(String text) { return classify(text,false); }
+    public static Turn classify(String text,boolean followsRecommendation) {
         var tools=new HashSet<>(READ);var purposes=new HashSet<String>();
         // Quoted examples, negated instructions and ability questions never become write authority.
         String direct=text.replaceAll("[“\"「『][^”\"」』]*[”\"」』]","");
         boolean negative=has(direct,"不要|别给|不需要|不想|不能|禁止|不要自动|不用|不允许");
-        boolean ability=has(direct,"会不会|能不能.{0,8}(吗|么|？|\\?)$|你会.{0,12}(吗|么)|能做什么|有什么功能|怎么(修改|删除|搭配|生成)|如何");
-        if(!negative&&!ability) {
-            boolean outfit=has(direct,"(帮我|给我|请|想要|需要|来)(搭配|推荐|搭建|组合|准备穿搭)|(^|[，,。！!？? ])(搭配|推荐|搭建|组合).{0,12}(衣服|穿搭|搭配|一套|三套|几套)|用.{0,20}(搭配|组合).{0,10}套|搭配一下|再来.{0,6}套|再搭.{0,10}套|怎么穿|穿什么");
-            boolean edit=has(direct,"(调整|修改|替换|加入|移除|去掉|换掉|整理).{0,15}(画板|贴纸|搭配|外套|上衣|裤子|裙子|组合)|把.{0,18}(移除|去掉|换成|放大|缩小)");
+        boolean ability=has(direct,"会不会|能不能.{0,8}(吗|么|？|\\?)$|你会.{0,12}(吗|么)|能做什么|有什么功能|怎么(重新)?(修改|删除|搭配|生成|推荐)|如何");
+        // Right after a recommendation card, "能不能重新搭配？/你能换一批吗" is a polite request, not a capability question.
+        boolean politeFollowUp=followsRecommendation&&!has(direct,"怎么|如何|什么功能|能做什么")&&has(direct,"重新|换|再|别的");
+        if(politeFollowUp)ability=false;
+        boolean outfitNegative=has(direct,"(不要|别|不需要|不想|不能|禁止|不用|不允许)(再|自动|给我|帮我|为我|给|帮|重新|继续|进行|做|任何|你|我|\\s)*(搭配|推荐|搭建|组合|准备穿搭|换一批|换几套|换一套|来)|不喜欢.{0,8}(搭配|推荐).{0,8}(功能|服务)");
+        if(!outfitNegative&&!ability) {
+            boolean outfit=has(direct,"(帮我|给我|请|想要|需要|来)(搭配|推荐|搭建|组合|准备穿搭)|(^|[，,。！!？? ])(搭配|推荐|搭建|组合).{0,12}(衣服|穿搭|搭配|一套|三套|几套)|用.{0,20}(搭配|组合).{0,10}套|搭配一下|再来.{0,6}套|再搭.{0,10}套|怎么穿|穿什么|重新(搭配|推荐|来)|换(一批|几套|一套)|再推荐|再搭|再来几套|都不喜欢|还有别的吗");
+            outfit|=followsRecommendation&&direct.strip().length()<=60&&has(direct,"重新|换|再|别的|不喜欢|不要");
             if(outfit) {tools.addAll(Set.of("recommend_outfits","present_outfits","get_outfit_candidates","build_outfits","propose_outfits"));purposes.add("OUTFIT");}
+        }
+        if(!negative&&!ability) {
+            boolean edit=has(direct,"(调整|修改|替换|加入|移除|去掉|换掉|整理).{0,15}(画板|贴纸|搭配|外套|上衣|裤子|裙子|组合)|把.{0,18}(移除|去掉|换成|放大|缩小)");
             if(edit){tools.addAll(Set.of("edit_workspace","propose_edit"));purposes.add("OUTFIT");}
             if(has(direct,"(打开|带我去|跳转|前往|进入).{0,30}"))tools.add("navigate");
             if(has(direct,"(保存|存下).{0,20}(搭配|组合|画板|这套)|保存一下|保存当前"))tools.add("request_save");
