@@ -29,7 +29,7 @@ public class AgentService {
         volatile java.util.function.BiConsumer<String,Object> emit;
         void send(String event,Object data) { var target=emit;if(target==null)throw AgentRepository.invalid("浏览器执行通道已关闭。");target.accept(event,data); }
     }
-    private record PreviousRecommendation(JsonNode intent,List<String> garmentIds) {}
+    private record PreviousRecommendation(JsonNode intent,List<String> garmentIds,String runId) {}
     private record Grant(String owner,String session,Request request,AgentIntentPolicy.Turn turn,PreviousRecommendation previous,AtomicInteger calls,long expires,CanvasChannel channel) {}
     @org.springframework.beans.factory.annotation.Autowired private AgentMemoryDocuments memoryDocuments;
     @org.springframework.beans.factory.annotation.Autowired private com.smartcloset.garment.ClosetSummaryService closetSummary;
@@ -80,6 +80,13 @@ public class AgentService {
         var item=garments.get(uuid);
         if(active && !"ACTIVE".equals(item.status()))throw AgentRepository.invalid("只能使用已入柜衣物。");
         return item;
+    }
+    /** Short display name: the user's name, else colour + category (no other metadata leaves the server). */
+    private String garmentName(String owner,String id) {
+        var item=garment(owner,id,false);
+        if(item.name()!=null&&!item.name().isBlank())return item.name();
+        var e=item.effective();
+        return String.join("",e.getOrDefault("primaryColor",List.of()).stream().limit(1).toList())+String.join("/",e.getOrDefault("category",List.of("衣物")));
     }
     private Map<String,Object> metadata(GarmentRepository.View item) {
         var fields=new LinkedHashMap<String,Object>();
@@ -253,7 +260,7 @@ public class AgentService {
             var intents=db.query("SELECT intent_json FROM recommendation_log WHERE owner_username=? AND run_id=? ORDER BY created_at_ms DESC LIMIT 1",(r,n)->json.readTree(r.getString(1)),owner,payload.path("runId").asText());
             if(intents.isEmpty())continue;
             var ids=new LinkedHashSet<String>();for(var candidate:payload.path("candidates"))ids.addAll(strings(candidate.path("garmentIds")));
-            return new PreviousRecommendation(intents.getFirst(),List.copyOf(ids));
+            return new PreviousRecommendation(intents.getFirst(),List.copyOf(ids),payload.path("runId").asText());
         }
         return null;
     }
@@ -384,6 +391,14 @@ public class AgentService {
                     out.put("parsed",r.parsed().view());out.put("mode",r.mode());out.put("emptyHint",r.emptyHint());out.put("notice",r.notice());
                     out.put("multipleCandidates",r.total()>1);
                     out.put("searchNote","颜色和品类按字段硬筛选，描述按本地语义匹配，达不到门槛不返回；结果为零就如实说没有并转述 emptyHint。用户在指代某一件而命中多件（multipleCandidates=true）时，列出候选请用户确认，不要自己猜。");
+                    if(r.total()>1&&pageNo==1) {
+                        // Choice card (design 8.2): 2–4 thumbnails; tapping one recommends around it with no further model call.
+                        var payload=json.createObjectNode();payload.put("query",query);var cards=json.createArrayNode();
+                        for(var h:r.hits().subList(0,Math.min(4,r.hits().size()))){var c=json.createObjectNode();c.set("garmentIds",json.valueToTree(List.of(h.id())));c.put("name",AgentRepository.clean(garmentName(owner,h.id()),60));c.set("reasons",json.valueToTree(h.reasons()));cards.add(c);}
+                        payload.set("candidates",cards);payload.put("total",r.total());
+                        out.put("choiceCard",repo.propose(owner,grant.session(),"GARMENT_CHOICE",payload,contextFor(grant)));
+                        out.put("searchNote",out.get("searchNote")+" 已在聊天里展示前 "+cards.size()+" 件的选择卡，用户点一下就能围绕那件推荐；你只需简短说明请用户点选。");
+                    }
                     yield out;
                 }
                 var page=garments.listCloset(owner,"ACTIVE",query,"","","",pageNo,50);
@@ -419,6 +434,33 @@ public class AgentService {
                 result.put("presented",presentRecommendation(owner,grant,view.runId(),String.valueOf(view.intent().get("description")),view.outfits(),Map.of(),openMode(grant,a),limits,view.notes()));
                 result.put("note","推荐卡片已展示给用户，依据由系统计算。用一两句话概括亮点即可，不要逐条复述，不编造衣物或颜色；用户想换某一套时再用 present_outfits 从 alternatives 中选择。");
                 yield result;
+            }
+            case "explain_recommendation" -> {
+                // D33: read-only, reads the run's rule trace; zero model calls.
+                if(grant.previous()==null||grant.previous().runId().isBlank())yield Map.of("available",false,"note","本会话还没有推荐过，没有可以解释的结果。可以先推荐一次。");
+                String garmentId=a.path("garmentId").asText("").trim(),outfitKey=a.path("outfitKey").asText("").trim(),query=a.path("query").asText("").trim();
+                var extra=new LinkedHashMap<String,Object>();
+                if(garmentId.isBlank()&&outfitKey.isBlank()) {
+                    if(query.isBlank())throw AgentRepository.invalid("请提供 garmentId、outfitKey 或 query。");
+                    var found=wardrobeSearch.search(owner,query,"ALL");
+                    if(found.hits().isEmpty())yield Map.of("found",false,"emptyHint",found.emptyHint(),"note","衣柜里没有找到这件，如实告诉用户。");
+                    if(found.total()>1)extra.put("otherCandidates",found.hits().subList(1,Math.min(4,found.hits().size())).stream().map(h->Map.of("garmentId",h.id(),"name",garmentName(owner,h.id()))).toList());
+                    garmentId=found.hits().getFirst().id();
+                }
+                Map<String,Object> explanation;
+                try { explanation=recommendations.explain(owner,grant.previous().runId(),garmentId.isBlank()?null:garmentId,outfitKey.isBlank()?null:outfitKey); }
+                catch(ProcessingException e) {
+                    if(!"RECOMMENDATION_EXPIRED".equals(e.code()))throw e;
+                    // The trace lives only in the 30-minute run cache: recompute the same intent (no model, not logged) and explain that.
+                    var intent=json.treeToValue(grant.previous().intent(),com.smartcloset.recommend.Intent.class);
+                    String rerun=recommendations.rerun(owner,intent);
+                    explanation=recommendations.explain(owner,rerun,garmentId.isBlank()?null:garmentId,outfitKey.isBlank()?null:outfitKey);
+                    extra.put("recomputed","上一轮推荐已过期，已按同样条件重新计算后解释，结果可能与当时略有不同。");
+                }
+                var out=new LinkedHashMap<String,Object>(explanation);out.putAll(extra);
+                out.remove("bestOutfit");out.remove("outfit");out.remove("recall");
+                out.put("note","如实转述 summary（可以合并成一两句话），不编造原因；有 otherCandidates 时说明解释的是哪一件，并请用户确认。用户想要这件时，可以用 recommend_outfits 把它放进 requiredGarmentIds。");
+                yield out;
             }
             case "present_outfits" -> {
                 String runId=a.path("runId").asText("");var choices=a.path("choices");

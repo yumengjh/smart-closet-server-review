@@ -40,7 +40,7 @@ async function exercise(budget = 8, navigation = false, avatarMode?: string, tra
       assert.equal(traces.filter(t => t.phase === 'input').length, requests.length)
       assert.equal(traces.filter(t => t.phase === 'model_output').length, requests.length)
       const inputs = traces.filter(t => t.phase === 'input')
-      assert.equal(inputs[0].detail.promptVersion, 'platform-agent-v6')
+      assert.equal(inputs[0].detail.promptVersion, 'platform-agent-v7')
       assert.equal(inputs[0].detail.messages[0].content, requests[0].messages[0].content)
       assert.equal(inputs[0].detail.tools[0].parameters.type, 'object')
       assert.equal(inputs[1].detail.messages.find((m: any) => m.role === 'tool').content, returned.content)
@@ -192,7 +192,41 @@ test('follow-up forwards basedOnPrevious and traces the v3 prompt without openin
     assert.equal(callbacks[0].args.basedOnPrevious, true); assert.deepEqual(callbacks[0].args.intent, { avoidColors: ['红色'] })
     const schema = requests[0].tools.find((t: any) => t.function.name === 'recommend_outfits').function
     assert.equal(schema.parameters.properties.basedOnPrevious.type, 'boolean'); assert.match(schema.description, /basedOnPrevious=true/)
-    assert.equal(traces.find(t => t.phase === 'input').detail.promptVersion, 'platform-agent-v6')
+    assert.equal(traces.find(t => t.phase === 'input').detail.promptVersion, 'platform-agent-v7')
     assert.equal(frames.filter(f => f.event === 'proposal').length, 1)
   } finally { globalThis.fetch = originalFetch }
+})
+
+test('search_wardrobe choice card is shown to the user and not echoed to the model', async () => {
+  let requests = 0; const frames: Frame[] = []
+  const server = createServer(async (req, res) => {
+    let raw = ''; for await (const chunk of req) raw += chunk
+    const body = raw ? JSON.parse(raw) : {}
+    if(req.url === '/permits'){res.setHeader('Content-Type','application/json');res.end(JSON.stringify({status:'GRANTED',permit:'fixture-'+body.iteration}));return}
+    if (req.url === '/callback') {
+      res.setHeader('Content-Type', 'application/json')
+      res.end(JSON.stringify({ items: [], total: 3, multipleCandidates: true, choiceCard: { id: 'c-1', kind: 'GARMENT_CHOICE', payload: { query: '白衬衫', candidates: [{ name: '白衬衫A', garmentIds: ['g1'] }, { name: '白衬衫B', garmentIds: ['g2'] }] } } }))
+      return
+    }
+    requests++
+    if (requests === 2) { const tool = body.messages.find((m: any) => m.role === 'tool').content; assert.match(tool, /选择卡已展示给用户/); assert.doesNotMatch(tool, /"payload"/) }
+    const delta = requests === 1
+      ? { role: 'assistant', tool_calls: [{ index: 0, id: 'search-1', type: 'function', function: { name: 'search_wardrobe', arguments: JSON.stringify({ query: '白衬衫' }) } }] }
+      : { role: 'assistant', content: '你有几件白衬衫，点一下想用的那件。' }
+    res.setHeader('Content-Type', 'text/event-stream'); res.end('data: ' + JSON.stringify({ id: 'search', choices: [{ index: 0, delta, finish_reason: null }] }) + '\n\ndata: [DONE]\n\n')
+  })
+  const url = await listen(server)
+  try {
+    await runAgent({ model: 'fixture', apiKey: 'fake', baseURL: url + '/v1', permitURL: url + '/permits', callbackURL: url + '/callback', callbackToken: 'test', maxToolCalls: 5, timeoutSeconds: 5, context: {}, memories: [], messages: [{ role: 'user', content: '用那件白衬衫搭一套' }] }, f => frames.push(f), AbortSignal.timeout(10000))
+    assert.equal(requests, 2)
+    const proposals = frames.filter(f => f.event === 'proposal')
+    assert.equal(proposals.length, 1); assert.equal((proposals[0].data as any).kind, 'GARMENT_CHOICE')
+  } finally { server.closeAllConnections(); await new Promise<void>(resolve => server.close(() => resolve())) }
+})
+
+test('explain_recommendation is offered as a read-only tool', () => {
+  const definition = definitions.find(d => d.name === 'explain_recommendation')!
+  assert.ok(definition)
+  assert.ok(definition.schema.safeParse({ query: '小白鞋' }).success)
+  assert.ok(!definition.schema.safeParse({ garmentId: 'not-a-uuid' }).success)
 })

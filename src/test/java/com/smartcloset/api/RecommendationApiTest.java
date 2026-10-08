@@ -27,6 +27,7 @@ class RecommendationApiTest {
     @LocalServerPort int port;
     @Autowired JdbcTemplate db;
     @Autowired ClosetAccountService accounts;
+    @Autowired com.smartcloset.recommend.TemplateCatalog templates;
     final JsonMapper json = JsonMapper.builder().build();
 
     final class Session {
@@ -45,8 +46,9 @@ class RecommendationApiTest {
         }
     }
 
-    private Session signIn(String username) throws Exception {
-        accounts.create(username, "recommend-test-password", "USER");
+    private Session signIn(String username) throws Exception { return signIn(username, "USER"); }
+    private Session signIn(String username, String role) throws Exception {
+        accounts.create(username, "recommend-test-password", role);
         var s = new Session();
         s.csrf = json.readTree(s.send("GET", "/api/auth/csrf", null, false).body()).path("token").asText();
         assertEquals(200, s.send("POST", "/api/auth/login", Map.of("username", username, "password", "recommend-test-password"), true).statusCode());
@@ -129,6 +131,86 @@ class RecommendationApiTest {
         var view = me.ok("POST", "/api/recommendations", Map.of("occasion", "DAILY"));
         garment(owner, Map.of("category", List.of("T恤"), "primaryColor", List.of("白色")));
         assertEquals(409, me.send("GET", "/api/recommendations/" + view.path("runId").asText() + "/more", null, true).statusCode());
+    }
+
+    @Test void explainSaysWhyAGarmentWasNotRecommendedOrWhereItRanks() throws Exception {
+        String owner = "rec-explain-" + UUID.randomUUID().toString().substring(0, 8);
+        var me = signIn(owner); var ids = seed(owner);
+        var view = me.ok("POST", "/api/recommendations", Map.of("occasion", "COMMUTE", "temperatureC", 18, "avoidColors", List.of("红色")));
+        String runId = view.path("runId").asText();
+        var excluded = me.ok("GET", "/api/recommendations/" + runId + "/explain?garmentId=" + ids.get("red"), null);
+        assertEquals("EXCLUDED", excluded.path("status").asText());
+        assertTrue(excluded.path("summary").get(0).asText().contains("避开红色"), excluded.toString());
+        var top = view.path("outfits").get(0);
+        var outfit = me.ok("GET", "/api/recommendations/" + runId + "/explain?outfitKey=" + top.path("key").asText(), null);
+        assertEquals("SHOWN", outfit.path("status").asText());
+        assertTrue(outfit.path("summary").get(0).asText().contains("第 1 套"), outfit.toString());
+        assertTrue(outfit.path("outfit").path("rules").size() >= 15, "every outfit rule is listed with hit or pass");
+        var shownGarment = me.ok("GET", "/api/recommendations/" + runId + "/explain?garmentId=" + top.path("garments").get(0).path("id").asText(), null);
+        assertEquals("SHOWN", shownGarment.path("status").asText());
+        // A garment that made it into the pool but not on screen gets its best outfit, the gap and the biggest deductions.
+        var notShown = ids.values().stream().filter(id -> !id.equals(ids.get("red")) && !contains(view.path("outfits"), id)).findFirst();
+        if (notShown.isPresent()) {
+            var why = me.ok("GET", "/api/recommendations/" + runId + "/explain?garmentId=" + notShown.get(), null);
+            assertTrue(Set.of("RANKED", "CUT", "NO_VALID_OUTFIT").contains(why.path("status").asText()), why.toString());
+            assertFalse(why.path("summary").isEmpty());
+        }
+        var other = signIn("rec-explain-other-" + UUID.randomUUID().toString().substring(0, 8));
+        assertEquals(410, other.send("GET", "/api/recommendations/" + runId + "/explain?garmentId=" + ids.get("red"), null, true).statusCode());
+    }
+
+    @Test void adminTemplateReviewTakesEffectWithoutTouchingTheFile() throws Exception {
+        String owner = "rec-tpl-" + UUID.randomUUID().toString().substring(0, 8);
+        var me = signIn(owner); seed(owner);
+        assertEquals(403, me.send("GET", "/api/admin/outfit-templates", null, true).statusCode());
+        var admin = signIn("rec-admin-" + UUID.randomUUID().toString().substring(0, 8), "ADMIN");
+        try {
+            var list = admin.ok("GET", "/api/admin/outfit-templates", null);
+            assertTrue(list.path("items").size() >= 50);
+            int active = list.path("active").asInt();
+            admin.ok("POST", "/api/admin/outfit-templates/review", Map.of("ids", List.of("white-shirt-black-trousers", "commute-shirt-loafer"), "reviewStatus", "APPROVED"));
+            var edited = admin.ok("PATCH", "/api/admin/outfit-templates/commute-shirt-loafer", Map.of("bonus", 5));
+            assertEquals(5, edited.path("bonus").asDouble());
+            assertEquals(400, admin.send("PATCH", "/api/admin/outfit-templates/commute-shirt-loafer", Map.of("bonus", 9), true).statusCode());
+            assertEquals(active + 2, admin.ok("GET", "/api/admin/outfit-templates", null).path("active").asInt());
+            var view = me.ok("POST", "/api/recommendations", Map.of("occasion", "COMMUTE", "temperatureC", 18));
+            boolean classic = false;
+            for (var o : view.path("outfits")) for (var h : o.path("highlights")) classic |= h.asText().startsWith("经典搭法：");
+            assertTrue(classic, view.path("outfits").toString());
+        } finally {
+            db.update("DELETE FROM outfit_template_review");
+            templates.reload();
+        }
+    }
+
+    @Test void semanticStrictnessIsPerAccountAndBounded() throws Exception {
+        var me = signIn("rec-strict-" + UUID.randomUUID().toString().substring(0, 8));
+        var profile = me.ok("GET", "/api/style-profile", null);
+        assertEquals(50, profile.path("strictness").path("level").asInt());
+        assertEquals(0.35, profile.path("strictness").path("threshold").asDouble(), 1e-9);
+        assertEquals(5, profile.path("strictness").path("levels").size());
+        me.ok("PATCH", "/api/style-profile", Map.of("semanticStrictness", 80));
+        var strict = me.ok("GET", "/api/style-profile", null).path("strictness");
+        assertEquals(80, strict.path("level").asInt());
+        assertTrue(strict.path("threshold").asDouble() > 0.35);
+        var reset = new HashMap<String, Object>(); reset.put("semanticStrictness", null);
+        me.ok("PATCH", "/api/style-profile", reset);
+        assertEquals(50, me.ok("GET", "/api/style-profile", null).path("strictness").path("level").asInt());
+        assertEquals(400, me.send("PATCH", "/api/style-profile", Map.of("semanticStrictness", 150), true).statusCode());
+        assertEquals(400, me.send("PATCH", "/api/style-profile", Map.of("styleMixing", "SOMETIMES"), true).statusCode());
+        assertEquals("AUTO", me.ok("PATCH", "/api/style-profile", Map.of("styleMixing", "PENALTY")).path("styleMixing").asText(), "the pre-P3 name maps to AUTO");
+    }
+
+    @Test void wearSummaryCountsAndDatesPerGarment() throws Exception {
+        String owner = "rec-wear-" + UUID.randomUUID().toString().substring(0, 8);
+        var me = signIn(owner); var ids = seed(owner);
+        assertEquals(0, me.ok("GET", "/api/wear-logs/garments/" + ids.get("shirt"), null).path("count").asInt());
+        me.ok("POST", "/api/wear-logs", Map.of("garmentIds", List.of(ids.get("shirt"), ids.get("trousers"))));
+        var summary = me.ok("GET", "/api/wear-logs/garments/" + ids.get("shirt"), null);
+        assertEquals(1, summary.path("count").asInt());
+        assertEquals(0, summary.path("daysSince").asInt());
+        var other = signIn("rec-wear-other-" + UUID.randomUUID().toString().substring(0, 8));
+        assertEquals(404, other.send("GET", "/api/wear-logs/garments/" + ids.get("shirt"), null, true).statusCode());
     }
 
     @Test void invalidIntentIsRejected() throws Exception {
