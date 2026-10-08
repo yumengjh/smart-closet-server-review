@@ -1,7 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { createServer, type Server } from 'node:http'
-import { runAgent, type Frame } from './graph.js'
+import { definitions, systemPrompt, runAgent, type Frame } from './graph.js'
 
 async function listen(server: Server) {
   await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve))
@@ -40,6 +40,7 @@ async function exercise(budget = 8, navigation = false, avatarMode?: string, tra
       assert.equal(traces.filter(t => t.phase === 'input').length, requests.length)
       assert.equal(traces.filter(t => t.phase === 'model_output').length, requests.length)
       const inputs = traces.filter(t => t.phase === 'input')
+      assert.equal(inputs[0].detail.promptVersion, 'platform-agent-v3')
       assert.equal(inputs[0].detail.messages[0].content, requests[0].messages[0].content)
       assert.equal(inputs[0].detail.tools[0].parameters.type, 'object')
       assert.equal(inputs[1].detail.messages.find((m: any) => m.role === 'tool').content, returned.content)
@@ -150,4 +151,48 @@ test('memory epoch change ends the turn without another model call or a second a
   const url=await listen(server)
   try{await runAgent({model:'gpt-6-luna',apiKey:'fake',baseURL:url+'/v1',permitURL:url+'/permits',callbackURL:url+'/callback',callbackToken:'local',maxToolCalls:5,allowedTools:['remember_preference','search_help'],timeoutSeconds:5,context:{route:'/wardrobe'},memories:[],messages:[{role:'user',content:'记住我喜欢蓝色'}]},()=>{},AbortSignal.timeout(10000));assert.equal(models,1);assert.deepEqual(callbacks,['remember_preference'])}
   finally{server.closeAllConnections();await new Promise<void>(resolve=>server.close(()=>resolve()))}
+})
+
+test('recommendation follow-up schema inherits only when explicitly requested', () => {
+  const definition = definitions.find(d => d.name === 'recommend_outfits')!
+  assert.equal(definition.schema.parse({}).basedOnPrevious, false)
+  assert.equal(definition.schema.parse({ basedOnPrevious: true }).count, undefined)
+  assert.equal(definition.schema.parse({ count: 2 }).count, 2)
+  assert.equal(definition.schema.parse({ basedOnPrevious: true, intent: { avoidColors: [] } }).basedOnPrevious, true)
+  assert.match(definition.description, /basedOnPrevious=true/)
+  assert.match(definition.description, /本轮明确改变的条件/)
+  assert.match(definition.description, /排除上轮展示衣物/)
+  assert.match(systemPrompt, /设置 basedOnPrevious=true/)
+})
+test('closed tools explain a concrete request instead of sending the user to another page', () => {
+  assert.match(systemPrompt, /工具本轮未开放时，不要让用户“去别的页面”/)
+  assert.match(systemPrompt, /帮我重新搭配一套通勤穿的/)
+})
+
+test('follow-up forwards basedOnPrevious and traces the v3 prompt without opening a socket', async () => {
+  const originalFetch = globalThis.fetch; const requests: any[] = []; const callbacks: any[] = []; const traces: any[] = []; const frames: Frame[] = []
+  globalThis.fetch = async (input, init) => {
+    const url = String(input); const body = JSON.parse(String(init?.body))
+    if (url.endsWith('/permits')) return Response.json({ status: 'GRANTED', permit: 'fixture' })
+    if (url.endsWith('/callback')) {
+      if (body.name === '__trace') { traces.push(body.args); return Response.json({}) }
+      callbacks.push(body)
+      return Response.json({ runId: '11111111-1111-4111-8111-111111111111', intent: '通勤 · 18°C', shown: [], alternatives: [],
+        presented: { mode: 'CARDS', proposal: { id: 'next-card', kind: 'RECOMMENDATION', payload: {} } } })
+    }
+    requests.push(body)
+    const delta = requests.length === 1
+      ? { role: 'assistant', tool_calls: [{ index: 0, id: 'follow-up', type: 'function', function: { name: 'recommend_outfits', arguments: JSON.stringify({ basedOnPrevious: true, intent: { avoidColors: ['红色'] } }) } }] }
+      : { role: 'assistant', content: '继续按通勤条件换一批。' }
+    return new Response('data: ' + JSON.stringify({ id: 'follow-up', object: 'chat.completion.chunk', choices: [{ index: 0, delta, finish_reason: null }] }) + '\n\ndata: [DONE]\n\n', { headers: { 'Content-Type': 'text/event-stream' } })
+  }
+  try {
+    await runAgent({ model: 'fixture', apiKey: 'fake', baseURL: 'http://fixture.invalid/v1', permitURL: 'http://fixture.invalid/permits', callbackURL: 'http://fixture.invalid/callback', callbackToken: 'fixture', maxToolCalls: 5, timeoutSeconds: 5, allowedTools: ['recommend_outfits'], traceEnabled: true, context: {}, memories: [], messages: [{ role: 'assistant', content: '上一轮推荐：通勤 · 18°C' }, { role: 'user', content: '重新搭配，避开红色' }] }, f => frames.push(f), AbortSignal.timeout(10000))
+    assert.equal(requests.length, 2); assert.equal(callbacks.length, 1)
+    assert.equal(callbacks[0].args.basedOnPrevious, true); assert.deepEqual(callbacks[0].args.intent, { avoidColors: ['红色'] })
+    const schema = requests[0].tools.find((t: any) => t.function.name === 'recommend_outfits').function
+    assert.equal(schema.parameters.properties.basedOnPrevious.type, 'boolean'); assert.match(schema.description, /basedOnPrevious=true/)
+    assert.equal(traces.find(t => t.phase === 'input').detail.promptVersion, 'platform-agent-v3')
+    assert.equal(frames.filter(f => f.event === 'proposal').length, 1)
+  } finally { globalThis.fetch = originalFetch }
 })

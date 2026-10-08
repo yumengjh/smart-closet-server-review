@@ -32,7 +32,7 @@ class AgentApiTest {
  @LocalServerPort int port;
  @Autowired com.smartcloset.person.PrivateMedia privateMedia; @Autowired AgentTraceService traces; @Autowired AgentRepository repo; @Autowired AgentService service; @Autowired HelpService help;
  @Autowired com.smartcloset.garment.ClosetSummaryService summaries; @Autowired com.smartcloset.garment.GarmentRepository garments; @Autowired CompositionReviews reviews; @Autowired AgentMemoryDocuments documents; @Autowired AgentCommands commands;
- @Autowired AgentPlatformCommands platformCommands; @Autowired ClosetAccountService accounts; @Autowired JdbcTemplate db;
+ @Autowired com.smartcloset.recommend.RecommendationService recommendations; @Autowired AgentPlatformCommands platformCommands; @Autowired ClosetAccountService accounts; @Autowired JdbcTemplate db;
  HttpClient client=HttpClient.newBuilder().cookieHandler(new CookieManager(null,CookiePolicy.ACCEPT_ALL)).build(); String csrf;
  HttpResponse<String> send(String method,String path,Object body)throws Exception{
   var b=HttpRequest.newBuilder(URI.create("http://127.0.0.1:"+port+path)).header("Content-Type","application/json");
@@ -259,6 +259,64 @@ class AgentApiTest {
    assertTrue(db.queryForObject("SELECT COUNT(*) FROM recommendation_log WHERE owner_username=? AND source='AGENT'",Integer.class,owner)>=2);
    assertNotNull(service.accept(owner,proposalId.get(),json.readTree("{\"route\":\"/wardrobe\"}"),false));
   } finally {runtime.removeContext("/run");}
+ }
+ @Test void shortRecommendationFollowUpUsesLatestAssistantAndCompactHistory()throws Exception {
+  for(boolean recommendation:new boolean[]{true,false}){
+   String owner=login();var session=repo.create(owner);String request=UUID.randomUUID().toString();
+   var payload=json.valueToTree(Map.of("runId",UUID.randomUUID().toString(),"intent","通勤 · 18°C","candidates",List.of(Map.of("name","通勤方案","garmentIds",List.of(UUID.randomUUID().toString()),"recommendation",Map.of("dimensions",List.of("不应进入模型历史"),"evidence","完整评分")))));
+   var card=repo.propose(owner,session.id(),"RECOMMENDATION",payload,json.createObjectNode());
+   repo.begin(owner,session.id(),request,"帮我搭配通勤穿的");repo.finish(owner,session.id(),request,"推荐好了","COMPLETE",List.of(Map.of("event","proposal","data",card)));
+   if(!recommendation){
+    String intervening=UUID.randomUUID().toString();repo.begin(owner,session.id(),intervening,"我有多少衣服？");repo.finish(owner,session.id(),intervening,"统计好了","COMPLETE",List.of());
+    db.update("UPDATE agent_daily_quota SET used=1 WHERE owner_username=?",owner);
+   }
+   var failure=new java.util.concurrent.atomic.AtomicReference<Throwable>();
+   runtime.createContext("/run",exchange->{String frame;try{
+    var input=json.readTree(exchange.getRequestBody().readAllBytes());String token=input.path("callbackToken").asText();
+    assertEquals(recommendation,strings(input.path("allowedTools")).contains("recommend_outfits"));
+    if(recommendation){
+     String history=input.path("messages").toString();assertTrue(history.contains("garmentIds"));assertTrue(history.contains("outfits"));assertFalse(history.contains("dimensions"));assertFalse(history.contains("evidence"));assertFalse(history.contains("candidates"));
+     assertNotNull(service.tool(token,new AgentService.ToolRequest("recommend_outfits",json.createObjectNode())));
+    }else assertThrows(com.smartcloset.image.ProcessingException.class,()->service.tool(token,new AgentService.ToolRequest("recommend_outfits",json.createObjectNode())));
+    frame="{\"event\":\"done\",\"data\":{}}\n";
+   }catch(Throwable e){failure.set(e);frame="{\"event\":\"error\",\"data\":{}}\n";}byte[] out=frame.getBytes(StandardCharsets.UTF_8);exchange.sendResponseHeaders(200,out.length);exchange.getResponseBody().write(out);exchange.close();});
+   try{var response=send("POST","/api/agent/sessions/"+session.id()+"/messages",Map.of("requestId",UUID.randomUUID().toString(),"content","不要那双","context",Map.of("route","/wardrobe")));if(failure.get()!=null)throw new AssertionError(failure.get());assertTrue(response.body().contains("event: done"),response.body());}
+   finally{runtime.removeContext("/run");}
+  }
+ }
+ private List<String> strings(JsonNode node){var out=new ArrayList<String>();for(var item:node)out.add(item.asText());return out;}
+ @Test void recommendationFollowUpInheritsSessionIntentExcludesShownAndFallsBackSafely()throws Exception {
+  for(boolean enough:new boolean[]{true,false}){
+   String owner=login();var session=repo.create(owner);
+   for(int i=0;i<(enough?2:1);i++){clothing(owner,"ACTIVE","衬衫");clothing(owner,"ACTIVE","长裤");clothing(owner,"ACTIVE","运动鞋");}
+   String excluded=clothing(owner,"ACTIVE","凉鞋");
+   var initial=new com.smartcloset.recommend.Intent(com.smartcloset.recommend.Intent.Occasion.COMMUTE,18d,"",null,List.of(),List.of(),List.of("红色"),"利落一点",List.of(),List.of(excluded),1,Map.of());
+   var previous=recommendations.recommend(owner,initial,"AGENT");assertEquals(1,previous.outfits().size());
+   var shownIds=previous.outfits().getFirst().garments().stream().map(com.smartcloset.recommend.RecommendationService.GarmentView::id).toList();
+   var payload=json.valueToTree(Map.of("runId",previous.runId(),"intent",previous.intent().get("description"),"candidates",List.of(Map.of("name",previous.outfits().getFirst().name(),"garmentIds",shownIds,"recommendation",previous.outfits().getFirst()))));
+   var card=repo.propose(owner,session.id(),"RECOMMENDATION",payload,json.createObjectNode());
+   String request=UUID.randomUUID().toString();repo.begin(owner,session.id(),request,"18度帮我搭一套利落的通勤装，避开红色");repo.finish(owner,session.id(),request,"推荐好了","COMPLETE",List.of(Map.of("event","proposal","data",card)));
+   // 另一会话更新的推荐不得覆盖本会话的条件。
+   var otherSession=repo.create(owner);var other=recommendations.recommend(owner,new com.smartcloset.recommend.Intent(com.smartcloset.recommend.Intent.Occasion.HOME,30d,"",null,List.of(),List.of(),List.of(),"",List.of(),List.of(),1,Map.of()),"AGENT");
+   repo.propose(owner,otherSession.id(),"RECOMMENDATION",json.valueToTree(Map.of("runId",other.runId())),json.createObjectNode());
+   var failure=new java.util.concurrent.atomic.AtomicReference<Throwable>();
+   runtime.createContext("/run",exchange->{String frame;try{
+    var input=json.readTree(exchange.getRequestBody().readAllBytes());String token=input.path("callbackToken").asText();assertTrue(strings(input.path("allowedTools")).contains("recommend_outfits"));
+    var args=json.valueToTree(Map.of("basedOnPrevious",true,"intent",Map.of("temperatureC",19,"avoidColors",List.of())));
+    var result=json.valueToTree(service.tool(token,new AgentService.ToolRequest("recommend_outfits",args)));assertEquals(1,result.path("shown").size(),result.toString());
+    String runId=result.path("runId").asText();var intent=json.readTree(db.queryForObject("SELECT intent_json FROM recommendation_log WHERE owner_username=? AND run_id=? LIMIT 1",String.class,owner,runId));
+    assertEquals(1,intent.path("count").asInt());assertEquals("COMMUTE",intent.path("occasion").asText());assertEquals(19d,intent.path("temperatureC").asDouble());assertEquals("利落一点",intent.path("freeText").asText());assertTrue(intent.path("avoidColors").isEmpty());
+    assertTrue(strings(intent.path("excludedGarmentIds")).contains(excluded));
+    if(enough){assertTrue(strings(intent.path("excludedGarmentIds")).containsAll(shownIds));var newIds=strings(result.path("presented").path("proposal").path("payload").path("candidates").get(0).path("garmentIds"));assertTrue(Collections.disjoint(shownIds,newIds));}
+    else {assertEquals(List.of(excluded),strings(intent.path("excludedGarmentIds")));assertTrue(result.path("limits").toString().contains("没有更多不同的组合，部分衣物与上一轮重复"));}
+    var fresh=json.valueToTree(service.tool(token,new AgentService.ToolRequest("recommend_outfits",json.valueToTree(Map.of("basedOnPrevious",false,"count",1,"intent",Map.of("occasion","DAILY"))))));
+    var freshIntent=json.readTree(db.queryForObject("SELECT intent_json FROM recommendation_log WHERE owner_username=? AND run_id=? LIMIT 1",String.class,owner,fresh.path("runId").asText()));
+    assertEquals("DAILY",freshIntent.path("occasion").asText());assertTrue(freshIntent.path("temperatureC").isNull());assertTrue(freshIntent.path("excludedGarmentIds").isEmpty());
+    frame="{\"event\":\"done\",\"data\":{}}\n";
+   }catch(Throwable e){failure.set(e);frame="{\"event\":\"error\",\"data\":{}}\n";}byte[] out=frame.getBytes(StandardCharsets.UTF_8);exchange.sendResponseHeaders(200,out.length);exchange.getResponseBody().write(out);exchange.close();});
+   try{var response=send("POST","/api/agent/sessions/"+session.id()+"/messages",Map.of("requestId",UUID.randomUUID().toString(),"content","重新搭配","context",Map.of("route","/wardrobe")));if(failure.get()!=null)throw new AssertionError(failure.get());assertTrue(response.body().contains("event: done"),response.body());}
+   finally{runtime.removeContext("/run");}
+  }
  }
  @Test void countTurnRejectsEvenMaliciousModelWriteTool()throws Exception {
   String owner=login();String item=clothing(owner,"ACTIVE","衬衫");var session=repo.create(owner);var failure=new java.util.concurrent.atomic.AtomicReference<Throwable>();
