@@ -96,6 +96,30 @@ public class GarmentRepository {
             return new Projection(UUID.fromString(rs.getString("id")),rs.getLong("revision"),rs.getString("closet_status"),rs.getString("name"),rs.getBoolean("favorite"),fields,ClosetClassification.family(fields.getOrDefault("category",List.of())),List.of("fit","thickness","wearingModes").stream().allMatch(k -> userValues.containsKey(k)&&!userValues.get(k).isEmpty()));
         },owner);
     }
+    /** Projection plus where each effective field came from: USER for owner edits, otherwise the recognition state. */
+    public record Sourced(Projection projection, Map<String,String> fieldStatus) {}
+    public List<Sourced> sourcedProjection(String owner) {
+        return jdbc.query("SELECT id,revision,closet_status,name,favorite,automatic_json,overrides_json FROM garment WHERE owner_username=? AND closet_status='ACTIVE' ORDER BY updated_at_ms DESC,id DESC", (rs,n) -> {
+            var automatic=rs.getString("automatic_json")==null?null:json.readValue(rs.getString("automatic_json"),Recognition.Result.class);
+            var userValues=overrides(rs.getString("overrides_json"));var fields=effective(automatic,userValues);
+            var status=new LinkedHashMap<String,String>();
+            for(var key:fields.keySet())status.put(key,userValues.containsKey(key)?"USER":automatic==null||automatic.attributes().get(key)==null?"UNKNOWN":automatic.attributes().get(key).status().name());
+            var projection=new Projection(UUID.fromString(rs.getString("id")),rs.getLong("revision"),rs.getString("closet_status"),rs.getString("name"),rs.getBoolean("favorite"),fields,ClosetClassification.family(fields.getOrDefault("category",List.of())),List.of("fit","thickness","wearingModes").stream().allMatch(k -> userValues.containsKey(k)&&!userValues.get(k).isEmpty()));
+            return new Sourced(projection,status);
+        },owner);
+    }
+    /** Text sources for the local semantic index: effective fields plus recognition evidence. No images, no model calls. */
+    public record CardSource(String id,long revision,String name,Map<String,List<String>> fields,String targetDescription,Map<String,String> evidence) {}
+    public List<CardSource> cardSources(String owner,Collection<String> ids) {
+        if(ids.isEmpty())return List.of();
+        var placeholders=String.join(",",Collections.nCopies(ids.size(),"?"));var args=new ArrayList<Object>();args.add(owner);args.addAll(ids);
+        return jdbc.query("SELECT id,revision,name,automatic_json,overrides_json FROM garment WHERE owner_username=? AND id IN ("+placeholders+")",(rs,n) -> {
+            var automatic=rs.getString("automatic_json")==null?null:json.readValue(rs.getString("automatic_json"),Recognition.Result.class);
+            var userValues=overrides(rs.getString("overrides_json"));var evidence=new LinkedHashMap<String,String>();
+            if(automatic!=null)automatic.attributes().forEach((key,attribute) -> {if(!userValues.containsKey(key)&&attribute!=null&&attribute.evidence()!=null&&!attribute.evidence().isBlank())evidence.put(key,attribute.evidence());});
+            return new CardSource(rs.getString("id"),rs.getLong("revision"),rs.getString("name"),effective(automatic,userValues),automatic==null||automatic.target()==null?null:automatic.target().description(),evidence);
+        },args.toArray());
+    }
     public static boolean matches(Projection item,String query,String category,String color,String season) {
         var f=item.fields();
         if(category!=null&&!category.isBlank()&&!ClosetClassification.matches(f.getOrDefault("category",List.of()),category))return false;

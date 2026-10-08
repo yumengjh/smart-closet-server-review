@@ -29,7 +29,8 @@ public class AgentService {
         volatile java.util.function.BiConsumer<String,Object> emit;
         void send(String event,Object data) { var target=emit;if(target==null)throw AgentRepository.invalid("浏览器执行通道已关闭。");target.accept(event,data); }
     }
-    private record Grant(String owner,String session,Request request,AtomicInteger calls,long expires,CanvasChannel channel) {}
+    private record PreviousRecommendation(JsonNode intent,List<String> garmentIds) {}
+    private record Grant(String owner,String session,Request request,AgentIntentPolicy.Turn turn,PreviousRecommendation previous,AtomicInteger calls,long expires,CanvasChannel channel) {}
     @org.springframework.beans.factory.annotation.Autowired private AgentMemoryDocuments memoryDocuments;
     @org.springframework.beans.factory.annotation.Autowired private com.smartcloset.garment.ClosetSummaryService closetSummary;
     private final Set<String> contextClosed=ConcurrentHashMap.newKeySet();
@@ -48,6 +49,8 @@ public class AgentService {
     @org.springframework.beans.factory.annotation.Autowired private com.smartcloset.person.WearerProfiles wearerProfiles;
     @org.springframework.beans.factory.annotation.Autowired private com.smartcloset.recognition.RecognitionService recognitionService;
     @org.springframework.beans.factory.annotation.Autowired private com.smartcloset.generation.GenerationService generationService;
+    @org.springframework.beans.factory.annotation.Autowired private com.smartcloset.recommend.RecommendationService recommendations;
+    @org.springframework.beans.factory.annotation.Autowired private com.smartcloset.semantic.GarmentSearchService wardrobeSearch;
     private final AgentTraceService traces;
     private final AgentProperties config;
     private final GenerationProperties credentials;
@@ -157,18 +160,23 @@ public class AgentService {
         }
         repo.begin(owner,session,request.requestId(),request.content());
         String token=UUID.randomUUID()+"-"+UUID.randomUUID();
+        long epoch=memoryDocuments.epoch(owner,session);
+        var history=repo.messages(owner,session).stream().filter(m->!m.status().equals("RUNNING")&&db.queryForObject("SELECT context_epoch FROM agent_message WHERE id=?",Long.class,m.id())==epoch).toList();
+        var lastAssistant=history.stream().filter(m->m.role().equals("assistant")).reduce((previous,current)->current);
+        boolean followsRecommendation=lastAssistant.map(m->recommendationProposal(m)!=null).orElse(false);
+        var turn=AgentIntentPolicy.classify(request.content(),followsRecommendation);
         var channel=new CanvasChannel();
-        grants.put(token,new Grant(owner,session,request,new AtomicInteger(),System.currentTimeMillis()+config.timeoutSeconds()*1000L+5000,channel));
+        grants.put(token,new Grant(owner,session,request,turn,previousRecommendation(owner,history),new AtomicInteger(),System.currentTimeMillis()+config.timeoutSeconds()*1000L+5000,channel));
         var payload=new LinkedHashMap<String,Object>();
         payload.put("traceEnabled",true);payload.put("model",model);payload.put("baseURL",p.baseUrl());payload.put("apiKey",p.apiKey());
         payload.put("permitURL",config.callbackUrl().resolve("/api/agent/internal/permits").toString());
         payload.put("callbackURL",config.callbackUrl().resolve("/api/agent/internal/tool").toString());payload.put("callbackToken",token);
         payload.put("maxToolCalls",config.maxToolCalls());payload.put("timeoutSeconds",config.timeoutSeconds());
         payload.put("avatarMode",repo.avatarMode(owner));
-        var turn=AgentIntentPolicy.classify(request.content());payload.put("allowedTools",turn.tools());payload.put("maxModelCalls",config.maxToolCalls()+2);payload.put("maxInputCharacters",120000);
-        long epoch=memoryDocuments.epoch(owner,session);memoryEpochs.put(token,epoch);
+        payload.put("allowedTools",turn.tools());payload.put("maxModelCalls",config.maxToolCalls()+2);payload.put("maxInputCharacters",120000);
+        memoryEpochs.put(token,epoch);
         payload.put("context",modelContext(owner,request.context()));payload.put("memories",memoryDocuments.modelInput(owner,turn.purposes()));
-        var history=repo.messages(owner,session).stream().filter(m->!m.status().equals("RUNNING")&&db.queryForObject("SELECT context_epoch FROM agent_message WHERE id=?",Long.class,m.id())==epoch).toList();payload.put("messages",history.subList(Math.max(0,history.size()-20),history.size()).stream().map(this::historyMessage).toList());
+        payload.put("messages",history.subList(Math.max(0,history.size()-20),history.size()).stream().map(this::historyMessage).toList());
         if(image!=null)payload.put("image",image);
         var hidden=new ArrayList<String>(List.of(p.apiKey(),token,config.secret(),p.baseUrl().toString(),config.callbackUrl().toString()));
         for(var memory:repo.memories(owner))if(memory.category().equals("PERSONAL"))hidden.add(memory.content());
@@ -230,12 +238,41 @@ public class AgentService {
             }
         };
     }
+    private JsonNode recommendationProposal(AgentRepository.Message message) {
+        for(int i=message.events().size()-1;i>=0;i--) {
+            var event=message.events().get(i);
+            if("proposal".equals(event.path("event").asText())&&"RECOMMENDATION".equals(event.path("data").path("kind").asText()))return event.path("data");
+        }
+        return null;
+    }
+    private PreviousRecommendation previousRecommendation(String owner,List<AgentRepository.Message> history) {
+        for(int i=history.size()-1;i>=0;i--) {
+            var message=history.get(i);if(!"assistant".equals(message.role()))continue;
+            var proposal=recommendationProposal(message);if(proposal==null)continue;
+            var payload=proposal.path("payload");
+            var intents=db.query("SELECT intent_json FROM recommendation_log WHERE owner_username=? AND run_id=? ORDER BY created_at_ms DESC LIMIT 1",(r,n)->json.readTree(r.getString(1)),owner,payload.path("runId").asText());
+            if(intents.isEmpty())continue;
+            var ids=new LinkedHashSet<String>();for(var candidate:payload.path("candidates"))ids.addAll(strings(candidate.path("garmentIds")));
+            return new PreviousRecommendation(intents.getFirst(),List.copyOf(ids));
+        }
+        return null;
+    }
     private Map<String,String> historyMessage(AgentRepository.Message message) {
         if(!message.role().equals("assistant"))return Map.of("role",message.role(),"content",message.content());
         var events=json.createArrayNode();
         for(var event:message.events()) {
             String type=event.path("event").asText();var data=event.path("data");var safe=json.createObjectNode();safe.put("event",type);
-            if(type.equals("proposal")){for(String key:List.of("id","kind","payload","consumed"))if(data.has(key))safe.set(key,data.get(key));}
+            if(type.equals("proposal")){
+                if("RECOMMENDATION".equals(data.path("kind").asText())) {
+                    for(String key:List.of("id","kind"))safe.set(key,data.path(key));
+                    for(String key:List.of("runId","intent"))safe.set(key,data.path("payload").path(key));
+                    var outfits=json.createArrayNode();
+                    for(var candidate:data.path("payload").path("candidates")) {
+                        var outfit=json.createObjectNode();for(String key:List.of("name","garmentIds"))outfit.set(key,candidate.path(key));outfits.add(outfit);
+                    }
+                    safe.set("outfits",outfits);
+                } else for(String key:List.of("id","kind","payload","consumed"))if(data.has(key))safe.set(key,data.get(key));
+            }
             else if(type.equals("memory"))continue;
             else if(type.equals("workspace_result")){for(String key:List.of("workspaceId","sessionId","boardIds","status","message"))if(data.has(key))safe.set(key,data.get(key));}
             else if(type.equals("navigation"))safe.set("path",data.path("path"));
@@ -273,7 +310,7 @@ public class AgentService {
             grant.channel().send("debug_trace",summary);return summary;
         }
         if(grant.calls().incrementAndGet()>config.maxToolCalls())throw AgentRepository.invalid("本轮工具调用已达到上限。");
-        AgentIntentPolicy.require(AgentIntentPolicy.classify(grant.request().content()),call.name());
+        AgentIntentPolicy.require(grant.turn(),call.name());
         String callId=call.callId()==null?UUID.randomUUID().toString():call.callId();long started=System.currentTimeMillis();
         emitTrace(grant,"tool","STARTED","工具调用 · "+call.name(),Map.of("callId",callId,"name",call.name(),"args",call.args()));
         try {
@@ -303,11 +340,11 @@ public class AgentService {
             }
             case "get_processing_options" -> Map.of("recognition",recognitionService.providers(),"generation",generationService.providers(),"quotaUnits",1);
             case "prepare_platform_operation" -> {
-                String kind=a.path("kind").asText();if(!AgentIntentPolicy.classify(grant.request().content()).purposes().contains("COMMAND:"+kind))throw AgentRepository.invalid("本轮未授权此种平台操作。");
+                String kind=a.path("kind").asText();if(!grant.turn().purposes().contains("COMMAND:"+kind))throw AgentRepository.invalid("本轮未授权此种平台操作。");
                 var command=platformCommands.prepare(owner,kind,grant.request().requestId()+":"+Objects.toString(call.callId(),UUID.randomUUID().toString()),a.path("parameters"));grant.channel().send("command",command);yield command;
             }
             case "get_render_options", "prepare_generation" -> {
-                String purpose=a.path("purpose").asText();if(!AgentIntentPolicy.classify(grant.request().content()).purposes().contains(purpose))throw AgentRepository.invalid("本轮没有授权此生成用途。");
+                String purpose=a.path("purpose").asText();if(!grant.turn().purposes().contains(purpose))throw AgentRepository.invalid("本轮没有授权此生成用途。");
                 if(call.name().equals("get_render_options"))yield renderCommands.options(owner,purpose);
                 String source=contextFor(grant).path("outfitId").asText("");if(purpose.equals("OOTD")&&!source.isBlank()&&!source.equals("new")&&!source.equals(a.path("outfitId").asText()))throw AgentRepository.invalid("当前搭配与生成目标不符，请明确选择来源。");
                 try{var command=renderCommands.prepare(owner,grant.request().requestId()+":"+Objects.toString(call.callId(),UUID.randomUUID().toString()),a);grant.channel().send("command",command);yield command;}catch(IOException e){throw AgentRepository.invalid("参考文件不可用，请更换有效图片。");}
@@ -336,8 +373,20 @@ public class AgentService {
                     "ruleVersion","daily-evidence-v3","note","候选已通过结构及保守叠穿筛选；非审美排名，也不是全部衣柜，未出现在候选中不代表库存不存在。只用本次 candidateId 选择，不自由拼接衣物。缺失的叠穿资料无需在每次搭配重识别，可在衣物详情核对。","emptyReason",options.isEmpty()?"指定衣物或库存无法组成可靠主体，请说明限制，不重试相同组合。":"");
             }
             case "search_wardrobe" -> {
-                String query=a.path("query").asText("").trim();
-                var page=garments.listCloset(owner,"ACTIVE",query,"","","",Math.max(1,a.path("page").asInt(1)),50);
+                String query=a.path("query").asText("").trim();int pageNo=Math.max(1,a.path("page").asInt(1));
+                if(!query.isBlank()) {
+                    // Hybrid search (design 5.10): colour/category filters, keywords, local semantics; zero model calls.
+                    var r=wardrobeSearch.search(owner,query,a.path("imageStyle").asText("").isBlank()?null:a.path("imageStyle").asText());int size=20,from=Math.min(r.hits().size(),(pageNo-1)*size),to=Math.min(r.hits().size(),from+size);
+                    var items=r.hits().subList(from,to).stream().map(h->Map.of("garment",metadata(garment(owner,h.id(),false)),"score",h.score(),"reasons",h.reasons())).toList();
+                    var out=new LinkedHashMap<String,Object>();
+                    out.put("items",items);out.put("total",r.total());out.put("page",pageNo);out.put("hasMore",to<r.hits().size());
+                    out.put("matchedTotal",r.total());out.put("fallbackApplied",false);out.put("requestedQuery",query);out.put("appliedQuery",query);
+                    out.put("parsed",r.parsed().view());out.put("mode",r.mode());out.put("emptyHint",r.emptyHint());out.put("notice",r.notice());
+                    out.put("multipleCandidates",r.total()>1);
+                    out.put("searchNote","颜色和品类按字段硬筛选，描述按本地语义匹配，达不到门槛不返回；结果为零就如实说没有并转述 emptyHint。用户在指代某一件而命中多件（multipleCandidates=true）时，列出候选请用户确认，不要自己猜。");
+                    yield out;
+                }
+                var page=garments.listCloset(owner,"ACTIVE",query,"","","",pageNo,50);
                 long matchedTotal=page.total();boolean fallback=false;
                 yield Map.of("items",page.items().stream().map(this::metadata).toList(),"total",page.total(),"page",page.page(),"hasMore",(long)page.page()*50<page.total(),
                     "matchedTotal",matchedTotal,"fallbackApplied",fallback,"requestedQuery",query,"appliedQuery",fallback?"":query,
@@ -349,6 +398,47 @@ public class AgentService {
                 yield modelContext(owner,json.valueToTree(Map.of("route","/outfits/"+outfit.id(),"outfitId",outfit.id().toString(),"name",outfit.name(),"revision",outfit.revision(),"scene",outfit.scene())));
             }
             case "navigate" -> {String path=validRoute(owner,a.path("path").asText());yield Map.of("path",path);}
+            case "recommend_outfits" -> {
+                var intent=agentIntent(owner,grant,a);
+                intent=assistantStyles(intent,a.path("intent").path("styleTags"));
+                var exclusions=new LinkedHashSet<>(intent.excludedGarmentIds());
+                if(a.path("basedOnPrevious").asBoolean(false)&&grant.previous()!=null) {
+                    var shown=new LinkedHashSet<>(grant.previous().garmentIds());shown.removeAll(intent.requiredGarmentIds());exclusions.addAll(shown);
+                }
+                var view=recommendations.recommend(owner,withExclusions(intent,List.copyOf(exclusions)),"AGENT");
+                boolean repeated=false;
+                if(view.outfits().isEmpty()&&!exclusions.equals(new LinkedHashSet<>(intent.excludedGarmentIds()))) {
+                    view=recommendations.recommend(owner,intent,"AGENT");repeated=!view.outfits().isEmpty();
+                }
+                var limits=new ArrayList<>(view.limits());if(repeated)limits.add("没有更多不同的组合，部分衣物与上一轮重复");
+                var result=new LinkedHashMap<String,Object>();
+                result.put("runId",view.runId());result.put("intent",view.intent().get("description"));result.put("limits",limits);
+                if(view.outfits().isEmpty()){result.put("shown",List.of());result.put("emptyReason",view.emptyReason());result.put("note","没有可靠组合：如实说明 emptyReason 与 limits，不要自行拼凑或重复调用。");yield result;}
+                result.put("shown",view.outfits().stream().map(this::compactOutfit).toList());
+                result.put("alternatives",recommendations.peek(owner,view.runId(),view.outfits().size(),com.smartcloset.recommend.RecommendationEngine.MODEL_POOL).stream().map(this::compactOutfit).toList());
+                result.put("presented",presentRecommendation(owner,grant,view.runId(),String.valueOf(view.intent().get("description")),view.outfits(),Map.of(),openMode(grant,a),limits,view.notes()));
+                result.put("note","推荐卡片已展示给用户，依据由系统计算。用一两句话概括亮点即可，不要逐条复述，不编造衣物或颜色；用户想换某一套时再用 present_outfits 从 alternatives 中选择。");
+                yield result;
+            }
+            case "present_outfits" -> {
+                String runId=a.path("runId").asText("");var choices=a.path("choices");
+                if(!choices.isArray()||choices.isEmpty()||choices.size()>5)throw AgentRepository.invalid("请选择一至五套。");
+                var ranked=recommendations.peek(owner,runId,0,com.smartcloset.recommend.RecommendationEngine.MODEL_POOL);
+                var byKey=new LinkedHashMap<String,com.smartcloset.recommend.RecommendationService.OutfitView>();ranked.forEach(v->byKey.put(v.key(),v));
+                var picked=new ArrayList<com.smartcloset.recommend.RecommendationService.OutfitView>();var reasons=new HashMap<String,String>();
+                for(var choice:choices){
+                    String key=choice.path("outfitKey").asText();var view=byKey.get(key);
+                    if(view==null)throw AgentRepository.invalid("只能选择本次推荐返回的前 "+com.smartcloset.recommend.RecommendationEngine.MODEL_POOL+" 套。");
+                    String reason=choice.path("reason").asText("").isBlank()?"":AgentRepository.clean(choice.path("reason").asText(""),300);
+                    if(view.rank()>3&&reason.strip().length()<6)throw AgentRepository.invalid("选择第 "+view.rank()+" 名方案需要写明理由，理由会展示给用户。");
+                    var wrong=recommendations.reasonMismatches(owner,runId,key,reason);
+                    if(!wrong.isEmpty())throw AgentRepository.invalid("理由提到了这套搭配里没有的："+String.join("、",wrong)+"。请只描述实际衣物，或留空使用系统依据。");
+                    if(!reason.isBlank())reasons.put(key,reason);
+                    if(picked.stream().noneMatch(p->p.key().equals(key)))picked.add(view);
+                }
+                var shown=recommendations.present(owner,runId,picked.stream().map(com.smartcloset.recommend.RecommendationService.OutfitView::key).toList(),"AGENT");
+                yield Map.of("runId",runId,"shown",shown.stream().map(this::compactOutfit).toList(),"presented",presentRecommendation(owner,grant,runId,"",shown,reasons,openMode(grant,a),List.of(),List.of()));
+            }
             case "build_outfits", "propose_outfits" -> {
                 var candidates=a.path("candidates");if(!candidates.isArray()||candidates.isEmpty()||candidates.size()>5)throw AgentRepository.invalid("请给出一至五套不同搭配。");
                 var resolved=json.createArrayNode();
@@ -472,6 +562,69 @@ public class AgentService {
         catch(RuntimeException e){detail.put("message",e.getMessage());emitTrace(grant,"validation","REJECTED","穿着结构校验拒绝",detail);throw e;}
     }
     private UUID uuid(String value){try{return UUID.fromString(value);}catch(Exception e){throw AgentRepository.invalid("对象 ID 无效。");}}
+    /**
+     * The model reads the message anyway, so it also places unfamiliar style words into the vocabulary (styleTags) in the
+     * same call; that classification is used now and learned for pages and search. Dictionary words are left alone.
+     */
+    @org.springframework.beans.factory.annotation.Autowired private com.smartcloset.semantic.StyleResolver styleResolver;
+    private com.smartcloset.recommend.Intent assistantStyles(com.smartcloset.recommend.Intent intent,JsonNode tags){
+        var vocabulary=com.smartcloset.recommend.FeatureTables.defaults().styleFormality.keySet();
+        var styles=strings(tags).stream().filter(vocabulary::contains).distinct().toList();
+        if(styles.isEmpty())return intent;
+        var unknown=intent.wantStyles().stream().filter(w->com.smartcloset.recommend.FeatureTables.defaults().canonicalStyles(w).isEmpty()).toList();
+        if(unknown.size()==1)styleResolver.learn(unknown.getFirst(),styles);
+        var evidence=new LinkedHashMap<String,String>();for(String w:unknown)evidence.put(w,"≈"+String.join("/",styles)+"（助手判断）");
+        var merged=new ArrayList<>(intent.inferredStyles());styles.forEach(st->{if(!merged.contains(st))merged.add(st);});
+        return intent.withInferredStyles(merged,evidence);
+    }
+    /** Opening outfits on the board writes a workspace, so it needs an outfit request this turn; cards are always fine. */
+    private String openMode(Grant grant,JsonNode a){return "WORKSPACE".equals(a.path("open").asText("CARDS"))&&grant.turn().purposes().contains("OUTFIT")?"WORKSPACE":"CARDS";}
+    private com.smartcloset.recommend.Intent withExclusions(com.smartcloset.recommend.Intent intent,List<String> excluded) {
+        return new com.smartcloset.recommend.Intent(intent.occasion(),intent.temperatureC(),intent.season(),intent.formality(),intent.wantStyles(),intent.wantColors(),intent.avoidColors(),intent.freeText(),intent.requiredGarmentIds(),excluded,intent.count(),intent.sources(),intent.wantCategories(),intent.inferredStyles());
+    }
+    private com.smartcloset.recommend.Intent agentIntent(String owner,Grant grant,JsonNode a){
+        var i=json.createObjectNode();var sources=new HashMap<String,String>();
+        if(a.path("basedOnPrevious").asBoolean(false)&&grant.previous()!=null) {
+            var previous=grant.previous().intent();
+            for(String key:List.of("occasion","temperatureC","season","formality","wantStyles","wantColors","avoidColors","freeText","requiredGarmentIds","excludedGarmentIds","wantCategories"))if(previous.has(key))i.set(key,previous.get(key));
+            for(var entry:previous.path("sources").properties())sources.put(entry.getKey(),entry.getValue().asText());
+            if(a.path("intent").hasNonNull("temperatureC")&&!a.path("intent").hasNonNull("season")&&!"USER".equals(sources.get("season"))) {i.remove("season");sources.remove("season");}
+        }
+        for(var entry:a.path("intent").properties())if(!entry.getValue().isNull()){i.set(entry.getKey(),entry.getValue());sources.remove(entry.getKey());}
+        if(a.path("basedOnPrevious").asBoolean(false)&&grant.previous()!=null&&!a.path("intent").hasNonNull("requiredGarmentIds")) {
+            var excluded=strings(a.path("intent").path("excludedGarmentIds"));
+            i.set("requiredGarmentIds",json.valueToTree(strings(i.path("requiredGarmentIds")).stream().filter(id->!excluded.contains(id)).toList()));
+        }
+        int count=a.hasNonNull("count")?a.path("count").asInt():a.path("basedOnPrevious").asBoolean(false)&&grant.previous()!=null?grant.previous().intent().path("count").asInt(3):3;
+        com.smartcloset.recommend.Intent.Occasion occasion=null;
+        try{if(!i.path("occasion").asText("").isBlank())occasion=com.smartcloset.recommend.Intent.Occasion.valueOf(i.path("occasion").asText());}catch(IllegalArgumentException e){throw AgentRepository.invalid("场景无效。");}
+        var required=new LinkedHashSet<>(pinned(grant));
+        for(var id:i.path("requiredGarmentIds")){garment(owner,id.asText(),true);required.add(id.asText());}
+        Double temperature=i.hasNonNull("temperatureC")?i.path("temperatureC").asDouble():null;
+        if(temperature!=null)sources.put("temperatureC","USER");
+        return new com.smartcloset.recommend.Intent(occasion,temperature,i.path("season").asText(""),i.hasNonNull("formality")?i.path("formality").asDouble():null,
+            strings(i.path("wantStyles")),strings(i.path("wantColors")),strings(i.path("avoidColors")),i.path("freeText").asText(""),List.copyOf(required),strings(i.path("excludedGarmentIds")),count,sources,strings(i.path("wantCategories")));
+    }
+    private List<String> strings(JsonNode node){var out=new ArrayList<String>();if(node.isArray())for(var n:node)out.add(n.asText());return out;}
+    /** Model-facing summary: a few lines per outfit instead of full garment metadata. */
+    private Map<String,Object> compactOutfit(com.smartcloset.recommend.RecommendationService.OutfitView v){
+        return Map.of("rank",v.rank(),"outfitKey",v.key(),"name",v.name(),"score",v.score(),
+            "items",v.garments().stream().map(g->g.name()+"（"+g.color()+"）").toList(),"highlights",v.highlights(),"warnings",v.warnings(),"tags",v.tags());
+    }
+    /** Shows recommendations as a confirmation card (default) or opens them on the temporary workspace. */
+    /** limits and notes go to the card only; the model sees limits through the tool result and never sees notes (wearer sex). */
+    private Object presentRecommendation(String owner,Grant grant,String runId,String intent,List<com.smartcloset.recommend.RecommendationService.OutfitView> outfits,Map<String,String> reasons,String open,List<String> limits,List<String> notes){
+        var candidates=json.createArrayNode();
+        for(var v:outfits){
+            var c=json.createObjectNode();c.put("name",v.name());c.put("reason",reasons.getOrDefault(v.key(),String.join("；",v.highlights())));
+            c.set("garmentIds",json.valueToTree(v.garments().stream().map(com.smartcloset.recommend.RecommendationService.GarmentView::id).toList()));
+            c.set("recommendation",json.valueToTree(v));candidates.add(c);
+        }
+        var payload=json.createObjectNode();payload.put("runId",runId);payload.put("intent",intent);payload.set("candidates",candidates);
+        if(!limits.isEmpty())payload.set("limits",json.valueToTree(limits));if(!notes.isEmpty())payload.set("notes",json.valueToTree(notes));
+        if("WORKSPACE".equals(open))return Map.of("mode","WORKSPACE","workspace",canvasRuns.build(owner,grant.session(),contextFor(grant),payload,false,grant.channel()::send));
+        return Map.of("mode","CARDS","proposal",repo.propose(owner,grant.session(),"RECOMMENDATION",payload,contextFor(grant)));
+    }
     private Set<String> pinned(Grant grant){
         var out=new HashSet<String>();if(!grant.request().content().matches("(?s).*(这件|这些|这条|这双|选中).*"))return out;
         var c=contextFor(grant);if(!c.path("garmentId").asText("").isBlank())out.add(c.path("garmentId").asText());
@@ -488,9 +641,10 @@ public class AgentService {
     }
     public AgentRepository.Proposal accept(String owner,String id,JsonNode context,boolean current) {
         var p=repo.proposal(owner,id);validateContext(owner,context);
-        if((current||!p.kind().equals("OUTFITS"))&&!p.context().equals(context))
+        boolean outfits=p.kind().equals("OUTFITS")||p.kind().equals("RECOMMENDATION");
+        if((current||!outfits)&&!p.context().equals(context))
             throw new ProcessingException(HttpStatus.CONFLICT,"AGENT_CONTEXT_CHANGED","当前页面、选中项或画布已经变化，请重新生成建议。");
-        if(p.kind().equals("OUTFITS"))for(var c:p.payload().path("candidates")) {
+        if(outfits)for(var c:p.payload().path("candidates")) {
             var clothes=new ArrayList<Map<String,List<String>>>();
             for(var garmentId:c.path("garmentIds"))clothes.add(ruleFields(garment(owner,garmentId.asText(),true)));
             OutfitRules.validate(clothes,true);

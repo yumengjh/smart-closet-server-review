@@ -2,6 +2,7 @@ target/
 data/
 models/*.onnx
 models/*.part
+models/embedding-*
 models/.download-parts/
 models/.download-*/
 .idea/
@@ -26,6 +27,8 @@ models/.download-*/
 *.svg
 # The production SPA bundle is built from ../smart-closet and deployed separately.
 /src/main/resources/static/index.html
+/src/main/resources/static/manifest.webmanifest
+/src/main/resources/static/sw.js
 /src/main/resources/static/assets/
 # Browser verification snapshots and logs are local artifacts.
 /.playwright-cli/

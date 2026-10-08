@@ -1,0 +1,1331 @@
+{
+ "note": "Fixed evaluation wardrobe (not user data) and labelled queries for the local semantic search (design 9.5). A query hits when any expected id is in the top 5; ZERO queries must return nothing.",
+ "garments": [
+  {
+   "id": "tee-white",
+   "name": "白色短袖T恤",
+   "fields": {
+    "category": [
+     "T恤"
+    ],
+    "primaryColor": [
+     "白色"
+    ],
+    "sleeveLength": [
+     "短袖"
+    ],
+    "patterns": [
+     "纯色"
+    ],
+    "styles": [
+     "休闲"
+    ],
+    "seasons": [
+     "夏"
+    ]
+   },
+   "description": null
+  },
+  {
+   "id": "tee-black",
+   "name": "黑色印字T恤",
+   "fields": {
+    "category": [
+     "T恤"
+    ],
+    "primaryColor": [
+     "黑色"
+    ],
+    "sleeveLength": [
+     "短袖"
+    ],
+    "patterns": [
+     "文字"
+    ],
+    "visibleText": [
+     "NASA"
+    ],
+    "styles": [
+     "休闲"
+    ],
+    "seasons": [
+     "春",
+     "夏",
+     "秋"
+    ]
+   },
+   "description": null
+  },
+  {
+   "id": "tee-bear",
+   "name": "灰色短袖",
+   "fields": {
+    "category": [
+     "T恤"
+    ],
+    "primaryColor": [
+     "灰色"
+    ],
+    "sleeveLength": [
+     "短袖"
+    ],
+    "patterns": [
+     "图形印花"
+    ],
+    "styles": [
+     "休闲",
+     "甜美"
+    ],
+    "seasons": [
+     "夏"
+    ]
+   },
+   "description": "胸前印有卡通小熊图案的短袖T恤"
+  },
+  {
+   "id": "shirt-linen",
+   "name": "米色短袖衬衫",
+   "fields": {
+    "category": [
+     "衬衫"
+    ],
+    "primaryColor": [
+     "米色"
+    ],
+    "sleeveLength": [
+     "短袖"
+    ],
+    "fit": [
+     "宽松"
+    ],
+    "texture": [
+     "亚麻"
+    ],
+    "styles": [
+     "休闲"
+    ],
+    "seasons": [
+     "夏"
+    ]
+   },
+   "description": "亚麻面料的宽松短袖衬衫，适合度假"
+  },
+  {
+   "id": "shirt-office",
+   "name": "白色长袖衬衫",
+   "fields": {
+    "category": [
+     "衬衫"
+    ],
+    "primaryColor": [
+     "白色"
+    ],
+    "sleeveLength": [
+     "长袖"
+    ],
+    "fit": [
+     "合体"
+    ],
+    "styles": [
+     "通勤",
+     "正式"
+    ],
+    "seasons": [
+     "春",
+     "秋"
+    ]
+   },
+   "description": null
+  },
+  {
+   "id": "shirt-check",
+   "name": "蓝灰格纹衬衫",
+   "fields": {
+    "category": [
+     "衬衫"
+    ],
+    "primaryColor": [
+     "蓝灰色"
+    ],
+    "patterns": [
+     "格纹"
+    ],
+    "sleeveLength": [
+     "长袖"
+    ],
+    "styles": [
+     "休闲"
+    ],
+    "seasons": [
+     "春",
+     "秋"
+    ]
+   },
+   "description": null
+  },
+  {
+   "id": "shirt-stripe",
+   "name": "蓝白条纹衬衫",
+   "fields": {
+    "category": [
+     "衬衫"
+    ],
+    "primaryColor": [
+     "蓝色"
+    ],
+    "patterns": [
+     "条纹"
+    ],
+    "sleeveLength": [
+     "长袖"
+    ],
+    "styles": [
+     "休闲",
+     "通勤"
+    ],
+    "seasons": [
+     "春",
+     "夏",
+     "秋"
+    ]
+   },
+   "description": null
+  },
+  {
+   "id": "hoodie-gray",
+   "name": "灰色连帽卫衣",
+   "fields": {
+    "category": [
+     "卫衣"
+    ],
+    "primaryColor": [
+     "灰色"
+    ],
+    "neckline": [
+     "连帽"
+    ],
+    "fit": [
+     "宽松"
+    ],
+    "styles": [
+     "休闲",
+     "运动"
+    ],
+    "seasons": [
+     "秋",
+     "冬"
+    ]
+   },
+   "description": null
+  },
+  {
+   "id": "sweater-navy",
+   "name": "藏蓝毛衣",
+   "fields": {
+    "category": [
+     "毛衣"
+    ],
+    "primaryColor": [
+     "藏蓝色"
+    ],
+    "thickness": [
+     "厚"
+    ],
+    "texture": [
+     "针织纹理"
+    ],
+    "styles": [
+     "休闲",
+     "通勤"
+    ],
+    "seasons": [
+     "秋",
+     "冬"
+    ]
+   },
+   "description": null
+  },
+  {
+   "id": "cardigan-cream",
+   "name": "奶白针织开衫",
+   "fields": {
+    "category": [
+     "开衫"
+    ],
+    "primaryColor": [
+     "米色"
+    ],
+    "texture": [
+     "针织纹理"
+    ],
+    "styles": [
+     "复古",
+     "甜美"
+    ],
+    "seasons": [
+     "春",
+     "秋"
+    ]
+   },
+   "description": "柔软的奶白色针织开衫，温柔文艺"
+  },
+  {
+   "id": "cardigan-green",
+   "name": "墨绿针织开衫",
+   "fields": {
+    "category": [
+     "开衫"
+    ],
+    "primaryColor": [
+     "绿色"
+    ],
+    "neckline": [
+     "V领"
+    ],
+    "styles": [
+     "复古"
+    ],
+    "seasons": [
+     "秋"
+    ]
+   },
+   "description": "墨绿色学院风开衫，V领纽扣"
+  },
+  {
+   "id": "blazer-black",
+   "name": "黑色西装外套",
+   "fields": {
+    "category": [
+     "西装外套"
+    ],
+    "primaryColor": [
+     "黑色"
+    ],
+    "styles": [
+     "正式",
+     "通勤"
+    ],
+    "seasons": [
+     "春",
+     "秋"
+    ]
+   },
+   "description": null
+  },
+  {
+   "id": "trench-beige",
+   "name": "米色风衣",
+   "fields": {
+    "category": [
+     "风衣"
+    ],
+    "primaryColor": [
+     "米色"
+    ],
+    "garmentLength": [
+     "中长款"
+    ],
+    "styles": [
+     "通勤"
+    ],
+    "seasons": [
+     "春",
+     "秋"
+    ]
+   },
+   "description": null
+  },
+  {
+   "id": "down-black",
+   "name": "黑色羽绒服",
+   "fields": {
+    "category": [
+     "羽绒服"
+    ],
+    "primaryColor": [
+     "黑色"
+    ],
+    "thickness": [
+     "厚"
+    ],
+    "styles": [
+     "休闲"
+    ],
+    "seasons": [
+     "冬"
+    ]
+   },
+   "description": null
+  },
+  {
+   "id": "coat-camel",
+   "name": "驼色羊毛大衣",
+   "fields": {
+    "category": [
+     "大衣"
+    ],
+    "primaryColor": [
+     "棕色"
+    ],
+    "thickness": [
+     "厚"
+    ],
+    "garmentLength": [
+     "长款"
+    ],
+    "styles": [
+     "通勤"
+    ],
+    "seasons": [
+     "冬"
+    ]
+   },
+   "description": "驼色羊毛呢大衣，长款"
+  },
+  {
+   "id": "jacket-denim",
+   "name": "牛仔夹克",
+   "fields": {
+    "category": [
+     "夹克"
+    ],
+    "primaryColor": [
+     "蓝色"
+    ],
+    "texture": [
+     "牛仔纹理"
+    ],
+    "styles": [
+     "休闲",
+     "复古"
+    ],
+    "seasons": [
+     "春",
+     "秋"
+    ]
+   },
+   "description": null
+  },
+  {
+   "id": "windbreaker",
+   "name": "橙色冲锋衣",
+   "fields": {
+    "category": [
+     "冲锋衣"
+    ],
+    "primaryColor": [
+     "橙色"
+    ],
+    "styles": [
+     "户外",
+     "运动"
+    ],
+    "seasons": [
+     "春",
+     "秋"
+    ]
+   },
+   "description": "防风防水的冲锋衣，适合户外徒步登山"
+  },
+  {
+   "id": "jeans-blue",
+   "name": "浅蓝直筒牛仔裤",
+   "fields": {
+    "category": [
+     "牛仔裤"
+    ],
+    "primaryColor": [
+     "浅蓝色"
+    ],
+    "texture": [
+     "牛仔纹理"
+    ],
+    "styles": [
+     "休闲"
+    ],
+    "seasons": [
+     "春",
+     "秋",
+     "冬"
+    ]
+   },
+   "description": null
+  },
+  {
+   "id": "trousers-black",
+   "name": "黑色西裤",
+   "fields": {
+    "category": [
+     "西裤"
+    ],
+    "primaryColor": [
+     "黑色"
+    ],
+    "fit": [
+     "合体"
+    ],
+    "styles": [
+     "通勤",
+     "正式"
+    ],
+    "seasons": [
+     "春",
+     "秋",
+     "冬"
+    ]
+   },
+   "description": null
+  },
+  {
+   "id": "pants-linen",
+   "name": "米色阔腿裤",
+   "fields": {
+    "category": [
+     "长裤"
+    ],
+    "primaryColor": [
+     "米色"
+    ],
+    "texture": [
+     "亚麻"
+    ],
+    "thickness": [
+     "薄"
+    ],
+    "styles": [
+     "休闲"
+    ],
+    "seasons": [
+     "夏"
+    ]
+   },
+   "description": "亚麻阔腿长裤，轻薄透气"
+  },
+  {
+   "id": "joggers-gray",
+   "name": "灰色运动裤",
+   "fields": {
+    "category": [
+     "运动裤"
+    ],
+    "primaryColor": [
+     "灰色"
+    ],
+    "styles": [
+     "运动",
+     "休闲"
+    ],
+    "seasons": [
+     "春",
+     "秋",
+     "冬"
+    ]
+   },
+   "description": null
+  },
+  {
+   "id": "shorts-denim",
+   "name": "牛仔短裤",
+   "fields": {
+    "category": [
+     "短裤"
+    ],
+    "primaryColor": [
+     "蓝色"
+    ],
+    "texture": [
+     "牛仔纹理"
+    ],
+    "styles": [
+     "休闲"
+    ],
+    "seasons": [
+     "夏"
+    ]
+   },
+   "description": null
+  },
+  {
+   "id": "shorts-sport",
+   "name": "黑色运动短裤",
+   "fields": {
+    "category": [
+     "短裤"
+    ],
+    "primaryColor": [
+     "黑色"
+    ],
+    "styles": [
+     "运动"
+    ],
+    "seasons": [
+     "夏"
+    ]
+   },
+   "description": "速干面料的跑步短裤"
+  },
+  {
+   "id": "skirt-pleated",
+   "name": "白色百褶裙",
+   "fields": {
+    "category": [
+     "半身裙"
+    ],
+    "primaryColor": [
+     "白色"
+    ],
+    "styles": [
+     "甜美"
+    ],
+    "seasons": [
+     "春",
+     "夏"
+    ]
+   },
+   "description": null
+  },
+  {
+   "id": "skirt-plaid",
+   "name": "格纹半身裙",
+   "fields": {
+    "category": [
+     "半身裙"
+    ],
+    "primaryColor": [
+     "棕色"
+    ],
+    "patterns": [
+     "格纹"
+    ],
+    "styles": [
+     "复古"
+    ],
+    "seasons": [
+     "秋",
+     "冬"
+    ]
+   },
+   "description": "棕色格纹A字裙，学院风"
+  },
+  {
+   "id": "dress-floral",
+   "name": "碎花连衣裙",
+   "fields": {
+    "category": [
+     "连衣裙"
+    ],
+    "primaryColor": [
+     "多色"
+    ],
+    "patterns": [
+     "花卉"
+    ],
+    "styles": [
+     "甜美"
+    ],
+    "seasons": [
+     "夏"
+    ]
+   },
+   "description": "碎花长裙，适合海边度假拍照"
+  },
+  {
+   "id": "dress-black",
+   "name": "黑色连衣裙",
+   "fields": {
+    "category": [
+     "连衣裙"
+    ],
+    "primaryColor": [
+     "黑色"
+    ],
+    "styles": [
+     "正式",
+     "通勤"
+    ],
+    "seasons": [
+     "春",
+     "夏",
+     "秋"
+    ]
+   },
+   "description": null
+  },
+  {
+   "id": "dress-cotton",
+   "name": "白色长裙",
+   "fields": {
+    "category": [
+     "连衣裙"
+    ],
+    "primaryColor": [
+     "白色"
+    ],
+    "styles": [
+     "休闲"
+    ],
+    "seasons": [
+     "夏"
+    ]
+   },
+   "description": "棉麻质地的宽松长裙，文艺风格"
+  },
+  {
+   "id": "sneakers-white",
+   "name": "小白鞋",
+   "fields": {
+    "category": [
+     "运动鞋"
+    ],
+    "primaryColor": [
+     "白色"
+    ],
+    "styles": [
+     "休闲"
+    ],
+    "seasons": [
+     "春",
+     "夏",
+     "秋"
+    ]
+   },
+   "description": null
+  },
+  {
+   "id": "sneakers-run",
+   "name": "灰色跑鞋",
+   "fields": {
+    "category": [
+     "运动鞋"
+    ],
+    "primaryColor": [
+     "灰色"
+    ],
+    "styles": [
+     "运动"
+    ],
+    "seasons": [
+     "春",
+     "夏",
+     "秋"
+    ]
+   },
+   "description": "透气网面跑步鞋"
+  },
+  {
+   "id": "boots-brown",
+   "name": "棕色马丁靴",
+   "fields": {
+    "category": [
+     "靴子"
+    ],
+    "primaryColor": [
+     "棕色"
+    ],
+    "styles": [
+     "复古"
+    ],
+    "seasons": [
+     "秋",
+     "冬"
+    ]
+   },
+   "description": null
+  },
+  {
+   "id": "boots-rain",
+   "name": "黑色雨靴",
+   "fields": {
+    "category": [
+     "靴子"
+    ],
+    "primaryColor": [
+     "黑色"
+    ],
+    "styles": [
+     "户外"
+    ],
+    "seasons": [
+     "春",
+     "秋"
+    ]
+   },
+   "description": "防水橡胶雨靴，下雨天穿"
+  },
+  {
+   "id": "loafers-black",
+   "name": "黑色乐福鞋",
+   "fields": {
+    "category": [
+     "皮鞋"
+    ],
+    "primaryColor": [
+     "黑色"
+    ],
+    "styles": [
+     "通勤"
+    ],
+    "seasons": [
+     "春",
+     "秋"
+    ]
+   },
+   "description": null
+  },
+  {
+   "id": "sandals-beige",
+   "name": "米色凉鞋",
+   "fields": {
+    "category": [
+     "凉鞋"
+    ],
+    "primaryColor": [
+     "米色"
+    ],
+    "styles": [
+     "休闲"
+    ],
+    "seasons": [
+     "夏"
+    ]
+   },
+   "description": null
+  },
+  {
+   "id": "slippers",
+   "name": "人字拖",
+   "fields": {
+    "category": [
+     "拖鞋"
+    ],
+    "primaryColor": [
+     "灰色"
+    ],
+    "styles": [
+     "休闲"
+    ],
+    "seasons": [
+     "夏"
+    ]
+   },
+   "description": "居家人字拖"
+  },
+  {
+   "id": "heels-nude",
+   "name": "裸色高跟鞋",
+   "fields": {
+    "category": [
+     "高跟鞋"
+    ],
+    "primaryColor": [
+     "米色"
+    ],
+    "styles": [
+     "正式"
+    ],
+    "seasons": [
+     "春",
+     "秋"
+    ]
+   },
+   "description": null
+  },
+  {
+   "id": "cap-navy",
+   "name": "藏蓝棒球帽",
+   "fields": {
+    "category": [
+     "棒球帽"
+    ],
+    "primaryColor": [
+     "藏蓝色"
+    ],
+    "styles": [
+     "休闲",
+     "运动"
+    ]
+   },
+   "description": null
+  },
+  {
+   "id": "hat-straw",
+   "name": "草帽",
+   "fields": {
+    "category": [
+     "帽子"
+    ],
+    "primaryColor": [
+     "米色"
+    ],
+    "styles": [
+     "休闲"
+    ],
+    "seasons": [
+     "夏"
+    ]
+   },
+   "description": "宽檐草帽，防晒，适合海边"
+  },
+  {
+   "id": "bag-tote",
+   "name": "帆布托特包",
+   "fields": {
+    "category": [
+     "手提包"
+    ],
+    "primaryColor": [
+     "米色"
+    ],
+    "styles": [
+     "休闲"
+    ]
+   },
+   "description": "大容量帆布包"
+  },
+  {
+   "id": "scarf-gray",
+   "name": "灰色羊毛围巾",
+   "fields": {
+    "category": [
+     "围巾"
+    ],
+    "primaryColor": [
+     "灰色"
+    ],
+    "styles": [
+     "休闲"
+    ],
+    "seasons": [
+     "冬"
+    ]
+   },
+   "description": "柔软保暖的羊毛围巾"
+  },
+  {
+   "id": "polo-navy",
+   "name": "藏蓝Polo衫",
+   "fields": {
+    "category": [
+     "Polo衫"
+    ],
+    "primaryColor": [
+     "藏蓝色"
+    ],
+    "sleeveLength": [
+     "短袖"
+    ],
+    "styles": [
+     "通勤",
+     "休闲"
+    ],
+    "seasons": [
+     "夏"
+    ]
+   },
+   "description": null
+  }
+ ],
+ "queries": [
+  {
+   "q": "白色上衣",
+   "expect": [
+    "tee-white",
+    "shirt-office"
+   ],
+   "kind": "FIELD"
+  },
+  {
+   "q": "黑色裤子",
+   "expect": [
+    "trousers-black"
+   ],
+   "kind": "FIELD"
+  },
+  {
+   "q": "蓝色牛仔裤",
+   "expect": [
+    "jeans-blue"
+   ],
+   "kind": "FIELD"
+  },
+  {
+   "q": "灰色卫衣",
+   "expect": [
+    "hoodie-gray"
+   ],
+   "kind": "FIELD"
+  },
+  {
+   "q": "小白鞋",
+   "expect": [
+    "sneakers-white"
+   ],
+   "kind": "FIELD"
+  },
+  {
+   "q": "藏蓝色毛衣",
+   "expect": [
+    "sweater-navy"
+   ],
+   "kind": "FIELD"
+  },
+  {
+   "q": "格纹衬衫",
+   "expect": [
+    "shirt-check"
+   ],
+   "kind": "FIELD"
+  },
+  {
+   "q": "碎花连衣裙",
+   "expect": [
+    "dress-floral"
+   ],
+   "kind": "FIELD"
+  },
+  {
+   "q": "米色外套",
+   "expect": [
+    "trench-beige"
+   ],
+   "kind": "FIELD"
+  },
+  {
+   "q": "黑色鞋子",
+   "expect": [
+    "loafers-black",
+    "boots-rain"
+   ],
+   "kind": "FIELD"
+  },
+  {
+   "q": "条纹衬衫",
+   "expect": [
+    "shirt-stripe"
+   ],
+   "kind": "FIELD"
+  },
+  {
+   "q": "牛仔短裤",
+   "expect": [
+    "shorts-denim"
+   ],
+   "kind": "FIELD"
+  },
+  {
+   "q": "白色半身裙",
+   "expect": [
+    "skirt-pleated"
+   ],
+   "kind": "FIELD"
+  },
+  {
+   "q": "驼色大衣",
+   "expect": [
+    "coat-camel"
+   ],
+   "kind": "FIELD"
+  },
+  {
+   "q": "帽子",
+   "expect": [
+    "cap-navy",
+    "hat-straw"
+   ],
+   "kind": "FIELD"
+  },
+  {
+   "q": "适合海边的",
+   "expect": [
+    "dress-floral",
+    "shirt-linen",
+    "hat-straw",
+    "sandals-beige"
+   ],
+   "kind": "DESC"
+  },
+  {
+   "q": "海边度假穿的衣服",
+   "expect": [
+    "dress-floral",
+    "shirt-linen"
+   ],
+   "kind": "DESC"
+  },
+  {
+   "q": "文艺一点的",
+   "expect": [
+    "dress-cotton",
+    "cardigan-cream"
+   ],
+   "kind": "DESC"
+  },
+  {
+   "q": "小熊图案",
+   "expect": [
+    "tee-bear"
+   ],
+   "kind": "DESC"
+  },
+  {
+   "q": "有字母的T恤",
+   "expect": [
+    "tee-black"
+   ],
+   "kind": "DESC"
+  },
+  {
+   "q": "保暖的外套",
+   "expect": [
+    "down-black",
+    "coat-camel"
+   ],
+   "kind": "DESC"
+  },
+  {
+   "q": "冬天最暖和的",
+   "expect": [
+    "down-black",
+    "coat-camel",
+    "scarf-gray"
+   ],
+   "kind": "DESC"
+  },
+  {
+   "q": "适合跑步的",
+   "expect": [
+    "sneakers-run",
+    "shorts-sport",
+    "joggers-gray"
+   ],
+   "kind": "DESC"
+  },
+  {
+   "q": "面试穿的",
+   "expect": [
+    "blazer-black",
+    "shirt-office",
+    "trousers-black"
+   ],
+   "kind": "DESC"
+  },
+  {
+   "q": "正式场合",
+   "expect": [
+    "blazer-black",
+    "dress-black",
+    "trousers-black",
+    "heels-nude"
+   ],
+   "kind": "DESC"
+  },
+  {
+   "q": "运动风",
+   "expect": [
+    "hoodie-gray",
+    "joggers-gray",
+    "sneakers-run",
+    "shorts-sport"
+   ],
+   "kind": "DESC"
+  },
+  {
+   "q": "复古感",
+   "expect": [
+    "boots-brown",
+    "skirt-plaid",
+    "cardigan-green",
+    "jacket-denim"
+   ],
+   "kind": "DESC"
+  },
+  {
+   "q": "清凉透气",
+   "expect": [
+    "shirt-linen",
+    "pants-linen",
+    "sneakers-run"
+   ],
+   "kind": "DESC"
+  },
+  {
+   "q": "下雨天穿的鞋",
+   "expect": [
+    "boots-rain"
+   ],
+   "kind": "DESC"
+  },
+  {
+   "q": "适合爬山",
+   "expect": [
+    "windbreaker"
+   ],
+   "kind": "DESC"
+  },
+  {
+   "q": "户外徒步",
+   "expect": [
+    "windbreaker",
+    "sneakers-run"
+   ],
+   "kind": "DESC"
+  },
+  {
+   "q": "约会穿的裙子",
+   "expect": [
+    "dress-floral",
+    "skirt-pleated",
+    "dress-black"
+   ],
+   "kind": "DESC"
+  },
+  {
+   "q": "甜美可爱",
+   "expect": [
+    "skirt-pleated",
+    "dress-floral",
+    "tee-bear"
+   ],
+   "kind": "DESC"
+  },
+  {
+   "q": "宽松舒服的",
+   "expect": [
+    "hoodie-gray",
+    "pants-linen",
+    "dress-cotton",
+    "shirt-linen"
+   ],
+   "kind": "DESC"
+  },
+  {
+   "q": "夏天穿的凉快的",
+   "expect": [
+    "shirt-linen",
+    "shorts-denim",
+    "sandals-beige",
+    "pants-linen",
+    "shorts-sport"
+   ],
+   "kind": "DESC"
+  },
+  {
+   "q": "防晒的",
+   "expect": [
+    "hat-straw"
+   ],
+   "kind": "DESC"
+  },
+  {
+   "q": "通勤上班穿",
+   "expect": [
+    "shirt-office",
+    "trousers-black",
+    "loafers-black",
+    "blazer-black",
+    "trench-beige"
+   ],
+   "kind": "DESC"
+  },
+  {
+   "q": "亚麻材质",
+   "expect": [
+    "shirt-linen",
+    "pants-linen"
+   ],
+   "kind": "DESC"
+  },
+  {
+   "q": "毛茸茸暖和的",
+   "expect": [
+    "sweater-navy",
+    "scarf-gray",
+    "coat-camel"
+   ],
+   "kind": "DESC"
+  },
+  {
+   "q": "学院风",
+   "expect": [
+    "skirt-plaid",
+    "cardigan-green",
+    "polo-navy"
+   ],
+   "kind": "DESC"
+  },
+  {
+   "q": "居家穿",
+   "expect": [
+    "slippers",
+    "hoodie-gray",
+    "joggers-gray"
+   ],
+   "kind": "DESC"
+  },
+  {
+   "q": "速干的",
+   "expect": [
+    "shorts-sport",
+    "sneakers-run"
+   ],
+   "kind": "DESC"
+  },
+  {
+   "q": "大容量的包",
+   "expect": [
+    "bag-tote"
+   ],
+   "kind": "DESC"
+  },
+  {
+   "q": "红色",
+   "expect": [],
+   "kind": "ZERO"
+  },
+  {
+   "q": "紫色裤子",
+   "expect": [],
+   "kind": "ZERO"
+  },
+  {
+   "q": "红色连衣裙",
+   "expect": [],
+   "kind": "ZERO"
+  },
+  {
+   "q": "粉色上衣",
+   "expect": [],
+   "kind": "ZERO"
+  },
+  {
+   "q": "婚纱",
+   "expect": [],
+   "kind": "ZERO"
+  },
+  {
+   "q": "泳衣",
+   "expect": [],
+   "kind": "ZERO"
+  },
+  {
+   "q": "领带",
+   "expect": [],
+   "kind": "ZERO"
+  },
+  {
+   "q": "适合潜水的",
+   "expect": [],
+   "kind": "ZERO"
+  },
+  {
+   "q": "赛博朋克风",
+   "expect": [],
+   "kind": "ZERO"
+  },
+  {
+   "q": "汉服风格",
+   "expect": [],
+   "kind": "ZERO"
+  }
+ ]
+}

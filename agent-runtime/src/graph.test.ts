@@ -1,7 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { createServer, type Server } from 'node:http'
-import { runAgent, type Frame } from './graph.js'
+import { definitions, systemPrompt, runAgent, type Frame } from './graph.js'
 
 async function listen(server: Server) {
   await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve))
@@ -40,6 +40,7 @@ async function exercise(budget = 8, navigation = false, avatarMode?: string, tra
       assert.equal(traces.filter(t => t.phase === 'input').length, requests.length)
       assert.equal(traces.filter(t => t.phase === 'model_output').length, requests.length)
       const inputs = traces.filter(t => t.phase === 'input')
+      assert.equal(inputs[0].detail.promptVersion, 'platform-agent-v6')
       assert.equal(inputs[0].detail.messages[0].content, requests[0].messages[0].content)
       assert.equal(inputs[0].detail.tools[0].parameters.type, 'object')
       assert.equal(inputs[1].detail.messages.find((m: any) => m.role === 'tool').content, returned.content)
@@ -66,15 +67,15 @@ test('a rejected outfit returns its cause to the model and can be corrected with
     if(req.url === '/permits'){assert.ok(['acquire','dispatch','heartbeat','finish'].includes(body.action));res.setHeader('Content-Type','application/json');res.end(JSON.stringify({status:'GRANTED',permit:'fixture-'+body.iteration}));return}
     if (req.url === '/callback') {
       res.setHeader('Content-Type', 'application/json')
-      if (++builds === 1) { res.statusCode = 400; res.end(JSON.stringify({ message: '一套日常搭配最多一件外搭' })) }
-      else res.end(JSON.stringify({ status: 'COMPLETE', message: '尚未保存' }))
+      if (++builds === 1) { res.statusCode = 400; res.end(JSON.stringify({ message: '理由提到了这套搭配里没有的：米色' })) }
+      else res.end(JSON.stringify({ runId: ids[0], shown: [], presented: { mode: 'CARDS', proposal: { id: 'p-1', kind: 'RECOMMENDATION', payload: {} } } }))
       return
     }
     requests.push(body)
-    if (requests.length === 2) assert.match(body.messages.find((m: any) => m.role === 'tool').content, /最多一件外搭/)
+    if (requests.length === 2) assert.match(body.messages.find((m: any) => m.role === 'tool').content, /米色/)
     const delta = requests.length < 3
-      ? { role: 'assistant', tool_calls: [{ index: 0, id: `build-${requests.length}`, type: 'function', function: { name: 'build_outfits', arguments: JSON.stringify({ candidates: [{ name: '基础搭配', reason: '修正冲突', candidateId: ids[requests.length === 1 ? 0 : 1] }] }) } }] }
-      : { role: 'assistant', content: '已修正外搭冲突，临时搭配尚未保存。' }
+      ? { role: 'assistant', tool_calls: [{ index: 0, id: `present-${requests.length}`, type: 'function', function: { name: 'present_outfits', arguments: JSON.stringify({ runId: ids[0], choices: [{ outfitKey: ids[1], reason: requests.length === 1 ? '米色更温柔' : '' }] }) } }] }
+      : { role: 'assistant', content: '已换成你要的那套。' }
     res.setHeader('Content-Type', 'text/event-stream')
     res.end('data: ' + JSON.stringify({ id: 'outfit-test', object: 'chat.completion.chunk', choices: [{ index: 0, delta, finish_reason: null }] }) + '\n\ndata: [DONE]\n\n')
   })
@@ -83,35 +84,39 @@ test('a rejected outfit returns its cause to the model and can be corrected with
     await runAgent({ model: 'gpt-6-luna', apiKey: 'fake', baseURL: url + '/v1', permitURL: url + '/permits', callbackURL: url + '/callback', callbackToken: 'test', maxToolCalls: 5, timeoutSeconds: 5, context: { route: '/wardrobe' }, memories: [], messages: [{ role: 'user', content: '搭一套' }] }, frame => frames.push(frame), AbortSignal.timeout(10000))
     assert.equal(builds, 2); assert.equal(requests.length, 3)
     assert.equal(frames.filter(f => f.event === 'error').length, 0)
+    assert.equal(frames.filter(f => f.event === 'proposal').length, 1)
     assert.equal(frames.at(-1)?.event, 'done')
   } finally { server.closeAllConnections(); await new Promise<void>(resolve => server.close(() => resolve())) }
 })
 
 test('trace captures every actual model input and tool correlation without adding model calls', async () => { await exercise(8, false, 'basic', true) })
 
-test('outfit selection uses server candidate IDs without arbitrary garment composition or retry', async () => {
-  const candidateId = '11111111-1111-4111-8111-111111111111'; let requests = 0; const callbacks: string[] = []
+test('recommendation takes two model calls, shows the card and never offers the retired candidate tools', async () => {
+  const runId = '11111111-1111-4111-8111-111111111111'; let requests = 0; const callbacks: string[] = []; const frames: Frame[] = []
   const server = createServer(async (req, res) => {
     let raw = ''; for await (const chunk of req) raw += chunk; const body = JSON.parse(raw)
     if(req.url === '/permits'){assert.ok(['acquire','dispatch','heartbeat','finish'].includes(body.action));res.setHeader('Content-Type','application/json');res.end(JSON.stringify({status:'GRANTED',permit:'fixture-'+body.iteration}));return}
     if (req.url === '/callback') {
       callbacks.push(body.name); res.setHeader('Content-Type', 'application/json')
-      if (body.name === 'get_outfit_candidates') res.end(JSON.stringify({ candidates: [{ candidateId, garmentIds: ['g1', 'g2'] }], garments: [], ruleVersion: 'daily-evidence-v3' }))
-      else { assert.equal(body.args.candidates[0].candidateId, candidateId); assert.equal(body.args.candidates[0].garmentIds, undefined); res.end(JSON.stringify({ status: 'COMPLETE' })) }
+      assert.equal(body.args.intent.occasion, 'COMMUTE'); assert.equal(body.args.intent.temperatureC, 12)
+      res.end(JSON.stringify({ runId, intent: '通勤 · 12°C', shown: [{ rank: 1, name: '白+黑·通勤', items: ['白衬衫（白）'], highlights: ['黑白经典'] }], alternatives: [],
+        presented: { mode: 'CARDS', proposal: { id: 'p-1', kind: 'RECOMMENDATION', payload: { runId, candidates: [{ name: '白+黑·通勤', garmentIds: ['g1', 'g2'] }] } } } }))
       return
     }
     requests++
-    const schema = body.tools.find((t: any) => t.function.name === 'build_outfits').function.parameters.properties.candidates.items.properties
-    assert.ok(schema.candidateId); assert.equal(schema.garmentIds, undefined)
-    const name = requests === 1 ? 'get_outfit_candidates' : 'build_outfits'
-    const args = requests === 1 ? { requiredGarmentIds: [] } : { candidates: [{ candidateId, name: '通勤', reason: '从合法候选选择' }] }
-    const delta = requests < 3 ? { role: 'assistant', tool_calls: [{ index: 0, id: `candidate-${requests}`, type: 'function', function: { name, arguments: JSON.stringify(args) } }] } : { role: 'assistant', content: '已搭建，尚未保存。' }
-    res.setHeader('Content-Type', 'text/event-stream'); res.end('data: ' + JSON.stringify({ id: 'selection', choices: [{ index: 0, delta, finish_reason: null }] }) + '\n\ndata: [DONE]\n\n')
+    const names = body.tools?.map((t: any) => t.function.name) || []
+    if (requests === 1) { assert.ok(names.includes('recommend_outfits')); for (const retired of ['get_outfit_candidates', 'build_outfits', 'propose_outfits']) assert.ok(!names.includes(retired)) }
+    if (requests === 2) { const tool = body.messages.find((m: any) => m.role === 'tool').content; assert.match(tool, /推荐卡片已展示/); assert.doesNotMatch(tool, /"payload"/) }
+    const delta = requests === 1
+      ? { role: 'assistant', tool_calls: [{ index: 0, id: 'recommend-1', type: 'function', function: { name: 'recommend_outfits', arguments: JSON.stringify({ intent: { occasion: 'COMMUTE', temperatureC: 12 } }) } }] }
+      : { role: 'assistant', content: '给你挑了三套通勤搭配，第一套黑白经典。' }
+    res.setHeader('Content-Type', 'text/event-stream'); res.end('data: ' + JSON.stringify({ id: 'recommend', choices: [{ index: 0, delta, finish_reason: null }] }) + '\n\ndata: [DONE]\n\n')
   })
   const url = await listen(server)
   try {
-    await runAgent({ model: 'gpt-6-luna', apiKey: 'fake', baseURL: url + '/v1', permitURL: url + '/permits', callbackURL: url + '/callback', callbackToken: 'test', maxToolCalls: 5, timeoutSeconds: 5, context: { route: '/wardrobe' }, memories: [], messages: [{ role: 'user', content: '搭一套' }] }, () => {}, AbortSignal.timeout(10000))
-    assert.equal(requests, 3); assert.deepEqual(callbacks, ['get_outfit_candidates', 'build_outfits'])
+    await runAgent({ model: 'gpt-6-luna', apiKey: 'fake', baseURL: url + '/v1', permitURL: url + '/permits', callbackURL: url + '/callback', callbackToken: 'test', maxToolCalls: 5, timeoutSeconds: 5, context: { route: '/wardrobe' }, memories: [], messages: [{ role: 'user', content: '明天 12 度，帮我搭一套通勤' }] }, f => frames.push(f), AbortSignal.timeout(10000))
+    assert.equal(requests, 2); assert.deepEqual(callbacks, ['recommend_outfits'])
+    assert.equal(frames.filter(f => f.event === 'proposal').length, 1)
   } finally { server.closeAllConnections(); await new Promise<void>(resolve => server.close(() => resolve())) }
 })
 
@@ -146,4 +151,48 @@ test('memory epoch change ends the turn without another model call or a second a
   const url=await listen(server)
   try{await runAgent({model:'gpt-6-luna',apiKey:'fake',baseURL:url+'/v1',permitURL:url+'/permits',callbackURL:url+'/callback',callbackToken:'local',maxToolCalls:5,allowedTools:['remember_preference','search_help'],timeoutSeconds:5,context:{route:'/wardrobe'},memories:[],messages:[{role:'user',content:'记住我喜欢蓝色'}]},()=>{},AbortSignal.timeout(10000));assert.equal(models,1);assert.deepEqual(callbacks,['remember_preference'])}
   finally{server.closeAllConnections();await new Promise<void>(resolve=>server.close(()=>resolve()))}
+})
+
+test('recommendation follow-up schema inherits only when explicitly requested', () => {
+  const definition = definitions.find(d => d.name === 'recommend_outfits')!
+  assert.equal(definition.schema.parse({}).basedOnPrevious, false)
+  assert.equal(definition.schema.parse({ basedOnPrevious: true }).count, undefined)
+  assert.equal(definition.schema.parse({ count: 2 }).count, 2)
+  assert.equal(definition.schema.parse({ basedOnPrevious: true, intent: { avoidColors: [] } }).basedOnPrevious, true)
+  assert.match(definition.description, /basedOnPrevious=true/)
+  assert.match(definition.description, /本轮明确改变的条件/)
+  assert.match(definition.description, /排除上轮展示衣物/)
+  assert.match(systemPrompt, /设置 basedOnPrevious=true/)
+})
+test('closed tools explain a concrete request instead of sending the user to another page', () => {
+  assert.match(systemPrompt, /工具本轮未开放时，不要让用户“去别的页面”/)
+  assert.match(systemPrompt, /帮我重新搭配一套通勤穿的/)
+})
+
+test('follow-up forwards basedOnPrevious and traces the v3 prompt without opening a socket', async () => {
+  const originalFetch = globalThis.fetch; const requests: any[] = []; const callbacks: any[] = []; const traces: any[] = []; const frames: Frame[] = []
+  globalThis.fetch = async (input, init) => {
+    const url = String(input); const body = JSON.parse(String(init?.body))
+    if (url.endsWith('/permits')) return Response.json({ status: 'GRANTED', permit: 'fixture' })
+    if (url.endsWith('/callback')) {
+      if (body.name === '__trace') { traces.push(body.args); return Response.json({}) }
+      callbacks.push(body)
+      return Response.json({ runId: '11111111-1111-4111-8111-111111111111', intent: '通勤 · 18°C', shown: [], alternatives: [],
+        presented: { mode: 'CARDS', proposal: { id: 'next-card', kind: 'RECOMMENDATION', payload: {} } } })
+    }
+    requests.push(body)
+    const delta = requests.length === 1
+      ? { role: 'assistant', tool_calls: [{ index: 0, id: 'follow-up', type: 'function', function: { name: 'recommend_outfits', arguments: JSON.stringify({ basedOnPrevious: true, intent: { avoidColors: ['红色'] } }) } }] }
+      : { role: 'assistant', content: '继续按通勤条件换一批。' }
+    return new Response('data: ' + JSON.stringify({ id: 'follow-up', object: 'chat.completion.chunk', choices: [{ index: 0, delta, finish_reason: null }] }) + '\n\ndata: [DONE]\n\n', { headers: { 'Content-Type': 'text/event-stream' } })
+  }
+  try {
+    await runAgent({ model: 'fixture', apiKey: 'fake', baseURL: 'http://fixture.invalid/v1', permitURL: 'http://fixture.invalid/permits', callbackURL: 'http://fixture.invalid/callback', callbackToken: 'fixture', maxToolCalls: 5, timeoutSeconds: 5, allowedTools: ['recommend_outfits'], traceEnabled: true, context: {}, memories: [], messages: [{ role: 'assistant', content: '上一轮推荐：通勤 · 18°C' }, { role: 'user', content: '重新搭配，避开红色' }] }, f => frames.push(f), AbortSignal.timeout(10000))
+    assert.equal(requests.length, 2); assert.equal(callbacks.length, 1)
+    assert.equal(callbacks[0].args.basedOnPrevious, true); assert.deepEqual(callbacks[0].args.intent, { avoidColors: ['红色'] })
+    const schema = requests[0].tools.find((t: any) => t.function.name === 'recommend_outfits').function
+    assert.equal(schema.parameters.properties.basedOnPrevious.type, 'boolean'); assert.match(schema.description, /basedOnPrevious=true/)
+    assert.equal(traces.find(t => t.phase === 'input').detail.promptVersion, 'platform-agent-v6')
+    assert.equal(frames.filter(f => f.event === 'proposal').length, 1)
+  } finally { globalThis.fetch = originalFetch }
 })
