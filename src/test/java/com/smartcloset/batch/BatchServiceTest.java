@@ -51,7 +51,9 @@ class BatchServiceTest {
     MockMultipartFile photo() throws Exception {return new MockMultipartFile("file","photo.png","image/png",BatchImages.png(new BufferedImage(100,120,BufferedImage.TYPE_INT_RGB)));}
     View two(Strategy strategy)throws Exception {var v=batches.upload(UUID.randomUUID(),new Upload(Channel.SINGLE,strategy),photo());return batches.addSource(v.id,UUID.randomUUID(),photo());}
     View settled(UUID id)throws Exception {for(int i=0;i<300;i++){var v=batches.get(id);if(v.calls.stream().noneMatch(c->Set.of("QUEUED","RUNNING").contains(c.status())))return v;Thread.sleep(20);}throw new AssertionError("timeout");}
-    int quota(){return db.queryForObject("SELECT COALESCE(SUM(used),0) FROM ai_daily_quota WHERE owner_username=?",Integer.class,username);}
+    // Quota fixtures use the business day, independently of the JVM/database timezone.
+    java.sql.Date quotaDay(){return java.sql.Date.valueOf(QuotaPolicy.today());}
+    int quota(){return db.queryForObject("SELECT COALESCE(SUM(used),0) FROM ai_daily_quota WHERE owner_username=? AND quota_date=?",Integer.class,username,quotaDay());}
     @Test void oneSubmissionContinuesWithoutBrowserAndWithoutKnownCosts()throws Exception {
         when(recognition.raw(any(),any(),anyString())).thenAnswer(i->{recognized.incrementAndGet();return sent(new RecognitionService.RawOutput(json.valueToTree(Map.of("items",List.of(BatchRulesTest.item(.9,true,-1)))),null,"id"));});
         recognized.set(0);var v=two(Strategy.SMART);var request=new Start(new Detect(List.of(),"test","gpt-6-luna"),"test","gpt-image-2.5-flare");UUID key=UUID.randomUUID();
@@ -79,10 +81,10 @@ class BatchServiceTest {
         }
     }
     @Test void insufficientGenerationQuotaKeepsRecognizedTargetsForExplicitContinuation()throws Exception {
-        var v=two(Strategy.SMART);db.update("INSERT INTO ai_daily_quota(owner_username,quota_date,used) VALUES(?,CURRENT_DATE,17)",username);
+        var v=two(Strategy.SMART);db.update("INSERT INTO ai_daily_quota(owner_username,quota_date,used) VALUES(?,?,17)",username,quotaDay());
         batches.start(v.id,UUID.randomUUID(),new Start(new Detect(List.of(),"test","gpt-6-luna"),"test","gpt-image-2.5-flare"));v=settled(v.id);
         assertEquals(20,quota());assertEquals(2,v.targets.size());assertEquals(1,v.targets.stream().filter(t->t.jobId!=null).count());assertNull(v.automaticGeneration);
-        db.update("UPDATE ai_daily_quota SET used=19 WHERE owner_username=?",username);
+        db.update("UPDATE ai_daily_quota SET used=19 WHERE owner_username=? AND quota_date=?",username,quotaDay());
         batches.generate(v.id,UUID.randomUUID(),new Generate(List.of(v.targets.stream().filter(t->t.jobId==null).findFirst().orElseThrow().id),1,1024,"FIXED","test","gpt-image-2.5-flare","low"));v=settled(v.id);
         assertEquals(20,quota());assertEquals(2,v.targets.stream().filter(t->t.jobId!=null).count());assertEquals(2,recognized.get());
     }
@@ -116,7 +118,7 @@ class BatchServiceTest {
         recognized.set(0);batches.detect(v.id,UUID.randomUUID(),new Detect(List.of(new Marker(src.id(),.5,.5)),"test","gpt-6-luna"));v=settled(v.id);assertEquals(1,quota());assertEquals(1,recognized.get());assertEquals(1,v.targets.size());assertTrue(v.targets.getFirst().completion);
     }
     @Test void quotaExhaustionRetainsRecognitionInPersistentQueue()throws Exception {
-        var v=two(Strategy.SMART);db.update("INSERT INTO ai_daily_quota(owner_username,quota_date,used) VALUES(?,CURRENT_DATE,20)",username);
+        var v=two(Strategy.SMART);db.update("INSERT INTO ai_daily_quota(owner_username,quota_date,used) VALUES(?,?,20)",username,quotaDay());
         batches.detect(v.id,UUID.randomUUID(),new Detect(List.of(),"test","gpt-6-luna"));
         for(int i=0;i<100&&db.queryForObject("SELECT COUNT(*) FROM execution_task WHERE owner_username=? AND status='WAITING_QUOTA'",Integer.class,username)==0;i++)Thread.sleep(25);
         assertTrue(db.queryForObject("SELECT COUNT(*) FROM execution_task WHERE owner_username=? AND status='WAITING_QUOTA'",Integer.class,username)>0);assertEquals(20,quota());assertEquals(0,recognized.get());assertEquals(2,batches.get(v.id).calls.size());
