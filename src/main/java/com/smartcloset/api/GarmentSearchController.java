@@ -12,7 +12,7 @@ public class GarmentSearchController {
     public GarmentSearchController(GarmentSearchService search) { this.search = search; }
 
     @GetMapping("/api/garments/search")
-    public Map<String, Object> search(@RequestParam(defaultValue = "") String q, @RequestParam(defaultValue = "1") int page) {
-        return search.page(ClosetIdentity.username(), q, page);
+    public Map<String, Object> search(@RequestParam(defaultValue = "") String q, @RequestParam(defaultValue = "1") int page, @RequestParam(required = false) String imageStyle) {
+        return search.page(ClosetIdentity.username(), q, page, imageStyle);
     }
 }

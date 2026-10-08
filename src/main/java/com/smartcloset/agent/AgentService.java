@@ -376,7 +376,7 @@ public class AgentService {
                 String query=a.path("query").asText("").trim();int pageNo=Math.max(1,a.path("page").asInt(1));
                 if(!query.isBlank()) {
                     // Hybrid search (design 5.10): colour/category filters, keywords, local semantics; zero model calls.
-                    var r=wardrobeSearch.search(owner,query);int size=20,from=Math.min(r.hits().size(),(pageNo-1)*size),to=Math.min(r.hits().size(),from+size);
+                    var r=wardrobeSearch.search(owner,query,a.path("imageStyle").asText("").isBlank()?null:a.path("imageStyle").asText());int size=20,from=Math.min(r.hits().size(),(pageNo-1)*size),to=Math.min(r.hits().size(),from+size);
                     var items=r.hits().subList(from,to).stream().map(h->Map.of("garment",metadata(garment(owner,h.id(),false)),"score",h.score(),"reasons",h.reasons())).toList();
                     var out=new LinkedHashMap<String,Object>();
                     out.put("items",items);out.put("total",r.total());out.put("page",pageNo);out.put("hasMore",to<r.hits().size());
