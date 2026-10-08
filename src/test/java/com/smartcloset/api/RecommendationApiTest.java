@@ -186,4 +186,22 @@ class RecommendationApiTest {
         assertTrue(view.path("notes").toString().contains("女款"), view.toString());
         assertFalse(view.path("limits").toString().contains("女款"));
     }
+
+    @Test void wardrobeSearchIsAccountScopedAndDegradesWithoutTheModel() throws Exception {
+        String owner = "rec-search-" + UUID.randomUUID().toString().substring(0, 8);
+        var me = signIn(owner); var ids = seed(owner);
+        var white = me.ok("GET", "/api/garments/search?q=" + URLEncoder.encode("白色上衣", "UTF-8"), null);
+        assertEquals(1, white.path("total").asInt(), white.toString());
+        assertEquals(ids.get("shirt"), white.path("items").get(0).path("garment").path("id").asText());
+        assertEquals("白色", white.path("parsed").path("filters").path("primaryColor").get(0).asText());
+        var red = me.ok("GET", "/api/garments/search?q=" + URLEncoder.encode("红色上衣", "UTF-8"), null);
+        assertEquals(0, red.path("total").asInt());
+        assertFalse(red.path("emptyHint").asText().isBlank());
+        var described = me.ok("GET", "/api/garments/search?q=" + URLEncoder.encode("适合海边的", "UTF-8"), null);
+        assertFalse(described.path("semantic").path("available").asBoolean());
+        assertTrue(described.path("notice").asText().contains("关键词"));
+        var other = signIn("rec-search-other-" + UUID.randomUUID().toString().substring(0, 8));
+        assertEquals(0, other.ok("GET", "/api/garments/search?q=" + URLEncoder.encode("白色上衣", "UTF-8"), null).path("total").asInt());
+        assertTrue(Set.of(401, 403).contains(new Session().send("GET", "/api/garments/search?q=x", null, false).statusCode()));
+    }
 }

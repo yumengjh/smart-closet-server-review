@@ -108,6 +108,18 @@ public class GarmentRepository {
             return new Sourced(projection,status);
         },owner);
     }
+    /** Text sources for the local semantic index: effective fields plus recognition evidence. No images, no model calls. */
+    public record CardSource(String id,long revision,String name,Map<String,List<String>> fields,String targetDescription,Map<String,String> evidence) {}
+    public List<CardSource> cardSources(String owner,Collection<String> ids) {
+        if(ids.isEmpty())return List.of();
+        var placeholders=String.join(",",Collections.nCopies(ids.size(),"?"));var args=new ArrayList<Object>();args.add(owner);args.addAll(ids);
+        return jdbc.query("SELECT id,revision,name,automatic_json,overrides_json FROM garment WHERE owner_username=? AND id IN ("+placeholders+")",(rs,n) -> {
+            var automatic=rs.getString("automatic_json")==null?null:json.readValue(rs.getString("automatic_json"),Recognition.Result.class);
+            var userValues=overrides(rs.getString("overrides_json"));var evidence=new LinkedHashMap<String,String>();
+            if(automatic!=null)automatic.attributes().forEach((key,attribute) -> {if(!userValues.containsKey(key)&&attribute!=null&&attribute.evidence()!=null&&!attribute.evidence().isBlank())evidence.put(key,attribute.evidence());});
+            return new CardSource(rs.getString("id"),rs.getLong("revision"),rs.getString("name"),effective(automatic,userValues),automatic==null||automatic.target()==null?null:automatic.target().description(),evidence);
+        },args.toArray());
+    }
     public static boolean matches(Projection item,String query,String category,String color,String season) {
         var f=item.fields();
         if(category!=null&&!category.isBlank()&&!ClosetClassification.matches(f.getOrDefault("category",List.of()),category))return false;
