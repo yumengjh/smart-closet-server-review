@@ -8,3 +8,5 @@
 - 修复后 Pacific/Honolulu 时区 BatchServiceTest 10/10 通过；正在 UTC 时区运行 clean verify。
 - UTC 干净源码 clean verify 通过：247 项，240 通过、7 跳过，0 失败/错误。生产 JAR 不包含 spa-test 或本地 SPA 入口/构建资源。
 - 提交范围仅 BatchServiceTest 和本轮三份规划文件，已有 PWA 产物及前端两个修改文件保持原样；远端流水线结果待确认。
+- GitHub 插件提交修复 0ee267e01847aa30564a76af95d44ac16b96edab；远端运行 https://github.com/yumengjh/smart-closet-server/actions/runs/37719335940 全部通过：Java/Agent 测试、生产打包隔离、Java/Agent 镜像构建及 GHCR 发布。
+- 关联前端最新运行 37651853257 通过，本轮无前端修复。
