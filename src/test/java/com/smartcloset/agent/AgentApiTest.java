@@ -149,9 +149,10 @@ class AgentApiTest {
     assertEquals("UNKNOWN",metadata.path("quality").path("primaryColor").path("status").asText());
     assertTrue(metadata.path("fields").has("closure"));assertEquals(3,input.path("context").path("garments").size());
     var search=json.valueToTree(service.tool(token,new AgentService.ToolRequest("search_wardrobe",json.readTree("{\"query\":\"衬衫 长裤\",\"page\":9}"))));
-    assertFalse(search.path("fallbackApplied").asBoolean());assertEquals(0,search.path("matchedTotal").asInt());
-    assertEquals(0,search.path("total").asInt());assertEquals(9,search.path("page").asInt());assertEquals("衬衫 长裤",search.path("appliedQuery").asText());
-    assertFalse(search.path("hasMore").asBoolean());
+    // Multi-condition queries are parsed into category filters; a page past the end is empty, never a fallback to the whole closet.
+    assertFalse(search.path("fallbackApplied").asBoolean());assertEquals(search.path("total").asInt(),search.path("matchedTotal").asInt());
+    assertEquals(9,search.path("page").asInt());assertEquals("衬衫 长裤",search.path("appliedQuery").asText());assertEquals(0,search.path("items").size());
+    assertFalse(search.path("hasMore").asBoolean());assertTrue(search.path("parsed").path("filters").path("category").toString().contains("衬衫"));
     for(String name:List.of("build_outfits","propose_outfits"))for(var ids:List.of(List.of(top,bottom,outer,cardigan),List.of(dress,top),List.of(top,bottom,outer),List.of(dress,cardigan),List.of(top,unknown),List.of(outer)))
      assertThrows(com.smartcloset.image.ProcessingException.class,()->service.tool(token,new AgentService.ToolRequest(name,candidates(List.of(ids)))));
     for(String name:List.of("edit_workspace","propose_edit")) {

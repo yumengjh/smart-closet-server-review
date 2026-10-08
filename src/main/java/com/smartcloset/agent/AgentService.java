@@ -50,6 +50,7 @@ public class AgentService {
     @org.springframework.beans.factory.annotation.Autowired private com.smartcloset.recognition.RecognitionService recognitionService;
     @org.springframework.beans.factory.annotation.Autowired private com.smartcloset.generation.GenerationService generationService;
     @org.springframework.beans.factory.annotation.Autowired private com.smartcloset.recommend.RecommendationService recommendations;
+    @org.springframework.beans.factory.annotation.Autowired private com.smartcloset.semantic.GarmentSearchService wardrobeSearch;
     private final AgentTraceService traces;
     private final AgentProperties config;
     private final GenerationProperties credentials;
@@ -372,8 +373,20 @@ public class AgentService {
                     "ruleVersion","daily-evidence-v3","note","候选已通过结构及保守叠穿筛选；非审美排名，也不是全部衣柜，未出现在候选中不代表库存不存在。只用本次 candidateId 选择，不自由拼接衣物。缺失的叠穿资料无需在每次搭配重识别，可在衣物详情核对。","emptyReason",options.isEmpty()?"指定衣物或库存无法组成可靠主体，请说明限制，不重试相同组合。":"");
             }
             case "search_wardrobe" -> {
-                String query=a.path("query").asText("").trim();
-                var page=garments.listCloset(owner,"ACTIVE",query,"","","",Math.max(1,a.path("page").asInt(1)),50);
+                String query=a.path("query").asText("").trim();int pageNo=Math.max(1,a.path("page").asInt(1));
+                if(!query.isBlank()) {
+                    // Hybrid search (design 5.10): colour/category filters, keywords, local semantics; zero model calls.
+                    var r=wardrobeSearch.search(owner,query);int size=20,from=Math.min(r.hits().size(),(pageNo-1)*size),to=Math.min(r.hits().size(),from+size);
+                    var items=r.hits().subList(from,to).stream().map(h->Map.of("garment",metadata(garment(owner,h.id(),false)),"score",h.score(),"reasons",h.reasons())).toList();
+                    var out=new LinkedHashMap<String,Object>();
+                    out.put("items",items);out.put("total",r.total());out.put("page",pageNo);out.put("hasMore",to<r.hits().size());
+                    out.put("matchedTotal",r.total());out.put("fallbackApplied",false);out.put("requestedQuery",query);out.put("appliedQuery",query);
+                    out.put("parsed",r.parsed().view());out.put("mode",r.mode());out.put("emptyHint",r.emptyHint());out.put("notice",r.notice());
+                    out.put("multipleCandidates",r.total()>1);
+                    out.put("searchNote","颜色和品类按字段硬筛选，描述按本地语义匹配，达不到门槛不返回；结果为零就如实说没有并转述 emptyHint。用户在指代某一件而命中多件（multipleCandidates=true）时，列出候选请用户确认，不要自己猜。");
+                    yield out;
+                }
+                var page=garments.listCloset(owner,"ACTIVE",query,"","","",pageNo,50);
                 long matchedTotal=page.total();boolean fallback=false;
                 yield Map.of("items",page.items().stream().map(this::metadata).toList(),"total",page.total(),"page",page.page(),"hasMore",(long)page.page()*50<page.total(),
                     "matchedTotal",matchedTotal,"fallbackApplied",fallback,"requestedQuery",query,"appliedQuery",fallback?"":query,
