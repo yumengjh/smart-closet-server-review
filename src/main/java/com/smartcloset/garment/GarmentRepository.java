@@ -96,6 +96,18 @@ public class GarmentRepository {
             return new Projection(UUID.fromString(rs.getString("id")),rs.getLong("revision"),rs.getString("closet_status"),rs.getString("name"),rs.getBoolean("favorite"),fields,ClosetClassification.family(fields.getOrDefault("category",List.of())),List.of("fit","thickness","wearingModes").stream().allMatch(k -> userValues.containsKey(k)&&!userValues.get(k).isEmpty()));
         },owner);
     }
+    /** Projection plus where each effective field came from: USER for owner edits, otherwise the recognition state. */
+    public record Sourced(Projection projection, Map<String,String> fieldStatus) {}
+    public List<Sourced> sourcedProjection(String owner) {
+        return jdbc.query("SELECT id,revision,closet_status,name,favorite,automatic_json,overrides_json FROM garment WHERE owner_username=? AND closet_status='ACTIVE' ORDER BY updated_at_ms DESC,id DESC", (rs,n) -> {
+            var automatic=rs.getString("automatic_json")==null?null:json.readValue(rs.getString("automatic_json"),Recognition.Result.class);
+            var userValues=overrides(rs.getString("overrides_json"));var fields=effective(automatic,userValues);
+            var status=new LinkedHashMap<String,String>();
+            for(var key:fields.keySet())status.put(key,userValues.containsKey(key)?"USER":automatic==null||automatic.attributes().get(key)==null?"UNKNOWN":automatic.attributes().get(key).status().name());
+            var projection=new Projection(UUID.fromString(rs.getString("id")),rs.getLong("revision"),rs.getString("closet_status"),rs.getString("name"),rs.getBoolean("favorite"),fields,ClosetClassification.family(fields.getOrDefault("category",List.of())),List.of("fit","thickness","wearingModes").stream().allMatch(k -> userValues.containsKey(k)&&!userValues.get(k).isEmpty()));
+            return new Sourced(projection,status);
+        },owner);
+    }
     public static boolean matches(Projection item,String query,String category,String color,String season) {
         var f=item.fields();
         if(category!=null&&!category.isBlank()&&!ClosetClassification.matches(f.getOrDefault("category",List.of()),category))return false;
