@@ -101,7 +101,9 @@ class ImageStyleTest {
         var normal = search.search(owner, "白色上衣", null);
         assertEquals(Set.of(photo1, photo2, unknown), ids(normal));
         assertTrue(normal.notice().contains("另有 1 件其他风格"), normal.notice());
-        assertEquals(Set.of(cartoon, unknown), ids(search.search(owner, "卡通的白色上衣", null)));
+        var cartoons = search.search(owner, "卡通的白色上衣", null);
+        assertEquals(Set.of(cartoon), ids(cartoons), "an explicit style never includes unclassified garments");
+        assertTrue(cartoons.hits().getFirst().reasons().contains("图片风格=卡通插画 ✓"));
         assertEquals(4, search.search(owner, "白色上衣", "ALL").total());
         assertEquals(4, search.search(owner, "全部风格的白色上衣", null).total());
     }
