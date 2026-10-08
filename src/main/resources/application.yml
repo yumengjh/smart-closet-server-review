@@ -44,6 +44,11 @@ closet:
   embedding-model-path: ${CLOSET_EMBEDDING_MODEL_PATH:./models/embedding-fp32.onnx}
   embedding-vocab-path: ${CLOSET_EMBEDDING_VOCAB_PATH:./models/embedding-vocab.txt}
   embedding-max-tokens: ${CLOSET_EMBEDDING_MAX_TOKENS:512}
+  # Semantic relevance (calibrated on the labelled evaluation set, reports/recommend-p2): absolute similarity floor,
+  # required lead over the query's median similarity, and distance allowed below the best match.
+  semantic-threshold: ${CLOSET_SEMANTIC_THRESHOLD:0.35}
+  semantic-margin: ${CLOSET_SEMANTIC_MARGIN:0.06}
+  semantic-window: ${CLOSET_SEMANTIC_WINDOW:0.12}
   max-pixels: 12000000
   grabcut-max-side: 1000
   inference-threads: 2
