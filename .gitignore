@@ -2,6 +2,7 @@ target/
 data/
 models/*.onnx
 models/*.part
+models/embedding-*
 models/.download-parts/
 models/.download-*/
 .idea/
