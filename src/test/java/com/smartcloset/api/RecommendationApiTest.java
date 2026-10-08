@@ -28,6 +28,7 @@ class RecommendationApiTest {
     @Autowired JdbcTemplate db;
     @Autowired ClosetAccountService accounts;
     @Autowired com.smartcloset.recommend.TemplateCatalog templates;
+    @Autowired com.smartcloset.recommend.GarmentColors colors;
     final JsonMapper json = JsonMapper.builder().build();
 
     final class Session {
@@ -307,5 +308,31 @@ class RecommendationApiTest {
             assertEquals("white-shirt-black-trousers", db.queryForObject("SELECT template_id FROM recommendation_log WHERE owner_username=? AND source='INSPIRATION'", String.class, owner));
             me.ok("POST", "/api/recommendations/logs/" + outfits.get(0).path("logId").asText() + "/feedback", Map.of("verdict", "UP"));
         } finally { db.update("DELETE FROM outfit_template_review"); templates.reload(); }
+    }
+
+    @Test void displayImagesAreMeasuredLocallyAndRemeasuredWhenTheImageChanges() throws Exception {
+        String owner = "rec-color-" + UUID.randomUUID().toString().substring(0, 8);
+        signIn(owner);
+        String id = UUID.randomUUID().toString(), job = UUID.randomUUID().toString(), asset = UUID.randomUUID().toString(); long now = System.currentTimeMillis();
+        var image = new java.awt.image.BufferedImage(40, 40, java.awt.image.BufferedImage.TYPE_INT_ARGB);
+        for (int y = 5; y < 35; y++) for (int x = 5; x < 35; x++) image.setRGB(x, y, new java.awt.Color(36, 52, 94).getRGB());
+        var out = new java.io.ByteArrayOutputStream(); javax.imageio.ImageIO.write(image, "png", out); byte[] png = out.toByteArray();
+        var dir = storage.resolve("workflows").resolve(job); java.nio.file.Files.createDirectories(dir); java.nio.file.Files.write(dir.resolve("input.png"), png);
+        String sha = java.util.HexFormat.of().formatHex(java.security.MessageDigest.getInstance("SHA-256").digest(png));
+        db.update("INSERT INTO workflow_job(id,fingerprint,status,created_at_ms,updated_at_ms,request_json,requires_review,version,owner_username) VALUES(?,?,'SUCCEEDED',?,?,'{}',0,0,?)", job, job, now, now, owner);
+        db.update("INSERT INTO image_asset(id,job_id,file_name,sha256,byte_size,width,height,kind,review_status,created_at_ms) VALUES(?,?,'input.png',?,?,40,40,'INPUT','APPROVED',?)", asset, job, sha, png.length, now);
+        db.update("INSERT INTO garment(id,source_asset_id,display_asset_id,source_origin,overrides_json,display_user_selected,revision,created_at_ms,updated_at_ms,owner_username,closet_status) VALUES(?,?,?,'USER_UPLOAD',?,0,0,?,?,?,'ACTIVE')",
+            id, asset, asset, json.writeValueAsString(Map.of("category", List.of("毛衣"), "primaryColor", List.of("藏蓝色"))), now, now, owner);
+        assertTrue(colors.pendingOwners().containsKey(owner));
+        assertEquals(1, colors.index(owner, 10));
+        var palette = colors.palettes(owner).get(id);
+        assertNotNull(palette); assertTrue(palette.getFirst().l() < 30, palette.toString());
+        assertEquals(1.0, palette.getFirst().ratio(), 0.01, "the transparent margin is ignored");
+        assertFalse(colors.pendingOwners().containsKey(owner));
+        String other = UUID.randomUUID().toString();
+        db.update("INSERT INTO image_asset(id,job_id,file_name,sha256,byte_size,width,height,kind,review_status,created_at_ms) VALUES(?,?,'step-1.png','x',1,40,40,'STICKER','APPROVED',?)", other, job, now);
+        db.update("UPDATE garment SET display_asset_id=? WHERE id=?", other, id);
+        assertTrue(colors.pendingOwners().containsKey(owner), "a new display image is measured again");
+        assertTrue(colors.palettes(owner).isEmpty(), "a palette measured on an old display image is not used");
     }
 }
