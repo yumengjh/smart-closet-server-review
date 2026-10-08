@@ -136,4 +136,54 @@ class RecommendationApiTest {
         assertEquals(400, me.send("POST", "/api/recommendations", Map.of("temperatureC", 99), true).statusCode());
         assertEquals(400, me.send("POST", "/api/recommendations", Map.of("count", 9), true).statusCode());
     }
+
+    private static boolean contains(JsonNode outfits, String garmentId) {
+        for (var o : outfits) for (var g : o.path("garments")) if (g.path("id").asText().equals(garmentId)) return true;
+        return false;
+    }
+
+    @Test void twoExplicitDislikesPauseTheGarmentUntilRestored() throws Exception {
+        String owner = "rec-pause-" + UUID.randomUUID().toString().substring(0, 8);
+        var me = signIn(owner); var ids = seed(owner);
+        String sneakers = ids.get("sneakers");
+        var forced = me.ok("POST", "/api/recommendations", Map.of("occasion", "DAILY", "requiredGarmentIds", List.of(sneakers)));
+        var logs = new ArrayList<String>(); for (var o : forced.path("outfits")) logs.add(o.path("logId").asText());
+        assertTrue(logs.size() >= 2, forced.toString());
+        // A run fetched before the feedback: its "换一批" must honour the feedback given afterwards.
+        var earlier = me.ok("POST", "/api/recommendations", Map.of("occasion", "DAILY", "count", 1));
+
+        me.ok("POST", "/api/recommendations/logs/" + logs.get(0) + "/feedback", Map.of("verdict", "DOWN", "reasons", List.of("DISLIKE_ITEM"), "garmentId", sneakers));
+        var once = me.ok("GET", "/api/style-profile", null);
+        assertTrue(once.path("statements").toString().contains("你表示过不喜欢"), "the first explicit dislike shows up at once: " + once);
+        me.ok("POST", "/api/recommendations/logs/" + logs.get(1) + "/feedback", Map.of("verdict", "DOWN", "reasons", List.of("DISLIKE_ITEM"), "garmentId", sneakers));
+
+        var profile = me.ok("GET", "/api/style-profile", null);
+        assertTrue(profile.path("statements").toString().contains("pause:" + sneakers), profile.toString());
+        for (int i = 0; i < 3; i++) {
+            var view = me.ok("POST", "/api/recommendations", Map.of("occasion", "DAILY"));
+            assertFalse(contains(view.path("outfits"), sneakers), view.toString());
+            assertTrue(view.path("limits").toString().contains("已暂停推荐"), view.toString());
+            assertFalse(contains(me.ok("GET", "/api/recommendations/" + view.path("runId").asText() + "/more?count=5", null).path("outfits"), sneakers));
+        }
+        assertFalse(contains(me.ok("GET", "/api/recommendations/" + earlier.path("runId").asText() + "/more?count=5", null).path("outfits"), sneakers));
+        var stillAllowed = me.ok("POST", "/api/recommendations", Map.of("occasion", "DAILY", "requiredGarmentIds", List.of(sneakers)));
+        assertFalse(stillAllowed.path("outfits").isEmpty());
+        for (var o : stillAllowed.path("outfits")) assertTrue(contains(json.createArrayNode().add(o), sneakers));
+
+        me.ok("PATCH", "/api/style-profile", Map.of("unblock", "pause:" + sneakers));
+        assertFalse(me.ok("GET", "/api/style-profile", null).path("statements").toString().contains("pause:" + sneakers));
+        assertFalse(me.ok("POST", "/api/recommendations", Map.of("occasion", "DAILY")).path("limits").toString().contains("已暂停推荐"));
+    }
+
+    @Test void sexIsReadOnlyForExclusionAndNeverEchoedAsLimit() throws Exception {
+        String owner = "rec-sex-" + UUID.randomUUID().toString().substring(0, 8);
+        var me = signIn(owner); var ids = seed(owner);
+        String heels = garment(owner, Map.of("category", List.of("高跟鞋"), "primaryColor", List.of("红色"), "styles", List.of("正式")));
+        db.update("MERGE INTO wearer_profile(owner_username,revision,sex,measurements_json,preferences_json,updated_at_ms) KEY(owner_username) VALUES(?,1,'MALE','{}','{}',?)", owner, System.currentTimeMillis());
+        var view = me.ok("POST", "/api/recommendations", Map.of("occasion", "DATE"));
+        assertFalse(contains(view.path("outfits"), heels));
+        assertFalse(contains(view.path("outfits"), ids.get("red")));
+        assertTrue(view.path("notes").toString().contains("女款"), view.toString());
+        assertFalse(view.path("limits").toString().contains("女款"));
+    }
 }
