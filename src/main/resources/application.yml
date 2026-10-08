@@ -41,6 +41,9 @@ closet:
     allowed-origins: ${CLOSET_CORS_ALLOWED_ORIGINS:}
   storage-dir: ${CLOSET_STORAGE_DIR:./data}
   model-path: ${CLOSET_MODEL_PATH:./models/u2net.onnx}
+  embedding-model-path: ${CLOSET_EMBEDDING_MODEL_PATH:./models/embedding-fp32.onnx}
+  embedding-vocab-path: ${CLOSET_EMBEDDING_VOCAB_PATH:./models/embedding-vocab.txt}
+  embedding-max-tokens: ${CLOSET_EMBEDDING_MAX_TOKENS:512}
   max-pixels: 12000000
   grabcut-max-side: 1000
   inference-threads: 2
