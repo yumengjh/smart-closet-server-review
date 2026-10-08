@@ -253,7 +253,7 @@ public class BatchService implements com.smartcloset.processing.ProcessingHandle
         var result=target.recognition;
         if(!target.completion) return result;
         var issues=new ArrayList<>(result.issues());issues.add(new Recognition.Issue("GENERATED_COMPLETION","整理图包含对不可见部分的推测，请对照原图核对。",List.of(),"可补拍完整衣物并重做。"));
-        return new Recognition.Result(result.assessment(),result.attributes(),issues,result.target());
+        return new Recognition.Result(result.assessment(),result.attributes(),issues,result.target(),result.imageStyle());
     }
     @Override public String kind(){return "BATCH";}
     @Override public int quotaUnits(com.smartcloset.processing.ProcessingStore.Task t){if(t.pool().equals("RECOGNITION")){var c=command(t.businessId());var p=json.readValue(c.payload,DetectionPrepared.class);if(read(c.batchId).strategy==Strategy.MANUAL&&p.request().markers().isEmpty())return 0;}return !t.pool().equals("CPU")&&db.queryForObject("SELECT legacy_prepaid FROM batch_call WHERE id=?",Integer.class,t.businessId())==0?1:0;}

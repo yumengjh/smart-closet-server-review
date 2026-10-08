@@ -9,8 +9,10 @@ import static com.smartcloset.recognition.Recognition.*;
 
 @Component
 public class RecognitionSchema {
-    public static final String VERSION = "garment-v5";
-    public static boolean requiresTarget(String version) { return Set.of("garment-v3", "garment-v4", VERSION).contains(Objects.toString(version, "")); }
+    public static final String VERSION = "garment-v6";
+    public static boolean requiresTarget(String version) { return Set.of("garment-v3", "garment-v4", "garment-v5", VERSION).contains(Objects.toString(version, "")); }
+    /** Drawing style of the recognised image itself (D29): read in the same call, so no extra quota. */
+    public static final List<String> IMAGE_STYLES = List.of("PHOTO", "ILLUSTRATION", "SKETCH", "OTHER");
     public record Field(String key, String label, List<String> options, boolean multiple, boolean suggestion) {}
     public static final List<Field> FIELDS = List.of(
         field("category", "品类", false, false, "T恤,衬衫,卫衣,毛衣,背心,夹克,西装外套,大衣,羽绒服,连衣裙,半身裙,长裤,短裤,连体衣,运动鞋,靴子,凉鞋,帽子,棒球帽,贝雷帽,渔夫帽,手提包,斜挎包,背包,围巾,腰带,袜子,眼镜,上装,下装,其他衣物"),
@@ -55,6 +57,7 @@ public class RecognitionSchema {
         var target = object(Map.of("description", Map.of("type", "string"), "worn", Map.of("type", "boolean"),
             "bounds", object(Map.of("x", coordinate, "y", coordinate, "width", coordinate, "height", coordinate))));
         return json.valueToTree(object(Map.of("assessment", Map.of("type", "string", "enum", Arrays.stream(Assessment.values()).map(Enum::name).toList()),
+            "imageStyle", Map.of("type", "string", "enum", IMAGE_STYLES, "description", "这张图片本身的画面风格：PHOTO 实物照片/抠图/逼真渲染，ILLUSTRATION 卡通插画，SKETCH 简笔线稿，OTHER 无法判断。"),
             "target", Map.of("anyOf", List.of(target, Map.of("type", "null"))),
             "attributes", object(attrs), "issues", Map.of("type", "array", "items", object(Map.of(
                 "code", Map.of("type", "string"), "message", Map.of("type", "string"),
@@ -67,8 +70,13 @@ public class RecognitionSchema {
     public Result validate(JsonNode node, boolean requireTarget) {
         String section="识别结果结构";
         try {
-            keys(node, requireTarget || node.has("target") ? Set.of("assessment", "attributes", "issues", "target") : Set.of("assessment", "attributes", "issues"));
+            var expected = new HashSet<>(requireTarget || node.has("target") ? Set.of("assessment", "attributes", "issues", "target") : Set.of("assessment", "attributes", "issues"));
+            // Outputs before garment-v6 have no imageStyle; it stays optional so stored and replayed results still validate.
+            if (node.has("imageStyle")) expected.add("imageStyle");
+            keys(node, expected);
             var assessment = Assessment.valueOf(text(node.get("assessment"), 40));
+            String imageStyle = null;
+            if (node.has("imageStyle")) { imageStyle = text(node.get("imageStyle"), 20); if (!IMAGE_STYLES.contains(imageStyle)) imageStyle = "OTHER"; }
             var attrs = node.get("attributes"); keys(attrs, new HashSet<>(FIELDS.stream().map(Field::key).toList()));
             var result = new LinkedHashMap<String, Attribute>();
             for (var f : FIELDS) {
@@ -131,7 +139,7 @@ public class RecognitionSchema {
             boolean blocked = blocking.contains(assessment);
             if (blocked && target != null) throw invalidOutput("模型同时返回无法识别与具体衣物目标，请补充主视衣物说明后重试。");
             if (requireTarget && !blocked && target == null) throw invalidOutput("模型声称识别完成，但没有给出衣物目标，请补充主视衣物说明后重试。");
-            var output = new Result(assessment, Collections.unmodifiableMap(result), List.copyOf(warnings), target);
+            var output = new Result(assessment, Collections.unmodifiableMap(result), List.copyOf(warnings), target, imageStyle);
             if (output.blocksImages() && result.values().stream().anyMatch(a -> !a.values().isEmpty())) throw invalidOutput("模型无法确定衣物目标，却填入了衣物属性；本次未采用这些属性，请补充目标说明。");
             section="品类与领型、袖长对应";
             var category = result.get("category").values();

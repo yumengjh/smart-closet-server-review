@@ -26,7 +26,7 @@ public class QuickRecognition {
             }
         }
         var metadata=schema.validate(recognition,true);
-        if(clipped){var issues=new ArrayList<>(metadata.issues());issues.add(new Recognition.Issue("TARGET_CLIPPED","定位框轻微越界，已裁到原图边缘；未补写识别属性。",List.of(),"可对照原图核对主目标。"));metadata=new Recognition.Result(metadata.assessment(),metadata.attributes(),List.copyOf(issues),metadata.target());}
+        if(clipped){var issues=new ArrayList<>(metadata.issues());issues.add(new Recognition.Issue("TARGET_CLIPPED","定位框轻微越界，已裁到原图边缘；未补写识别属性。",List.of(),"可对照原图核对主目标。"));metadata=new Recognition.Result(metadata.assessment(),metadata.attributes(),List.copyOf(issues),metadata.target(),metadata.imageStyle());}
         var quality=raw.path("quality");
         if(!quality.isObject()||FLAGS.stream().anyMatch(f->!quality.path(f).isBoolean())||!quality.path("reason").isString()||quality.path("reason").asText().length()>1000||!Set.of("SINGLE_PHOTO","PRODUCT_SCREENSHOT","SELFIE","OUTFIT","LAYERED","UNKNOWN").contains(quality.path("sourceType").asText()))throw ProcessingException.invalid("质量判断格式无效，已保留模型结果。");
         return new Parsed(metadata,quality);

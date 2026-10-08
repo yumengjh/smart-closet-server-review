@@ -22,9 +22,10 @@ import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
 /**
- * Classifies the drawing style of display images (photo / cartoon / line sketch) with the configured vision provider.
- * Up to {@link #BATCH} display images are tiled into one numbered grid, so one call (one quota unit) covers a dozen
- * garments. Only garment_image_style is written; no other metadata is touched.
+ * One-off backfill of display-image drawing styles for old garments (D29). New garments get their style for free from
+ * the recognition call or from how the image was made ({@link ImageStyles}); only garments recognised before that, with
+ * no earlier judgement, are tiled (up to {@link #BATCH} per numbered grid, one quota unit per grid) and classified with
+ * the configured vision provider. Once nothing old is left the scan stops for good. Only garment_image_style is written.
  */
 @Component
 public class ImageStyleHandler implements ProcessingHandler {
@@ -48,6 +49,7 @@ public class ImageStyleHandler implements ProcessingHandler {
     private final JdbcTemplate db;
     private final ObjectMapper json;
     private volatile long lastScan;
+    private volatile boolean done;
 
     public ImageStyleHandler(ImageStyles styles, RecognitionService recognition, WorkflowRepository workflows, WorkflowFiles files, JdbcTemplate db, ObjectMapper json) {
         this.styles = styles; this.recognition = recognition; this.workflows = workflows; this.files = files; this.db = db; this.json = json;
@@ -59,14 +61,16 @@ public class ImageStyleHandler implements ProcessingHandler {
 
     @Override public List<Candidate> candidates() {
         long now = System.currentTimeMillis();
-        if (now - lastScan < SCAN_EVERY.toMillis()) return List.of();
+        if (done || now - lastScan < SCAN_EVERY.toMillis()) return List.of();
         lastScan = now;
+        if (styles.backfillDone()) { done = true; return List.of(); }
         RecognitionService.ProviderInfo provider;
         try { provider = recognition.providers().stream().filter(RecognitionService.ProviderInfo::preferred).filter(RecognitionService.ProviderInfo::configured).findFirst().orElse(null); }
         catch (RuntimeException e) { return List.of(); }
         if (provider == null) return List.of();
         var owners = new LinkedHashSet<String>();
         styles.pending(1000).forEach(p -> owners.add(p.owner()));
+        if (owners.isEmpty()) { styles.markBackfillDone(); done = true; LoggerFactory.getLogger(getClass()).info("image style backfill complete; no further automatic runs"); return List.of(); }
         var out = new ArrayList<Candidate>();
         for (String owner : owners) {
             String business = UUID.nameUUIDFromBytes(("image-style:" + owner).getBytes(StandardCharsets.UTF_8)).toString();
@@ -77,7 +81,7 @@ public class ImageStyleHandler implements ProcessingHandler {
     }
 
     /** Forces the next scan (tests). */
-    void rescanNow() { lastScan = 0; }
+    void rescanNow() { lastScan = 0; done = false; }
 
     @Override public void execute(ProcessingStore.Task task) throws Exception {
         var pending = styles.pending(task.owner(), BATCH);

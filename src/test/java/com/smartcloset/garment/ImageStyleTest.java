@@ -28,7 +28,10 @@ import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import tools.jackson.databind.json.JsonMapper;
 
-/** Display-image style: batched classification, default search scope, and mixing in recommendations. */
+/**
+ * Display-image style (D29): resolved for free from recognition, generation parameters or the source; the batched
+ * grid only backfills old garments once; default search scope; learned mixing in recommendations.
+ */
 @SpringBootTest(properties = {"spring.config.import=optional:file:./target/no-local-secrets.yml", "closet.model-path=target/absent-style-model.onnx", "closet.embedding-model-path=target/absent-embedding.onnx"})
 class ImageStyleTest {
     @TempDir static Path storage;
@@ -43,14 +46,19 @@ class ImageStyleTest {
     final JsonMapper json = JsonMapper.builder().build();
     String owner;
 
-    private String garment(String name, Map<String, List<String>> fields) throws Exception {
-        String id = UUID.randomUUID().toString(), job = UUID.randomUUID().toString(), asset = UUID.randomUUID().toString(); long now = System.currentTimeMillis();
+    private String garment(String name, Map<String, List<String>> fields) throws Exception { return garment(name, fields, System.currentTimeMillis(), null, "{}"); }
+    /** An "old" garment: created before the backfill cutoff and recognised before recognition reported image styles. */
+    private String old(String name, Map<String, List<String>> fields) throws Exception {
+        return garment(name, fields, 1_000, "{\"assessment\":\"READY\",\"attributes\":{},\"issues\":[]}", "{}");
+    }
+    private String garment(String name, Map<String, List<String>> fields, long now, String automatic, String request) throws Exception {
+        String id = UUID.randomUUID().toString(), job = UUID.randomUUID().toString(), asset = UUID.randomUUID().toString();
         var image = new BufferedImage(40, 60, BufferedImage.TYPE_INT_ARGB); var out = new ByteArrayOutputStream(); ImageIO.write(image, "png", out); byte[] png = out.toByteArray();
         Files.createDirectories(storage.resolve("workflows").resolve(job)); Files.write(storage.resolve("workflows").resolve(job).resolve("step-0.png"), png);
-        db.update("INSERT INTO workflow_job(id,fingerprint,status,created_at_ms,updated_at_ms,request_json,requires_review,version,owner_username) VALUES(?,?,'SUCCEEDED',?,?,'{}',0,0,?)", job, job, now, now, owner);
+        db.update("INSERT INTO workflow_job(id,fingerprint,status,created_at_ms,updated_at_ms,request_json,requires_review,version,owner_username) VALUES(?,?,'SUCCEEDED',?,?,?,0,0,?)", job, job, now, now, request, owner);
         db.update("INSERT INTO image_asset(id,job_id,file_name,sha256,byte_size,width,height,kind,review_status,created_at_ms) VALUES(?,?,'step-0.png',?,?,40,60,'BASE_STICKER','APPROVED',?)", asset, job, WorkflowFiles.hash(png), png.length, now);
-        db.update("INSERT INTO garment(id,source_asset_id,display_asset_id,source_origin,overrides_json,display_user_selected,revision,created_at_ms,updated_at_ms,owner_username,closet_status,name) VALUES(?,?,?,'USER_UPLOAD',?,0,0,?,?,?,'ACTIVE',?)",
-            id, asset, asset, json.writeValueAsString(fields), now, now, owner, name);
+        db.update("INSERT INTO garment(id,source_asset_id,display_asset_id,source_origin,overrides_json,automatic_json,display_user_selected,revision,created_at_ms,updated_at_ms,owner_username,closet_status,name) VALUES(?,?,?,'USER_UPLOAD',?,?,0,0,?,?,?,'ACTIVE',?)",
+            id, asset, asset, json.writeValueAsString(fields), automatic, now, now, owner, name);
         db.update("UPDATE workflow_job SET garment_id=? WHERE id=?", id, job);
         return id;
     }
@@ -64,9 +72,26 @@ class ImageStyleTest {
         when(recognition.prepare(any())).thenReturn(new Recognition.Prepared("test", "m", "r1", "v", "v", "p", json.createObjectNode()));
     }
 
-    @Test void oneBatchedCallClassifiesEveryGarmentAndKeepsUserChoices() throws Exception {
+    @Test void newGarmentsGetTheirStyleWithoutAnyCall() throws Exception {
+        var recognised = garment("卡通T恤", Map.of("category", List.of("T恤")), System.currentTimeMillis(),
+            "{\"assessment\":\"READY\",\"attributes\":{},\"issues\":[],\"imageStyle\":\"ILLUSTRATION\"}", "{}");
+        var generated = garment("线稿裙", Map.of("category", List.of("连衣裙")), System.currentTimeMillis(), null, "{\"steps\":[{\"parameters\":{\"imageStyle\":\"SKETCH\"}}]}");
+        var plain = garment("白衬衫", Map.of("category", List.of("衬衫")));
+        var current = styles.current(owner);
+        assertEquals(new ImageStyles.Entry(recognised, ImageStyles.Style.ILLUSTRATION, "RECOGNITION", "识图时一并判断（展示图由这张原图抠图或整理而来）"), current.get(recognised));
+        assertEquals("GENERATION", current.get(generated).source()); assertEquals(ImageStyles.Style.SKETCH, current.get(generated).style());
+        assertEquals("SOURCE", current.get(plain).source()); assertEquals(ImageStyles.Style.PHOTO, current.get(plain).style());
+        assertTrue(styles.pending(owner, 12).isEmpty(), "new garments never enter the backfill");
+        db.update("DELETE FROM app_marker WHERE name='image-style-backfill-done'");
+        handler.rescanNow();
+        assertTrue(handler.candidates().stream().noneMatch(c -> c.owner().equals(owner)));
+        verify(recognition, never()).raw(any(), any(), anyString());
+    }
+
+    @Test void oneBatchedCallBackfillsOldGarmentsOnceAndKeepsUserChoices() throws Exception {
+        db.update("DELETE FROM app_marker WHERE name='image-style-backfill-done'");
         var ids = new ArrayList<String>();
-        for (int i = 0; i < 3; i++) ids.add(garment("衣物" + i, Map.of("category", List.of("T恤"), "primaryColor", List.of("白色"))));
+        for (int i = 0; i < 3; i++) ids.add(old("衣物" + i, Map.of("category", List.of("T恤"), "primaryColor", List.of("白色"))));
         styles.setByUser(owner, ids.get(2), "SKETCH");
         var grid = new AtomicReference<byte[]>();
         when(recognition.raw(any(), any(), anyString())).thenAnswer(inv -> {
@@ -89,13 +114,20 @@ class ImageStyleTest {
         db.update("UPDATE garment SET display_asset_id=source_asset_id WHERE id=?", ids.get(0));
         db.update("UPDATE garment_image_style SET display_asset_id='other' WHERE garment_id=?", ids.get(0));
         assertEquals(List.of(ids.get(0)), styles.pending(owner, 12).stream().map(ImageStyles.Pending::garmentId).toList());
+        // Once no old garment is left anywhere, the backfill marks itself done and never scans again.
+        db.update("UPDATE garment SET closet_status='TRASHED' WHERE created_at_ms<?", 2_000);
+        handler.rescanNow();
+        assertTrue(handler.candidates().isEmpty());
+        assertTrue(styles.backfillDone());
+        db.update("UPDATE garment SET closet_status='ACTIVE' WHERE id=?", ids.get(0));
+        assertTrue(handler.candidates().isEmpty(), "done is final");
     }
 
     @Test void searchDefaultsToTheDominantStyleAndCanSwitch() throws Exception {
         var photo1 = garment("白T", Map.of("category", List.of("T恤"), "primaryColor", List.of("白色")));
         var photo2 = garment("白衬衫", Map.of("category", List.of("衬衫"), "primaryColor", List.of("白色")));
         var cartoon = garment("卡通白T", Map.of("category", List.of("T恤"), "primaryColor", List.of("白色")));
-        var unknown = garment("未判定白T", Map.of("category", List.of("T恤"), "primaryColor", List.of("白色")));
+        var unknown = old("未判定白T", Map.of("category", List.of("T恤"), "primaryColor", List.of("白色")));
         styles.setByUser(owner, photo1, "PHOTO"); styles.setByUser(owner, photo2, "PHOTO"); styles.setByUser(owner, cartoon, "ILLUSTRATION");
         assertEquals(ImageStyles.Style.PHOTO, styles.dominant(owner));
         var normal = search.search(owner, "白色上衣", null);
@@ -117,6 +149,12 @@ class ImageStyleTest {
         assertEquals(1, penalised.outfits().size());
         assertTrue(penalised.outfits().getFirst().warnings().contains("单品图片风格不一致（写实实物与卡通插画）"), penalised.outfits().getFirst().warnings().toString());
         assertEquals("ILLUSTRATION", penalised.outfits().getFirst().garments().stream().filter(g -> g.id().equals(top)).findFirst().orElseThrow().imageStyle());
+        // Learned mixing (AUTO): "画风不统一" feedback makes the same mix cost more next time.
+        double before = penalised.outfits().getFirst().score();
+        recommendations.feedback(owner, penalised.outfits().getFirst().logId(), "DOWN", List.of("STYLE_MISMATCH"), null);
+        var learned = recommendations.recommend(owner, intent, "TEST").outfits().getFirst();
+        assertTrue(learned.warnings().stream().anyMatch(w -> w.contains("扣分加大")), learned.warnings().toString());
+        assertTrue(learned.score() < before - 8, before + " → " + learned.score());
         recommendations.updateSettings(owner, Map.of("styleMixing", "FORBID"));
         var forbidden = recommendations.recommend(owner, intent, "TEST");
         assertTrue(forbidden.outfits().isEmpty());
