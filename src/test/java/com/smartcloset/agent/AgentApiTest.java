@@ -268,6 +268,7 @@ class AgentApiTest {
    var card=repo.propose(owner,session.id(),"RECOMMENDATION",payload,json.createObjectNode());
    repo.begin(owner,session.id(),request,"帮我搭配通勤穿的");repo.finish(owner,session.id(),request,"推荐好了","COMPLETE",List.of(Map.of("event","proposal","data",card)));
    if(!recommendation){
+    Thread.sleep(5); // messages are ordered by creation time; keep the intervening one strictly later
     String intervening=UUID.randomUUID().toString();repo.begin(owner,session.id(),intervening,"我有多少衣服？");repo.finish(owner,session.id(),intervening,"统计好了","COMPLETE",List.of());
     db.update("UPDATE agent_daily_quota SET used=1 WHERE owner_username=?",owner);
    }

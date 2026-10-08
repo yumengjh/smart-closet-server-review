@@ -562,13 +562,13 @@ public class AgentService {
     }
     private UUID uuid(String value){try{return UUID.fromString(value);}catch(Exception e){throw AgentRepository.invalid("对象 ID 无效。");}}
     private com.smartcloset.recommend.Intent withExclusions(com.smartcloset.recommend.Intent intent,List<String> excluded) {
-        return new com.smartcloset.recommend.Intent(intent.occasion(),intent.temperatureC(),intent.season(),intent.formality(),intent.wantStyles(),intent.wantColors(),intent.avoidColors(),intent.freeText(),intent.requiredGarmentIds(),excluded,intent.count(),intent.sources());
+        return new com.smartcloset.recommend.Intent(intent.occasion(),intent.temperatureC(),intent.season(),intent.formality(),intent.wantStyles(),intent.wantColors(),intent.avoidColors(),intent.freeText(),intent.requiredGarmentIds(),excluded,intent.count(),intent.sources(),intent.wantCategories());
     }
     private com.smartcloset.recommend.Intent agentIntent(String owner,Grant grant,JsonNode a){
         var i=json.createObjectNode();var sources=new HashMap<String,String>();
         if(a.path("basedOnPrevious").asBoolean(false)&&grant.previous()!=null) {
             var previous=grant.previous().intent();
-            for(String key:List.of("occasion","temperatureC","season","formality","wantStyles","wantColors","avoidColors","freeText","requiredGarmentIds","excludedGarmentIds"))if(previous.has(key))i.set(key,previous.get(key));
+            for(String key:List.of("occasion","temperatureC","season","formality","wantStyles","wantColors","avoidColors","freeText","requiredGarmentIds","excludedGarmentIds","wantCategories"))if(previous.has(key))i.set(key,previous.get(key));
             for(var entry:previous.path("sources").properties())sources.put(entry.getKey(),entry.getValue().asText());
             if(a.path("intent").hasNonNull("temperatureC")&&!a.path("intent").hasNonNull("season")&&!"USER".equals(sources.get("season"))) {i.remove("season");sources.remove("season");}
         }
@@ -585,7 +585,7 @@ public class AgentService {
         Double temperature=i.hasNonNull("temperatureC")?i.path("temperatureC").asDouble():null;
         if(temperature!=null)sources.put("temperatureC","USER");
         return new com.smartcloset.recommend.Intent(occasion,temperature,i.path("season").asText(""),i.hasNonNull("formality")?i.path("formality").asDouble():null,
-            strings(i.path("wantStyles")),strings(i.path("wantColors")),strings(i.path("avoidColors")),i.path("freeText").asText(""),List.copyOf(required),strings(i.path("excludedGarmentIds")),count,sources);
+            strings(i.path("wantStyles")),strings(i.path("wantColors")),strings(i.path("avoidColors")),i.path("freeText").asText(""),List.copyOf(required),strings(i.path("excludedGarmentIds")),count,sources,strings(i.path("wantCategories")));
     }
     private List<String> strings(JsonNode node){var out=new ArrayList<String>();if(node.isArray())for(var n:node)out.add(n.asText());return out;}
     /** Model-facing summary: a few lines per outfit instead of full garment metadata. */

@@ -27,4 +27,14 @@ class AgentIntentPolicyTest {
         }
         assertTrue(AgentIntentPolicy.classify("能不能重新搭配",false).tools().contains("recommend_outfits"));
     }
+    @Test void everydayOutfitRequestsAndCorrectionsAfterACard(){
+        for(String text:new String[]{"我是女生 帮我发一套比较可爱的穿搭","来一套通勤穿搭","给我整一套约会的","想要一套甜美的穿搭","今天穿什么"})
+            assertTrue(AgentIntentPolicy.classify(text).tools().contains("recommend_outfits"),text);
+        assertTrue(AgentIntentPolicy.classify("你来搭配",true).tools().contains("recommend_outfits"));
+        for(String text:new String[]{"不是有更好看的裙子吗","要可爱一点的","换成裙子"}){
+            assertTrue(AgentIntentPolicy.classify(text,true).tools().contains("recommend_outfits"),text);
+            assertFalse(AgentIntentPolicy.classify(text,false).tools().contains("recommend_outfits"),text);
+        }
+        assertFalse(AgentIntentPolicy.classify("我有几套搭配？").tools().contains("recommend_outfits"));
+    }
 }
