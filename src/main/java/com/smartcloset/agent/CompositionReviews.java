@@ -55,14 +55,15 @@ public class CompositionReviews {
         if(worn.stream().noneMatch(w -> w.role().equals("SHOES")))warnings.add(new Issue("NO_SHOES","未选择鞋，继续生成时人物不带鞋，也不会保留基准人物原鞋。","可继续或添加鞋"));
         var counts=new HashMap<String,List<Worn>>();for(var w:worn)counts.computeIfAbsent(w.role(),k->new ArrayList<>()).add(w);
         boolean onePiece=counts.containsKey("ONE_PIECE");var slots=new ArrayList<Slot>();
-        var labels=Map.ofEntries(Map.entry("TOP","上身主体"),Map.entry("BOTTOM","下身主体"),Map.entry("ONE_PIECE","连体主体"),Map.entry("INNER","内层 / 打底"),Map.entry("OUTER","外搭"),Map.entry("SHOES","鞋"),Map.entry("HAT","帽子"),Map.entry("GLASSES","眼镜"),Map.entry("ACCESSORY","首饰 / 配饰"),Map.entry("BAG","包"),Map.entry("SCARF","围巾"),Map.entry("BELT","腰带"),Map.entry("SOCKS","袜"),Map.entry("GLOVES","手套"),Map.entry("OTHER","待核对物品"));
+        var labels=Map.ofEntries(Map.entry("TOP","上身主体"),Map.entry("BOTTOM","下身主体"),Map.entry("ONE_PIECE","连体主体"),Map.entry("OVERALL","背带裙 / 背带裤"),Map.entry("HEADWEAR","头饰"),Map.entry("HANDHELD","手持物"),Map.entry("INNER","内层 / 打底"),Map.entry("OUTER","外搭"),Map.entry("SHOES","鞋"),Map.entry("HAT","帽子"),Map.entry("GLASSES","眼镜"),Map.entry("ACCESSORY","首饰 / 配饰"),Map.entry("BAG","包"),Map.entry("SCARF","围巾"),Map.entry("BELT","腰带"),Map.entry("SOCKS","袜子 / 裤袜"),Map.entry("GLOVES","手套"),Map.entry("OTHER","待核对物品"));
         for(var role:OutfitRules.Role.values()) {
             var items=counts.getOrDefault(role.name(),List.of());String state=items.isEmpty()?"MISSING":"PRESENT";
             if(role==OutfitRules.Role.OTHER&&!items.isEmpty())state="UNKNOWN";
             else if(role==OutfitRules.Role.ACCESSORY&&items.stream().anyMatch(w->w.position().equals("UNKNOWN")))state="UNKNOWN";
             else if(role==OutfitRules.Role.ACCESSORY&&items.stream().map(Worn::position).distinct().count()!=items.size())state="CONFLICT";
             else if(role!=OutfitRules.Role.ACCESSORY&&items.size()>1)state="CONFLICT";
-            else if(onePiece&&Set.of(OutfitRules.Role.TOP,OutfitRules.Role.BOTTOM).contains(role)&&!items.isEmpty())state="CONFLICT";
+            else if(onePiece&&Set.of(OutfitRules.Role.TOP,OutfitRules.Role.BOTTOM,OutfitRules.Role.OVERALL).contains(role)&&!items.isEmpty())state="CONFLICT";
+            else if(role==OutfitRules.Role.OVERALL&&!items.isEmpty()&&counts.containsKey("BOTTOM"))state="CONFLICT";
             slots.add(new Slot(role.name(),labels.getOrDefault(role.name(),role.name()),state,items));
         }
         String fingerprint=WorkflowFiles.hash(json.writeValueAsBytes(Map.of("items",worn,"ruleVersion",VERSION,"multiLayer",Boolean.TRUE.equals(input.multiLayer()),"outfitRevision",input.revision()==null?-1:input.revision())));
