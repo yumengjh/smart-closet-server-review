@@ -117,8 +117,10 @@ eval/
 ```
 
 ```bash
-mvn -o -Dtest=ImageModelEvaluation -Dimage.eval=/path/to/eval test
+bash scripts/eval-image-model.sh /path/to/eval
 ```
+
+（等同于 `mvn -Dtest=ImageModelEvaluation -Dimage.eval=/path/to/eval test`；没有网页入口，在后端项目目录里运行即可，几分钟内完成。）
 
 报告写到 `target/image-eval/report.md`，包含：
 
