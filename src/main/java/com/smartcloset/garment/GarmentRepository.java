@@ -163,6 +163,11 @@ public class GarmentRepository {
             return new RecognitionSchema.Field(f.key(), f.label(), List.copyOf(values), f.multiple(), f.suggestion());
         }).toList();
     }
+    /** Category family of one stored row (closet-families-v1), for aggregate exports that must not load whole wardrobes. */
+    public String family(String automaticJson, String overridesJson) {
+        var automatic = automaticJson == null ? null : json.readValue(automaticJson, Recognition.Result.class);
+        return ClosetClassification.family(effective(automatic, overrides(overridesJson == null ? "{}" : overridesJson)).getOrDefault("category", List.of()));
+    }
     private Map<String, List<String>> effective(Recognition.Result automatic, Map<String, List<String>> overrides) {
         var values = new LinkedHashMap<String, List<String>>();
         for (var field : RecognitionSchema.FIELDS) values.put(field.key(), MetadataValues.canonical(field.key(), overrides.containsKey(field.key())

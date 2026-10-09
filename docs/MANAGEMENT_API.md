@@ -1,11 +1,12 @@
 # 管理接口接入指南
 
-鱼搭提供一组中立的服务端管理接口（`/api/manage/v1`），让任意后台平台管理业务用户、查看衣柜洞察。本文面向接入方：如何开启、如何签名、每个接口怎么调、出错怎么查。
+鱼搭提供一组中立的服务端管理接口（`/api/manage/v1`），让任意后台平台管理业务用户、查看衣柜洞察；1.1 起还提供运维状态、推荐与模型 KPI、大屏快照、数仓数据出口和模板审核（第 9~14 节）。本文面向接入方：如何开启、如何签名、每个接口怎么调、出错怎么查。
 
 | 资料 | 用途 |
 |---|---|
 | [`management-api.yaml`](management-api.yaml) | OpenAPI 3.1 契约，唯一事实源；可导入 Swagger Editor、Apifox、Postman 或生成客户端 |
 | [设计文档](design/2026-10-07-管理平台接入与可插拔管理接口设计.md) | 设计取舍、数据口径、实现记录 |
+| [二期设计](design/2026-10-09-管理接口二期：运维、KPI与大屏数据设计.md) | 运维、KPI、大屏、数仓出口与模板审核的口径与决策（M1~M10） |
 | [`scripts/manage-curl.sh`](../scripts/manage-curl.sh) | 命令行签名调用工具 |
 | [部署拓扑](DEPLOYMENT_TOPOLOGY.md) | 与管理平台一起部署时的服务、端口与密钥关系 |
 
@@ -16,7 +17,8 @@
 - **默认关闭。** 未开启时管理模块不注册任何 Bean 与路由，鱼搭行为与未引入该模块时完全一致。
 - **服务对服务。** 只接受 HMAC 签名请求；不使用 Cookie、不创建会话、不开放 CORS，浏览器无法直接调用。
 - **不认识宿主平台。** 接口不带任何平台专属概念（权限码、信封结构、审计表）。权限判断、审计、格式转换由接入方自己完成。
-- **只管账号与统计。** 不提供修改用户衣物、读取图片或私密媒体（体型照片、基准人物）的能力；个人资料只返回“是否已填写”。
+- **只管账号、统计与只读运维。** 不提供修改用户衣物、读取图片或私密媒体（体型照片、基准人物）的能力；个人资料只返回“是否已填写”。1.1 新增的写操作只有模板审核；运维接口不能重试、取消任务或改配置。
+- **大屏与数仓出口不带用户名。** 大屏只给汇总，明细事件只给不可逆的 `userKey`。
 
 ## 2. 开启
 
@@ -395,8 +397,8 @@ PUT 请求的两个字段都取 0–1000 或 `null`（`null` = 恢复默认）�
 
 | 参数 | 说明 |
 |---|---|
-| `metric` | 必填，可重复：`garments_created`、`garments_adopted`、`outfits_created`、`quick_intakes`、`image_units`、`agent_messages`、`users_created` |
-| `granularity` | `day`（默认）/ `week`（周一为起点） |
+| `metric` | 必填，可重复：`garments_created`、`garments_adopted`、`outfits_created`、`quick_intakes`、`image_units`、`agent_messages`、`users_created`；1.1 新增 `active_users`、`recommendations_shown`、`recommendation_likes`、`recommendation_dislikes`、`wear_logs`、`model_calls`、`model_tokens`、`ootd_samples`（定义见第 10.3 节） |
+| `granularity` | `day`（默认）/ `week`（周一为起点）/ `month`（1 日为起点，1.1 新增） |
 | `from`, `to`, `username` | 同上 |
 
 ```json
@@ -460,3 +462,155 @@ PUT 请求的两个字段都取 0–1000 或 `null`（`null` = 恢复默认）�
 - **日志关键字：** 签名被拒时，服务端日志会记录 `management request rejected code=… requestId=…`，但不记录签名值与密钥。
 - **关闭：** 把 `CLOSET_MANAGEMENT_ENABLED` 改回 `false` 并重启即可。已建的两张表（`closet_user_quota`、`management_operation_log`）保留；其中额度覆盖值仍然生效，因为额度属于核心功能。需要撤销覆盖，请在关闭前把额度设回 `null`。
 - **规模假设：** 全站洞察按用户逐个聚合，适合约 200 个用户、2 万件衣物以内的规模，超出后需要改成批量查询（接口不变）。
+
+## 9. 运维接口（1.1，只读）
+
+### `GET /ops/status`
+
+总体状态与原因、应用与 JVM、存储、模型与索引覆盖、任务队列、服务商与助手运行时、在线会话。**不返回密钥、服务商地址或用户名。**
+
+```json
+{
+  "status": "DEGRADED",
+  "issues": [{ "code": "SEMANTIC_INDEX_BEHIND", "message": "语义索引覆盖 62%，后台仍在补算" }],
+  "app": { "version": "0.0.1-SNAPSHOT", "startedAtMs": 1760000000000, "uptimeMs": 86400000, "java": "21.0.8+9" },
+  "jvm": { "heapUsedBytes": 412000000, "heapMaxBytes": 2147483648, "nonHeapUsedBytes": 180000000, "threads": 64, "processors": 4, "systemLoadAverage": 0.42, "processCpuLoad": 0.03 },
+  "storage": { "totalBytes": 107374182400, "usableBytes": 64424509440, "usedRatio": 0.4, "databaseBytes": 52428800 },
+  "models": { "segmentation": { "present": true, "loaded": true }, "embedding": { "available": true, "version": "local-text-cls-v1:69a0b846f4f116b5:45bbac6b:512" } },
+  "indexes": { "semantic": { "indexed": 620, "total": 1000, "coverage": 0.62 }, "color": { "measured": 998, "total": 1000, "coverage": 0.998 } },
+  "queue": { "byStatus": { "QUEUED": 3, "RUNNING": 1, "WAITING_QUOTA": 0, "CANCEL_REQUESTED": 0 },
+             "byKind": [{ "kind": "SEMANTIC_INDEX", "queued": 3, "running": 1, "waitingQuota": 0, "failed24h": 0 }],
+             "oldestQueuedAgeMs": 42000, "failed24h": 0 },
+  "providers": { "recognition": { "defaultProvider": "yumg", "configured": true }, "generation": [{ "id": "yumg", "configured": true }],
+                 "agentRuntime": { "reachable": true, "latencyMs": 8, "checkedAtMs": 1760086400000 } },
+  "sessions": { "active": 35, "onlineLast5Min": 6 },
+  "generatedAtMs": 1760086400000
+}
+```
+
+| issue 代码 | 含义 | 阈值配置 |
+|---|---|---|
+| `EMBEDDING_MODEL_MISSING` | 向量模型不可用，搜索与推荐降级为字段加关键词 | — |
+| `SEGMENTATION_MODEL_MISSING` | 抠图模型未安装 | — |
+| `SEMANTIC_INDEX_BEHIND` | 语义索引覆盖率低于阈值（新装模型后会持续几分钟） | `ops.semantic-coverage-warn`（0.9） |
+| `QUEUE_BACKLOG` | 最早排队的任务等待超过阈值 | `ops.queue-backlog-warn`（10m） |
+| `TASK_FAILURES` | 24 小时失败任务数达到阈值 | `ops.failed-tasks-warn`（10） |
+| `DISK_FULL` | 存储所在磁盘使用率达到阈值 | `ops.disk-used-warn`（0.9） |
+| `RECOGNITION_NOT_CONFIGURED` | 识图服务商没有密钥 | — |
+| `AGENT_RUNTIME_UNREACHABLE` | 助手运行时 `/health` 1 秒内无响应（结果缓存 15 秒） | — |
+
+### `GET /ops/tasks`
+
+后台任务列表，默认只看失败（`FAILED`、`UNKNOWN`、`INTERRUPTED` 需显式传）。参数：`status`（可重复）、`kind`、`page`、`size`。不返回任务载荷；`errorMessage` 截断到 300 字。只读，不提供重试或取消。
+
+### `GET /ops/operation-log`
+
+管理接口自己的操作日志（第 8 节），参数 `from`、`to`、`action`、`targetUsername`、`page`、`size`。
+
+## 10. KPI 接口（1.1）
+
+### 10.1 `GET /insights/recommendations`
+
+| 字段 | 定义 |
+|---|---|
+| `shown` | 范围内展示的推荐套数 |
+| `adopted` / `adoptionRate` | 采用＝点赞、在搭台打开，或展示后 3 天内打卡穿过这一套的全部衣物；按用户分别匹配后汇总 |
+| `liked` / `disliked` / `likeRate` | 点赞、点踩；点赞率＝点赞/（点赞+点踩） |
+| `openedInWorkspace` / `wornWithin3Days` / `swaps` | 分项 |
+| `users` | 收到过推荐的用户数 |
+| `bySource` | `PAGE` 推荐区、`AGENT` 助手、`INSPIRATION` 今日灵感、`SWAP` 换一件、`MORE` 换一批 |
+| `byRank` | 第 1/2/3 名分别的展示与采用（看排序有没有用） |
+| `templates` | 命中模板的展示与采用 Top 10 |
+| `daily` | 每天的展示与采用 |
+
+比率在分母为 0 时为 `null`。
+
+### 10.2 `GET /insights/ai`
+
+按功能（`AGENT` 助手、`OOTD_EXTRACT` 整套穿搭样本提取…）的调用次数与 token、生图额度、助手消息数、零模型推荐占比；不传 `username` 时附 token 用量 Top 10 用户（运维排查用，不要放上大屏）。**只给 token 数，费用请用服务商单价换算。**
+
+### 10.3 趋势新增指标
+
+| 指标 | 定义 |
+|---|---|
+| `active_users` | 当天“有操作”的用户数：新增衣物、新建或编辑搭配、收到推荐、反馈、行为信号、打卡、模型调用、快速入柜、助手消息或生图额度消耗。按桶去重（周值不是 7 个日值相加）。只浏览不操作的不计，属近似 DAU |
+| `recommendations_shown` | 展示的推荐套数 |
+| `recommendation_likes` / `recommendation_dislikes` | 点赞 / 点踩 |
+| `wear_logs` | 打卡次数 |
+| `model_calls` / `model_tokens` | 模型调用次数 / 输入+输出 token |
+| `ootd_samples` | 上传的整套穿搭样本数 |
+
+## 11. 大屏快照（1.1）
+
+`GET /dashboard/snapshot`：一次拿全大屏需要的数据，服务端缓存 15 秒（`dashboard-cache-ttl`），建议按响应里的 `refreshAfterMs`（≥30 秒）轮询，多块屏幕同时轮询也只算一次。**只含汇总，不含用户名、衣物名称或图片。**
+
+| 区块 | 内容 |
+|---|---|
+| `tiles` | `usersTotal`、`usersNewToday`、`activeToday`、`active7d`、`active30d`（去重）、`onlineNow`（近 5 分钟有请求的登录用户）、`garmentsActive`、`garmentsToday`、`outfitsTotal`、`outfitsToday`、`recommendationsToday`、`adoptionRate7d`、`wearLogsToday`、`agentMessagesToday`、`imageUnitsToday`、`modelTokensToday` |
+| `hourly` | 近 24 个整点（含当前小时，`hours` 为 `yyyy-MM-ddTHH:mm+08:00`）的 `garments_created`、`outfits_created`、`recommendations_shown`、`model_calls`、`active_users` |
+| `daily` | 近 30 天的 `active_users`、`garments_created`、`outfits_created`、`recommendations_shown`、`model_tokens` |
+| `distributions` | 衣物大类、主色 Top 10、季节、近 7 天推荐来源的展示与采用 |
+| `ops` | 运维摘要：`status`、`issues` 数、排队积压、24 小时失败数 |
+
+大屏建议布局：顶部一排 `tiles` 数字卡；中部左侧 `hourly` 折线（活跃与推荐）、右侧 `daily` 柱状；底部 `distributions` 饼图/条形图；角落放 `ops.status` 指示灯。
+
+## 12. 数仓出口（1.1）
+
+### 12.1 `GET /exports/daily`
+
+按天宽表，最长 366 天；`format=csv` 返回带表头的 UTF-8 CSV（`Content-Disposition: attachment`）。列：`date, users_created, active_users, garments_created, garments_adopted, outfits_created, quick_intakes, recommendations_shown, recommendation_likes, recommendation_dislikes, wear_logs, agent_messages, image_units, model_calls, input_tokens, output_tokens, ootd_samples`。适合每天凌晨拉前一天，或首次全量拉一年。
+
+### 12.2 `GET /exports/events`
+
+去标识明细事件，增量拉取：
+
+```bash
+# 首次：从某个时间点开始
+scripts/manage-curl.sh GET '/api/manage/v1/exports/events?since=1759248000000&limit=1000'
+# 之后：带上次的 nextCursor，直到 hasMore=false；下一轮定时任务继续用最后一个 nextCursor
+scripts/manage-curl.sh GET '/api/manage/v1/exports/events?cursor=MTc1OTI0ODAwMDAwMHx3ZWFyX2xvZ2dlZHw...&limit=1000'
+```
+
+```json
+{
+  "items": [
+    { "type": "recommendation_shown", "id": "2b0c…", "atMs": 1759248001234, "userKey": "3f9a1c0e5b7d2a64",
+      "attrs": { "source": "PAGE", "rank": 1, "score": 86.5, "template": "white-tee-denim-sneaker" } }
+  ],
+  "nextCursor": "…", "hasMore": true, "watermarkMs": 1760086395000
+}
+```
+
+| type | attrs |
+|---|---|
+| `user_created` | `role`（`id` 也是 userKey） |
+| `garment_created` | `status`、`family`（衣物大类） |
+| `outfit_created` | `items`（件数） |
+| `recommendation_shown` | `source`、`rank`、`score`、`template` |
+| `recommendation_feedback` | `verdict`、`reasons`、`recommendationId` |
+| `wear_logged` | `items` |
+| `model_usage` | `feature`、`model`、`inputTokens`、`outputTokens` |
+| `quick_intake` | `mode` |
+
+- 排序键 `(atMs, type, id)`；游标不透明，同一游标重复拉取结果一致，失败重试安全。`types` 可筛选（可重复）。
+- 只返回 `watermarkMs`（当前时间 −5 秒）之前的事件，避免并发写入导致漏拉。
+- `userKey = HMAC-SHA256(盐, 用户名)` 前 16 位十六进制。盐用 `CLOSET_MANAGEMENT_EXPORT_SALT` 配置；不配置时由第一把管理密钥派生，**轮换管理密钥或改盐都会让 userKey 全部变化**，数仓需按时间分段。建议显式配置一个独立的盐。
+- 明细不含用户名、衣物名称、图片、聊天内容、意图原文。
+
+## 13. 模板审核（1.1）
+
+- `GET /templates`：资源文件模板与整套穿搭样本生成的草稿（`source`：`FILE`/`SAMPLE`），含审核状态、类型、适用人群、季节、场合、有效期、槽位定义。
+- `PATCH /templates/{id}`：`{"reviewStatus":"APPROVED","enabled":true,"bonus":4}`（至少一个字段，`bonus` 0~5），与鱼搭管理员审核页共用存储，立即生效；审核人记为 `manage:{keyId}:{X-Operator}`，成功与失败都写操作日志（动作 `TEMPLATE_REVIEW`）。
+
+## 14. 1.1 配置
+
+| 环境变量 / 配置 | 默认 | 说明 |
+|---|---|---|
+| `closet.management.dashboard-cache-ttl` | `15s` | 大屏快照缓存 |
+| `CLOSET_MANAGEMENT_EXPORT_SALT`（`closet.management.export-salt`） | 空 | 明细事件 userKey 的盐；空则由管理密钥派生 |
+| `closet.management.ops.queue-backlog-warn` | `10m` | 排队积压阈值 |
+| `closet.management.ops.failed-tasks-warn` | `10` | 24 小时失败任务阈值 |
+| `closet.management.ops.disk-used-warn` | `0.9` | 磁盘使用率阈值 |
+| `closet.management.ops.semantic-coverage-warn` | `0.9` | 语义索引覆盖率阈值 |
+
+全站统计按 SQL 聚合计算，适合千级用户、数十万条记录；大屏有 15 秒缓存，其余洞察有 `insights-cache-ttl`（60 秒）缓存。

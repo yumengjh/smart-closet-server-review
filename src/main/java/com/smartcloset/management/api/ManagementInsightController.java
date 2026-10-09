@@ -2,6 +2,7 @@ package com.smartcloset.management.api;
 
 import com.smartcloset.management.ConditionalOnManagementEnabled;
 import com.smartcloset.management.application.ManagementInsightService;
+import com.smartcloset.management.application.ManagementKpiService;
 import jakarta.validation.constraints.Pattern;
 import java.time.LocalDate;
 import java.util.List;
@@ -19,7 +20,22 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/manage/v1/insights")
 public class ManagementInsightController {
     private final ManagementInsightService insights;
-    public ManagementInsightController(ManagementInsightService insights) { this.insights = insights; }
+    private final ManagementKpiService kpi;
+    public ManagementInsightController(ManagementInsightService insights, ManagementKpiService kpi) { this.insights = insights; this.kpi = kpi; }
+
+    @GetMapping("/recommendations")
+    public Map<String, Object> recommendations(@RequestParam(required = false) @Pattern(regexp = ManagementUserController.USERNAME) String username,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to) {
+        return kpi.recommendations(username, ManagementInsightService.range(from, to));
+    }
+
+    @GetMapping("/ai")
+    public Map<String, Object> ai(@RequestParam(required = false) @Pattern(regexp = ManagementUserController.USERNAME) String username,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to) {
+        return kpi.ai(username, ManagementInsightService.range(from, to));
+    }
 
     @GetMapping("/overview")
     public Map<String, Object> overview(@RequestParam(required = false) @Pattern(regexp = ManagementUserController.USERNAME) String username,

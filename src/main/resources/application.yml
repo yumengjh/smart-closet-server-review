@@ -64,6 +64,14 @@ closet:
           secret: ${CLOSET_MANAGEMENT_SECRET:}
     max-body-bytes: 65536
     insights-cache-ttl: 60s
+    dashboard-cache-ttl: 15s
+    # Salt for de-identified user keys in /exports/events; empty = derived from the first management key.
+    export-salt: ${CLOSET_MANAGEMENT_EXPORT_SALT:}
+    ops:
+      queue-backlog-warn: 10m
+      failed-tasks-warn: 10
+      disk-used-warn: 0.9
+      semantic-coverage-warn: 0.9
 workflow:
   max-queued: 30
   poll-ms: 300
