@@ -3,6 +3,8 @@ data/
 models/*.onnx
 models/*.part
 models/embedding-*
+models/image-*
+models/.image-model-*/
 models/.download-parts/
 models/.download-*/
 .idea/

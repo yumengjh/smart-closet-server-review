@@ -45,6 +45,7 @@ public class ManagementOpsService {
     private final ObjectProvider<RecognitionService> recognition;
     private final ObjectProvider<GenerationProperties> generation;
     private final ObjectProvider<AgentProperties> agent;
+    private ObjectProvider<com.smartcloset.similar.ClipModels> clip;
     private final String databaseUrl;
     private final HttpClient http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(1)).build();
     private volatile Probe probe;
@@ -55,6 +56,9 @@ public class ManagementOpsService {
         this.jdbc = jdbc; this.properties = properties; this.closet = closet; this.segmentation = segmentation; this.semantic = semantic;
         this.recognition = recognition; this.generation = generation; this.agent = agent; this.databaseUrl = databaseUrl;
     }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    void imageModel(ObjectProvider<com.smartcloset.similar.ClipModels> clip) { this.clip = clip; }
 
     public Map<String, Object> status() {
         var issues = new ArrayList<Issue>();
@@ -98,13 +102,25 @@ public class ManagementOpsService {
         models.put("embedding", emb);
         if (!embedding) issues.add(new Issue("EMBEDDING_MODEL_MISSING", "本地向量模型不可用，搜索与推荐降级为字段加关键词"));
 
+        // Image-text model (optional): missing is not an issue, low memory or a broken file is (search silently degrades).
+        var clipModels = clip == null ? null : clip.getIfAvailable();
+        String imageVersion = clipModels == null ? null : clipModels.imageVersion();
+        if (clipModels != null) {
+            var image = new LinkedHashMap<String, Object>(clipModels.status()); image.put("version", imageVersion);
+            models.put("image", image);
+            var state = clipModels.imageState();
+            if (state == com.smartcloset.similar.ClipModels.State.LOW_MEMORY) issues.add(new Issue("IMAGE_MODEL_LOW_MEMORY", "可用内存不足，图文模型没有加载，图像识别已回退为颜色轮廓比对"));
+            if (state == com.smartcloset.similar.ClipModels.State.FAILED) issues.add(new Issue("IMAGE_MODEL_FAILED", "图文模型文件无法加载，图像识别已回退为颜色轮廓比对"));
+        }
         long active = count("SELECT COUNT(*) FROM garment WHERE closet_status='ACTIVE' AND owner_username IS NOT NULL");
         long indexed = embedding ? count("SELECT COUNT(*) FROM garment_embedding e JOIN garment g ON g.id=e.garment_id WHERE g.closet_status='ACTIVE' AND e.model_version=? AND e.garment_revision=g.revision", index.model()) : 0;
         long measured = count("SELECT COUNT(*) FROM garment_color c JOIN garment g ON g.id=c.garment_id AND g.display_asset_id=c.display_asset_id WHERE g.closet_status='ACTIVE'");
         double semanticCoverage = active == 0 ? 1 : round(indexed / (double) active);
         if (embedding && semanticCoverage < ops.semanticCoverageWarn()) issues.add(new Issue("SEMANTIC_INDEX_BEHIND", "语义索引覆盖 " + Math.round(semanticCoverage * 100) + "%，后台仍在补算"));
+        long pictured = imageVersion == null ? 0 : count("SELECT COUNT(*) FROM garment_image_embedding e JOIN garment g ON g.id=e.garment_id AND g.display_asset_id=e.display_asset_id WHERE g.closet_status='ACTIVE' AND e.model_version=?", imageVersion);
         out.put("indexes", Map.of("semantic", Map.of("indexed", indexed, "total", active, "coverage", semanticCoverage),
-            "color", Map.of("measured", measured, "total", active, "coverage", active == 0 ? 1 : round(measured / (double) active))));
+            "color", Map.of("measured", measured, "total", active, "coverage", active == 0 ? 1 : round(measured / (double) active)),
+            "image", Map.of("indexed", pictured, "total", active, "coverage", active == 0 || imageVersion == null ? (imageVersion == null ? 0 : 1) : round(pictured / (double) active))));
 
         long now = System.currentTimeMillis(), dayAgo = now - Duration.ofDays(1).toMillis();
         var byStatus = new LinkedHashMap<String, Long>(); ACTIVE.forEach(s -> byStatus.put(s, 0L));

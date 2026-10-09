@@ -16,6 +16,9 @@ services:
       CLOSET_MODEL_PATH: /models/u2net.onnx
       CLOSET_EMBEDDING_MODEL_PATH: '${CLOSET_EMBEDDING_MODEL_PATH:-/models/embedding-fp32.onnx}'
       CLOSET_EMBEDDING_VOCAB_PATH: /models/embedding-vocab.txt
+      CLOSET_IMAGE_MODEL_PATH: '${CLOSET_IMAGE_MODEL_PATH:-/models/image-model-int8.onnx}'
+      CLOSET_IMAGE_TEXT_MODEL_PATH: '${CLOSET_IMAGE_TEXT_MODEL_PATH:-/models/image-text-model-int8.onnx}'
+      CLOSET_IMAGE_TEXT_VOCAB_PATH: /models/image-text-vocab.txt
       CLOSET_AGENT_RUNTIME_URL: http://agent-runtime:8091
       CLOSET_AGENT_CALLBACK_URL: http://server:8080
       CLOSET_AGENT_SECRET: ${CLOSET_AGENT_SECRET:?Set CLOSET_AGENT_SECRET to a random value of at least 32 characters}

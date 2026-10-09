@@ -467,7 +467,7 @@ PUT 请求的两个字段都取 0–1000 或 `null`（`null` = 恢复默认）�
 
 ### `GET /ops/status`
 
-总体状态与原因、应用与 JVM、存储、模型与索引覆盖、任务队列、服务商与助手运行时、在线会话。**不返回密钥、服务商地址或用户名。** 模型会话占用堆外内存，看内存请看 `jvm.processRssBytes`（进程常驻内存，仅 Linux）而不是堆；抠图模型闲置会自动卸载（`loaded: false` 属正常）。
+总体状态与原因、应用与 JVM、存储、模型与索引覆盖、任务队列、服务商与助手运行时、在线会话。**不返回密钥、服务商地址或用户名。** 模型会话占用堆外内存，看内存请看 `jvm.processRssBytes`（进程常驻内存，仅 Linux）而不是堆；抠图模型与图文模型闲置会自动卸载（`loaded: false` 属正常）。图文模型（可选）在 `models.image`：`image`/`text` 两塔各自的 `state`（`READY`/`NOT_INSTALLED`/`LOW_MEMORY`/`FAILED`）、`loaded`、`loads`、`unloads`、`lowMemorySkips`、`requiredFreeBytes`，以及 `availableMemoryBytes`；图像向量覆盖在 `indexes.image`。未安装不算问题，内存不足或文件损坏会进 `issues`（`IMAGE_MODEL_LOW_MEMORY`、`IMAGE_MODEL_FAILED`）。
 
 ```json
 {
@@ -477,7 +477,8 @@ PUT 请求的两个字段都取 0–1000 或 `null`（`null` = 恢复默认）�
   "jvm": { "heapUsedBytes": 412000000, "heapMaxBytes": 2147483648, "nonHeapUsedBytes": 180000000, "threads": 64, "processors": 4, "systemLoadAverage": 0.42, "processCpuLoad": 0.03,
            "processRssBytes": 1450000000, "systemMemoryTotalBytes": 4100000000, "systemMemoryFreeBytes": 1600000000 },
   "storage": { "totalBytes": 107374182400, "usableBytes": 64424509440, "usedRatio": 0.4, "databaseBytes": 52428800 },
-  "models": { "segmentation": { "present": true, "loaded": false, "idleUnloadMinutes": 10, "unloads": 3 }, "embedding": { "available": true, "version": "local-text-cls-v1:69a0b846f4f116b5:45bbac6b:512" } },
+  "models": { "segmentation": { "present": true, "loaded": false, "idleUnloadMinutes": 10, "unloads": 3 }, "embedding": { "available": true, "version": "local-text-cls-v1:69a0b846f4f116b5:45bbac6b:512" },
+              "image": { "image": { "present": true, "loaded": false, "state": "READY", "idleUnloadMinutes": 10, "loads": 4, "unloads": 3, "lowMemorySkips": 0 }, "text": { "present": true, "loaded": true, "state": "READY", "idleUnloadMinutes": 30 }, "availableMemoryBytes": 1500000000, "version": "cnclip-img:24ef106fe11f57e8" } },
   "indexes": { "semantic": { "indexed": 620, "total": 1000, "coverage": 0.62 }, "color": { "measured": 998, "total": 1000, "coverage": 0.998 } },
   "queue": { "byStatus": { "QUEUED": 3, "RUNNING": 1, "WAITING_QUOTA": 0, "CANCEL_REQUESTED": 0 },
              "byKind": [{ "kind": "SEMANTIC_INDEX", "queued": 3, "running": 1, "waitingQuota": 0, "failed24h": 0 }],
