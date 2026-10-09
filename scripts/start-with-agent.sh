@@ -24,7 +24,7 @@ trap 'exit 143' TERM
 ready=false
 for attempt in {1..30}; do
   kill -0 "$agent_pid" 2>/dev/null || { echo 'Agent process exited; check its port and configuration.' >&2; exit 1; }
-  if curl --silent --fail --connect-timeout 1 --max-time 2 "$CLOSET_AGENT_RUNTIME_URL/health" >/dev/null; then ready=true; break; fi
+  if curl --noproxy '*' --silent --fail --connect-timeout 1 --max-time 2 "$CLOSET_AGENT_RUNTIME_URL/health" >/dev/null; then ready=true; break; fi
   sleep 0.2
 done
 [[ "$ready" == true ]] || { echo 'Agent health check did not become ready.' >&2; exit 1; }

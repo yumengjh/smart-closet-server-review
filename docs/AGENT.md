@@ -7,8 +7,12 @@
 需要 Java 21、Node.js 22+ 和 npm。模型的上游地址、密钥沿用 `.local/generation.yml` 中 `generation.providers.yumg`，浏览器无法读取这两个字段。
 
 ```bash
-./scripts/start-with-agent.sh
+CLOSET_QUICK_INTAKE_ENABLED=true ./scripts/start-with-agent.sh
 ```
+
+添加衣物页的"快速入柜"按钮由 `CLOSET_QUICK_INTAKE_ENABLED` 控制，默认 `false`，后端为 `false` 时按钮不显示。日常运行必须带上该变量。验证：`GET /api/processing/capabilities`（需登录）返回 `quickIntake: true`。
+
+不设置 `CLOSET_SERVER_JAR` 时后端从当前源码 `mvn spring-boot:run` 启动，运行的是当前分支代码；设置该变量则运行指定的旧包，不含分支改动。
 
 脚本创建权限为 600 的 `.local/agent-secret`，为 Spring 与 Node 提供相同的内部共享密钥。Node 默认只监听 `127.0.0.1:8091`；Spring 默认 `127.0.0.1:8080`。退出脚本会停止它创建的 Node 进程。
 
