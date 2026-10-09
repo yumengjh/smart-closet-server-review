@@ -90,6 +90,11 @@ public class RecognitionService {
         var p = prepare(request);
         return new Prepared(p.provider(), p.model(), p.providerRevision(), p.promptVersion()+":batch-v2", "batch-v1", p.prompt()+"\n"+instructions, batchSchema);
     }
+    /** A different task on the same provider and model (e.g. whole-outfit samples, ootd-v1): own prompt and schema, no garment prompt. */
+    public Prepared prepareCustom(Request request, String schemaVersion, String customPrompt, JsonNode customSchema) {
+        var p = prepare(request);
+        return new Prepared(p.provider(), p.model(), p.providerRevision(), schemaVersion + ":" + WorkflowFiles.hash(customPrompt.getBytes(StandardCharsets.UTF_8)), schemaVersion, customPrompt, customSchema);
+    }
     public Output recognize(Prepared r, byte[] png) {
         var out = raw(r, png, "识别这张照片中的单件衣物。");
         return new Output(schema.validate(out.raw(), RecognitionSchema.requiresTarget(r.schemaVersion())), out.raw(), out.usage(), out.requestId());
@@ -100,18 +105,18 @@ public class RecognitionService {
         String encoded = Base64.getEncoder().encodeToString(visionImage(png));
         if (p.protocol() == RecognitionProperties.Protocol.OPENAI_CHAT) {
             path = "/chat/completions";
-            fields.put("model", r.model()); fields.put("max_completion_tokens", "batch-v1".equals(r.schemaVersion()) ? 16384 : p.maxOutputTokens());
+            fields.put("model", r.model()); fields.put("max_completion_tokens", large(r) ? 16384 : p.maxOutputTokens());
             if (p.reasoningEffort() != null) fields.put("reasoning_effort", p.reasoningEffort());
             fields.put("messages", List.of(Map.of("role", "system", "content", r.prompt()), Map.of("role", "user", "content", List.of(
                 Map.of("type", "text", "text", instructions),
                 Map.of("type", "image_url", "image_url", Map.of("url", "data:image/png;base64," + encoded))))));
-            fields.put("response_format", Map.of("type", "json_schema", "json_schema", Map.of("name", "garment_metadata", "strict", true, "schema", r.schema())));
+            fields.put("response_format", Map.of("type", "json_schema", "json_schema", Map.of("name", Objects.toString(r.schemaVersion(), "").startsWith("ootd-") ? "ootd_sample" : "garment_metadata", "strict", true, "schema", r.schema())));
         } else {
             path = "/models/" + r.model().replaceFirst("^models/", "") + ":generateContent";
             fields.put("systemInstruction", Map.of("parts", List.of(Map.of("text", r.prompt()))));
             fields.put("contents", List.of(Map.of("role", "user", "parts", List.of(Map.of("text", instructions),
                 Map.of("inlineData", Map.of("mimeType", "image/png", "data", encoded))))));
-            fields.put("generationConfig", Map.of("responseMimeType", "application/json", "responseJsonSchema", r.schema(), "maxOutputTokens", "batch-v1".equals(r.schemaVersion()) ? 16384 : p.maxOutputTokens()));
+            fields.put("generationConfig", Map.of("responseMimeType", "application/json", "responseJsonSchema", r.schema(), "maxOutputTokens", large(r) ? 16384 : p.maxOutputTokens()));
         }
         var outgoing=builder(r.provider(),path).header("Content-Type","application/json").POST(HttpRequest.BodyPublishers.ofByteArray(json.writeValueAsBytes(fields))).build();
         var response=limited(r.provider(),()->http.send(outgoing,1024*1024));
@@ -133,6 +138,8 @@ public class RecognitionService {
         return new RawOutput(raw, body.has("usage") ? body.get("usage") : body.get("usageMetadata"),
             response.headers().firstValue("x-request-id").orElse(body.path("id").asText(null)));
     }
+    /** Batch splits and whole-outfit samples list many items; a single garment fits the provider's normal budget. */
+    private static boolean large(Prepared r) { return "batch-v1".equals(r.schemaVersion()) || Objects.toString(r.schemaVersion(), "").startsWith("ootd-"); }
     private byte[] visionImage(byte[] png) {
         try {
             var source=ImageIO.read(new ByteArrayInputStream(png));
