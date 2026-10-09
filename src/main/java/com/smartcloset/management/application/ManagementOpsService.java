@@ -72,6 +72,9 @@ public class ManagementOpsService {
         jvm.put("nonHeapUsedBytes", memory.getNonHeapMemoryUsage().getUsed()); jvm.put("threads", ManagementFactory.getThreadMXBean().getThreadCount());
         jvm.put("processors", os.getAvailableProcessors()); jvm.put("systemLoadAverage", round(os.getSystemLoadAverage()));
         jvm.put("processCpuLoad", os instanceof com.sun.management.OperatingSystemMXBean sun ? round(sun.getProcessCpuLoad()) : null);
+        // Model sessions live outside the Java heap: the resident size is what the machine actually pays (Linux only).
+        jvm.put("processRssBytes", rssBytes());
+        if (os instanceof com.sun.management.OperatingSystemMXBean sun) { jvm.put("systemMemoryTotalBytes", sun.getTotalMemorySize()); jvm.put("systemMemoryFreeBytes", sun.getFreeMemorySize()); }
 
         var storage = new LinkedHashMap<String, Object>();
         try {
@@ -86,7 +89,8 @@ public class ManagementOpsService {
         var models = new LinkedHashMap<String, Object>();
         var seg = segmentation.getIfAvailable();
         boolean segPresent = seg != null && seg.modelPresent();
-        models.put("segmentation", Map.of("present", segPresent, "loaded", seg != null && seg.loaded()));
+        models.put("segmentation", Map.of("present", segPresent, "loaded", seg != null && seg.loaded(),
+            "idleUnloadMinutes", seg == null ? 0 : seg.idleUnload().toMinutes(), "unloads", seg == null ? 0 : seg.unloads()));
         if (!segPresent) issues.add(new Issue("SEGMENTATION_MODEL_MISSING", "抠图模型未安装，抠图会改用 GRABCUT 或提示未安装"));
         var index = semantic.getIfAvailable();
         boolean embedding = index != null && index.available();
@@ -178,6 +182,14 @@ public class ManagementOpsService {
         }
         probe = next;
         return next;
+    }
+
+    static Long rssBytes() {
+        try {
+            for (String line : Files.readAllLines(Path.of("/proc/self/status")))
+                if (line.startsWith("VmRSS:")) return Long.parseLong(line.replaceAll("[^0-9]", "")) * 1024;
+        } catch (IOException | RuntimeException ignored) { }
+        return null;
     }
 
     private Long databaseBytes() {

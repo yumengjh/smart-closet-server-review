@@ -467,16 +467,17 @@ PUT 请求的两个字段都取 0–1000 或 `null`（`null` = 恢复默认）�
 
 ### `GET /ops/status`
 
-总体状态与原因、应用与 JVM、存储、模型与索引覆盖、任务队列、服务商与助手运行时、在线会话。**不返回密钥、服务商地址或用户名。**
+总体状态与原因、应用与 JVM、存储、模型与索引覆盖、任务队列、服务商与助手运行时、在线会话。**不返回密钥、服务商地址或用户名。** 模型会话占用堆外内存，看内存请看 `jvm.processRssBytes`（进程常驻内存，仅 Linux）而不是堆；抠图模型闲置会自动卸载（`loaded: false` 属正常）。
 
 ```json
 {
   "status": "DEGRADED",
   "issues": [{ "code": "SEMANTIC_INDEX_BEHIND", "message": "语义索引覆盖 62%，后台仍在补算" }],
   "app": { "version": "0.0.1-SNAPSHOT", "startedAtMs": 1760000000000, "uptimeMs": 86400000, "java": "21.0.8+9" },
-  "jvm": { "heapUsedBytes": 412000000, "heapMaxBytes": 2147483648, "nonHeapUsedBytes": 180000000, "threads": 64, "processors": 4, "systemLoadAverage": 0.42, "processCpuLoad": 0.03 },
+  "jvm": { "heapUsedBytes": 412000000, "heapMaxBytes": 2147483648, "nonHeapUsedBytes": 180000000, "threads": 64, "processors": 4, "systemLoadAverage": 0.42, "processCpuLoad": 0.03,
+           "processRssBytes": 1450000000, "systemMemoryTotalBytes": 4100000000, "systemMemoryFreeBytes": 1600000000 },
   "storage": { "totalBytes": 107374182400, "usableBytes": 64424509440, "usedRatio": 0.4, "databaseBytes": 52428800 },
-  "models": { "segmentation": { "present": true, "loaded": true }, "embedding": { "available": true, "version": "local-text-cls-v1:69a0b846f4f116b5:45bbac6b:512" } },
+  "models": { "segmentation": { "present": true, "loaded": false, "idleUnloadMinutes": 10, "unloads": 3 }, "embedding": { "available": true, "version": "local-text-cls-v1:69a0b846f4f116b5:45bbac6b:512" } },
   "indexes": { "semantic": { "indexed": 620, "total": 1000, "coverage": 0.62 }, "color": { "measured": 998, "total": 1000, "coverage": 0.998 } },
   "queue": { "byStatus": { "QUEUED": 3, "RUNNING": 1, "WAITING_QUOTA": 0, "CANCEL_REQUESTED": 0 },
              "byKind": [{ "kind": "SEMANTIC_INDEX", "queued": 3, "running": 1, "waitingQuota": 0, "failed24h": 0 }],

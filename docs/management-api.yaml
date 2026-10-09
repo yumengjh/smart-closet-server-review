@@ -896,7 +896,7 @@ components:
         status: { type: string, enum: [UP, DEGRADED] }
         issues: { type: array, items: { $ref: '#/components/schemas/OpsIssue' } }
         app: { type: object, properties: { version: { type: string }, startedAtMs: { type: integer }, uptimeMs: { type: integer }, java: { type: string } } }
-        jvm: { type: object, properties: { heapUsedBytes: { type: integer }, heapMaxBytes: { type: integer }, nonHeapUsedBytes: { type: integer }, threads: { type: integer }, processors: { type: integer }, systemLoadAverage: { type: number }, processCpuLoad: { type: [number, 'null'] } } }
+        jvm: { type: object, properties: { heapUsedBytes: { type: integer }, heapMaxBytes: { type: integer }, nonHeapUsedBytes: { type: integer }, threads: { type: integer }, processors: { type: integer }, systemLoadAverage: { type: number }, processCpuLoad: { type: [number, 'null'] }, processRssBytes: { type: [integer, 'null'], description: '进程常驻内存（含模型的堆外内存），仅 Linux' }, systemMemoryTotalBytes: { type: integer }, systemMemoryFreeBytes: { type: integer } } }
         storage: { type: object, properties: { totalBytes: { type: integer }, usableBytes: { type: integer }, usedRatio: { type: number }, databaseBytes: { type: [integer, 'null'] } } }
         models: { type: object }
         indexes: { type: object }

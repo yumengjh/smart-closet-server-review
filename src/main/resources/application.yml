@@ -41,6 +41,8 @@ closet:
     allowed-origins: ${CLOSET_CORS_ALLOWED_ORIGINS:}
   storage-dir: ${CLOSET_STORAGE_DIR:./data}
   model-path: ${CLOSET_MODEL_PATH:./models/u2net.onnx}
+  # Matting model is released after this much inactivity and reloaded on next use (0 = keep loaded). Saves a few hundred MB.
+  segmentation-idle-unload: ${CLOSET_SEGMENTATION_IDLE_UNLOAD:10m}
   embedding-model-path: ${CLOSET_EMBEDDING_MODEL_PATH:./models/embedding-fp32.onnx}
   embedding-vocab-path: ${CLOSET_EMBEDDING_VOCAB_PATH:./models/embedding-vocab.txt}
   embedding-max-tokens: ${CLOSET_EMBEDDING_MAX_TOKENS:512}
