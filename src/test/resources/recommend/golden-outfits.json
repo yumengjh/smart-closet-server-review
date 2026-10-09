@@ -238,6 +238,32 @@
    "color": "黄色",
    "styles": "休闲",
    "seasons": "春/夏/秋"
+  },
+  {
+   "id": "overall-denim",
+   "category": "牛仔背带裤",
+   "color": "蓝色",
+   "styles": "休闲",
+   "seasons": "春/夏/秋",
+   "patterns": "纯色"
+  },
+  {
+   "id": "vest-denim",
+   "category": "牛仔背心",
+   "color": "蓝色",
+   "styles": "休闲",
+   "seasons": "春/夏/秋",
+   "patterns": "纯色",
+   "sleeveLength": "无袖"
+  },
+  {
+   "id": "shirt-denim",
+   "category": "牛仔衬衫",
+   "color": "蓝色",
+   "styles": "休闲",
+   "seasons": "春/秋",
+   "patterns": "纯色",
+   "sleeveLength": "长袖"
   }
  ],
  "cases": [
@@ -529,6 +555,51 @@
      "knit-beige",
      "sweatpants",
      "heels"
+    ]
+   ]
+  },
+  {
+   "name": "背带裤：配T恤胜过配牛仔马甲或牛仔衬衫",
+   "occasion": "DAILY",
+   "temperatureC": 22,
+   "sex": "UNSET",
+   "good": [
+    [
+     "tee-white",
+     "overall-denim",
+     "sneaker-white"
+    ]
+   ],
+   "bad": [
+    [
+     "vest-denim",
+     "overall-denim",
+     "sneaker-white"
+    ],
+    [
+     "shirt-denim",
+     "overall-denim",
+     "sneaker-white"
+    ]
+   ]
+  },
+  {
+   "name": "牛仔叠牛仔：白T配牛仔裤胜过牛仔衬衫配牛仔裤",
+   "occasion": "DAILY",
+   "temperatureC": 18,
+   "sex": "UNSET",
+   "good": [
+    [
+     "tee-white",
+     "jeans",
+     "sneaker-white"
+    ]
+   ],
+   "bad": [
+    [
+     "shirt-denim",
+     "jeans",
+     "sneaker-white"
     ]
    ]
   }

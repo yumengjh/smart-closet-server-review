@@ -39,7 +39,13 @@ class OutfitRulesTest {
         for(var category:List.of("针织开衫","cardigan","西装外套","牛仔外套"))assertEquals(OutfitRules.Role.OUTER,OutfitRules.role(garment(category)),category);
         for(var category:List.of("西装裤","牛仔裤","半身裙","skirt"))assertEquals(OutfitRules.Role.BOTTOM,OutfitRules.role(garment(category)),category);
         for(var category:List.of("连帽卫衣","带帽衬衫","hoodie"))assertEquals(OutfitRules.Role.TOP,OutfitRules.role(garment(category)),category);
-        for(var category:List.of("背心裙","衬衫连衣裙","连体裤","dress"))assertEquals(OutfitRules.Role.ONE_PIECE,OutfitRules.role(garment(category)),category);
+        for(var category:List.of("背心裙","马甲裙","衬衫连衣裙","连体裤","dress"))assertEquals(OutfitRules.Role.ONE_PIECE,OutfitRules.role(garment(category)),category);
+    }
+    @Test void waistcoatsAreLayersButTanksAreTops() {
+        for(var category:List.of("马甲","牛仔马甲","牛仔背心","针织背心","毛衣背心","西装背心","羽绒背心","waistcoat"))assertEquals(OutfitRules.Role.OUTER,OutfitRules.role(garment(category)),category);
+        for(var category:List.of("背心","吊带背心","运动背心","工字背心"))assertEquals(OutfitRules.Role.TOP,OutfitRules.role(garment(category)),category);
+        // A waistcoat is not the top a pinafore needs underneath.
+        assertThrows(ProcessingException.class,()->OutfitRules.validate(clothes("牛仔背心","背带裤"),true));
     }
     @Test void jewelryPositionsAreKnownAndDoNotCollide(){
         assertDoesNotThrow(()->OutfitRules.validate(clothes("衬衫","长裤","项链","耳环"),true));

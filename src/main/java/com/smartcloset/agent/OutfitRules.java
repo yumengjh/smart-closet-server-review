@@ -27,10 +27,13 @@ public final class OutfitRules {
         if(matches(name,"袜(?![靴鞋])|腿套|\\b(socks|tights|stockings|pantyhose)\\b"))return Role.SOCKS;
         if(matches(name,"发箍|发夹|发卡|发带|发饰|头花|头饰|头纱|头箍|抓夹|发圈|"+L+"KC"+R+"|\\b(headband|hair ?clip|hairpin|scrunchie)\\b"))return Role.HEADWEAR;
         if(matches(name,"背带裙|背带裤|吊带裤|"+L+"JSK"+R+"|\\b(pinafore|overalls|jumper ?skirt|dungarees)\\b"))return Role.OVERALL;
-        if(matches(name,"连衣裙|背心裙|吊带裙|连体|连身|小黑裙|礼服|婚纱|旗袍|晚装|套装|"+L+"OP"+R+"|\\b(dress|jumpsuit|romper|gown)\\b"))return Role.ONE_PIECE;
+        if(matches(name,"连衣裙|背心裙|马甲裙|吊带裙|连体|连身|小黑裙|礼服|婚纱|旗袍|晚装|套装|"+L+"OP"+R+"|\\b(dress|jumpsuit|romper|gown)\\b"))return Role.ONE_PIECE;
+        // A waistcoat is a layer worn over a top, not a top: 马甲 and material vests (牛仔背心, 针织背心) are OUTER. A bare
+        // "背心" stays a tank top (TOP), its everyday meaning.
+        if(matches(name,"马甲|(牛仔|西装|西服|针织|毛衣|毛线|羊毛|羽绒|皮|工装)背心|\\b(waistcoat|gilet)\\b"))return Role.OUTER;
         if(matches(name,"外套|夹克|西装外套|西装上衣|西服上衣|^西装$|大衣|风衣|羽绒|冲锋衣|罩衫|开衫|\\b(coat|jacket|blazer|cardigan|parka)\\b"))return Role.OUTER;
         if(matches(name,"长裤|短裤|牛仔裤|半身裙|下装|裤|裙|"+L+"SK"+R+"|\\b(pants|trousers|jeans|shorts|skirt)\\b"))return Role.BOTTOM;
-        if(matches(name,"T恤|衬衫|卫衣|毛衣|针织|背心|上装|马甲|Polo|\\b(t-shirt|shirt|sweater|hoodie|sweatshirt|top|vest|blouse)\\b"))return Role.TOP;
+        if(matches(name,"T恤|衬衫|卫衣|毛衣|针织|背心|上装|Polo|\\b(t-shirt|shirt|sweater|hoodie|sweatshirt|top|vest|blouse)\\b"))return Role.TOP;
         if(matches(name,"鞋|靴|\\b(shoes|boots|sneakers|sandals)\\b"))return Role.SHOES;
         if(matches(name,"帽|\\b(hat|cap|beret)\\b"))return Role.HAT;
         if(matches(name,"背包|手提包|斜挎包|包袋|包|\\b(bag|backpack|handbag)\\b"))return Role.BAG;

@@ -15,7 +15,7 @@ public class RecognitionSchema {
     public static final List<String> IMAGE_STYLES = List.of("PHOTO", "ILLUSTRATION", "SKETCH", "OTHER");
     public record Field(String key, String label, List<String> options, boolean multiple, boolean suggestion) {}
     public static final List<Field> FIELDS = List.of(
-        field("category", "品类", false, false, "T恤,衬衫,卫衣,毛衣,背心,夹克,西装外套,大衣,羽绒服,连衣裙,半身裙,长裤,短裤,连体衣,运动鞋,靴子,凉鞋,帽子,棒球帽,贝雷帽,渔夫帽,手提包,斜挎包,背包,围巾,腰带,袜子,眼镜,上装,下装,其他衣物"),
+        field("category", "品类", false, false, "T恤,衬衫,卫衣,毛衣,背心,吊带,马甲,开衫,夹克,牛仔外套,西装外套,大衣,羽绒服,连衣裙,背带裙,背带裤,半身裙,长裤,牛仔裤,短裤,连体衣,运动鞋,靴子,凉鞋,帽子,棒球帽,贝雷帽,渔夫帽,手提包,斜挎包,背包,围巾,腰带,袜子,眼镜,上装,下装,其他衣物"),
         field("primaryColor", "主色", false, false, "黑色,白色,灰色,米色,棕色,红色,橙色,黄色,绿色,蓝色,藏蓝色,紫色,粉色,多色"),
         field("secondaryColors", "辅色", true, false, "黑色,白色,灰色,米色,棕色,红色,橙色,黄色,绿色,蓝色,藏蓝色,紫色,粉色"),
         field("patterns", "图案", true, false, "纯色,条纹,格纹,波点,花卉,图形印花,文字,标志,迷彩,动物纹,拼色,其他"),
