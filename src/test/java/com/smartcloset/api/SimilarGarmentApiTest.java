@@ -93,6 +93,7 @@ class SimilarGarmentApiTest {
         String red = garment(owner, "T恤", Shapes.png(Shapes.tee(RED, true)), "ACTIVE");
         String jeans = garment(owner, "牛仔裤", Shapes.png(Shapes.trousers(BLUE, true)), "ACTIVE");
         String draft = garment(owner, "T恤", navyTee, "DRAFT");
+        String banded = garment(owner, "T恤", Shapes.png(Shapes.bandedTee(NAVY, new Color(250, 250, 248))), "ACTIVE");
         visuals.index(owner, 100);
         assertTrue(visuals.pendingOwners().getOrDefault(owner, 0) == 0);
 
@@ -130,6 +131,9 @@ class SimilarGarmentApiTest {
         // A flat picture on a light background is matted locally (GRABCUT here) and still finds the tee.
         var flat = me.search(Shapes.png(Shapes.tee(NAVY, false)), "TOP");
         assertEquals("GRABCUT", flat.path("matting").asText());
+        // Regression from the real self-test: background kept by matting must not make the white-banded tee look closer.
+        assertTrue(Set.of(a, b).contains(flat.path("items").get(0).path("id").asText()), flat.path("items").toString());
+        for (var i : flat.path("items")) if (i.path("id").asText().equals(banded)) assertTrue(i.path("score").asDouble() < flat.path("items").get(0).path("score").asDouble());
         assertTrue(flat.path("note").asText().contains("认不出"));
 
         // Another user cannot look at these garments.

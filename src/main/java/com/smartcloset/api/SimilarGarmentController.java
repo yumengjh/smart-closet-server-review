@@ -61,7 +61,7 @@ public class SimilarGarmentController {
         if (role != null && !role.isBlank()) {
             try { position = OutfitRules.Role.valueOf(role.strip().toUpperCase(Locale.ROOT)); } catch (IllegalArgumentException e) { throw ProcessingException.invalid("未知的位置：" + role); }
         }
-        var decoded = Images.sampled(image.getBytes(), 1024).image();
+        var decoded = Images.sampled(image.getBytes(), 640).image();   // matting time grows with size; 640 is plenty for colour and silhouette
         String method = "TRANSPARENT";
         BufferedImage garment = decoded;
         if (!transparent(decoded)) {
@@ -82,13 +82,34 @@ public class SimilarGarmentController {
         for (int y = 0; y < image.getHeight(); y += 4) for (int x = 0; x < image.getWidth(); x += 4) if ((image.getRGB(x, y) >>> 24) < 250) return true;
         return false;
     }
-    private static BufferedImage cutout(BufferedImage image, BufferedImage mask) {
-        var out = new BufferedImage(image.getWidth(), image.getHeight(), BufferedImage.TYPE_INT_ARGB);
+    /**
+     * Applies the matting mask, then drops kept pixels that are close to the background colour (median of the image
+     * border): GrabCut tends to keep patches of background next to the garment, which would add a false colour to the
+     * palette. When that would remove most of the garment (a garment the colour of its background), the mask is kept as is.
+     */
+    static BufferedImage cutout(BufferedImage image, BufferedImage mask) {
+        int w = image.getWidth(), h = image.getHeight();
         var raster = mask.getRaster();
-        for (int y = 0; y < image.getHeight(); y++) for (int x = 0; x < image.getWidth(); x++) {
+        var border = new ArrayList<Integer>();
+        for (int x = 0; x < w; x++) { border.add(image.getRGB(x, 0)); border.add(image.getRGB(x, h - 1)); }
+        for (int y = 0; y < h; y++) { border.add(image.getRGB(0, y)); border.add(image.getRGB(w - 1, y)); }
+        int br = median(border, 16), bg = median(border, 8), bb = median(border, 0);
+        int[] alpha = new int[w * h]; int kept = 0, cleaned = 0;
+        for (int y = 0; y < h; y++) for (int x = 0; x < w; x++) {
             int a = raster.getSample(Math.min(x, mask.getWidth() - 1), Math.min(y, mask.getHeight() - 1), 0);
+            alpha[y * w + x] = a;
+            if (a < 128) continue;
+            kept++;
+            int p = image.getRGB(x, y), dr = (p >> 16 & 255) - br, dg = (p >> 8 & 255) - bg, db = (p & 255) - bb;
+            if (dr * dr + dg * dg + db * db < 30 * 30) { alpha[y * w + x] = -a; cleaned++; }
+        }
+        boolean clean = kept > 0 && cleaned < kept * 0.6;
+        var out = new BufferedImage(w, h, BufferedImage.TYPE_INT_ARGB);
+        for (int y = 0; y < h; y++) for (int x = 0; x < w; x++) {
+            int a = alpha[y * w + x]; a = a < 0 ? (clean ? 0 : -a) : a;
             out.setRGB(x, y, (a << 24) | (image.getRGB(x, y) & 0xFFFFFF));
         }
         return out;
     }
+    private static int median(List<Integer> pixels, int shift) { var v = pixels.stream().mapToInt(p -> p >> shift & 255).sorted().toArray(); return v[v.length / 2]; }
 }
