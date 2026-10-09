@@ -16,7 +16,9 @@ COPY --from=build --chown=app:app /workspace/target/*.jar /app/app.jar
 ENV SERVER_ADDRESS=0.0.0.0 \
     PORT=8080 \
     CLOSET_STORAGE_DIR=/data \
-    CLOSET_MODEL_PATH=/models/u2net.onnx
+    CLOSET_MODEL_PATH=/models/u2net.onnx \
+    CLOSET_EMBEDDING_MODEL_PATH=/models/embedding-fp32.onnx \
+    CLOSET_EMBEDDING_VOCAB_PATH=/models/embedding-vocab.txt
 VOLUME ["/data", "/models"]
 EXPOSE 8080
 HEALTHCHECK --interval=30s --timeout=5s --start-period=90s --retries=3 \

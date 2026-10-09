@@ -270,6 +270,8 @@ docker compose --env-file "$HOME/smart-closet-server.env" up -d --build
 
 服务默认通过 `http://localhost:8080` 访问。Compose 命名卷 `closet-data` 保存数据库、会话和处理图片；宿主机 `models/` 用于挂载 `u2net.onnx`，AI 供应商配置放在宿主机 `.local/generation.yml`，不会打进镜像。Agent 只在 Compose 内部网络开放。
 
+**模型文件**（抠图 `u2net.onnx` 与语义向量 `embedding-*`，镜像不含）：在宿主机仓库目录执行 `bash scripts/install-models.sh` 即可，容器已挂载 `./models`。**容器可以先启动、模型之后再装，不需要重启**：向量模型放好 5 秒后自动加载，后台每 30 秒扫描并为所有用户的全部衣物补算向量，之后新增和修改的衣物自动跟进；在此期间搜索与推荐降级为字段加关键词。详见 [models/README.md](models/README.md)。
+
 GitHub Actions 会在推送和 PR 上运行 Java/Agent 检查并构建两个容器；推送默认分支或 `v*` 标签时发布到 GHCR。发布后如需匿名拉取，请在 GitHub Packages 中分别把 `smart-closet-server` 和 `smart-closet-server-agent` 设为 Public，然后在部署主机运行 `docker compose --env-file "$HOME/smart-closet-server.env" pull && docker compose --env-file "$HOME/smart-closet-server.env" up -d --no-build`。
 
 ## 代码结构
