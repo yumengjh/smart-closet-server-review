@@ -282,6 +282,10 @@ class RecognitionWorkflowTest {
         assertEquals(1,garments.listCloset(owner,"ACTIVE","","","","",1,1).items().size());
         assertTrue(garments.metadataOptions(owner).get("category").contains("针织开衫"),"choices cover more than the current page");
         assertEquals(2,garments.listCloset(owner,"ACTIVE","","","蓝色","",1,1).total());
+        assertEquals(other.id(),garments.listCloset(owner,"ACTIVE","","","","",1,2,"created").items().getFirst().id(),"newest added first");
+        assertEquals(view.id(),garments.listCloset(owner,"ACTIVE","","","","",1,2,"created_asc").items().getFirst().id(),"oldest added first");
+        assertEquals(2,garments.listCloset(owner,"ACTIVE","","","","",1,2,"category").total(),"sorting never changes the filter result");
+        assertThrows(ProcessingException.class,()->garments.listCloset(owner,"ACTIVE","","","","",1,2,"random"));
         view=garments.edit(view.id(),new GarmentRepository.Edit(view.revision(),Map.of("primaryColor",List.of("鼠尾草绿")),List.of()));
         assertFalse(garments.metadataOptions(owner).get("primaryColor").contains("浅蓝色"),"manual edits replace automatic choices");
         view=garments.edit(view.id(),new GarmentRepository.Edit(view.revision(),Map.of("primaryColor",List.of()),List.of()));

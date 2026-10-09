@@ -47,9 +47,9 @@ public class ClosetProductController {
             @RequestParam(defaultValue = "ACTIVE") String status, @RequestParam(defaultValue = "") String q,
             @RequestParam(defaultValue = "") String category, @RequestParam(defaultValue = "") String color,
             @RequestParam(defaultValue = "") String season, @RequestParam(defaultValue = "1") int page,
-            @RequestParam(defaultValue = "24") int size) {
+            @RequestParam(defaultValue = "24") int size, @RequestParam(defaultValue = "updated") String sort) {
         if (!Set.of("ACTIVE", "DRAFT", "TRASHED").contains(status)) throw ProcessingException.invalid("status 只能是 ACTIVE、DRAFT 或 TRASHED。");
-        return garments.listCloset(ClosetIdentity.username(), status, q, category, color, season, page, size);
+        return garments.listCloset(ClosetIdentity.username(), status, q, category, color, season, page, size, sort);
     }
 
     @PostMapping("/garments/{id}/confirm") public GarmentRepository.View confirm(@PathVariable UUID id,

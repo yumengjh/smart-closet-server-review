@@ -69,7 +69,7 @@ java -jar .local/runtime/smart-closet-workflow.jar --closet-command=claim-legacy
 
 | 接口 | 契约 |
 | --- | --- |
-| `GET /api/closet/garments` | `status,q,category,color,season,page,size` → `{items,total,page,size}`；页码从 1 开始，前端每页 24 件 |
+| `GET /api/closet/garments` | `status,q,category,color,season,page,size,sort` → `{items,total,page,size}`；页码从 1 开始，前端每页 24 件；`sort` 为 `updated`（默认，最近更新）、`created`（最近添加）、`created_asc`（最早添加）、`favorite`（收藏优先）、`category`、`color`、`name`，文字类按拼音排序、缺值排最后 |
 | `POST /api/closet/garments` | multipart：`file` 与 JSON `workflow`；携带 UUID `Idempotency-Key`，返回 202 与任务详情 |
 | `GET /api/garments/{id}` | 衣物详情、revision、有效信息、人工覆盖、原图、展示图和处理历史 |
 | `PATCH /api/garments/{id}/metadata` | `{revision,fields,resetFields}` |
