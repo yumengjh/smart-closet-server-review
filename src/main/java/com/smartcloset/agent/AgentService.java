@@ -609,11 +609,13 @@ public class AgentService {
      * same call; that classification is used now and learned for pages and search. Dictionary words are left alone.
      */
     @org.springframework.beans.factory.annotation.Autowired private com.smartcloset.semantic.StyleResolver styleResolver;
+    @org.springframework.beans.factory.annotation.Value("${closet.recommend.looks-enabled:true}") private boolean looksEnabled=true;
     private com.smartcloset.recommend.Intent assistantStyles(com.smartcloset.recommend.Intent intent,JsonNode tags){
         var vocabulary=com.smartcloset.recommend.FeatureTables.defaults().styleFormality.keySet();
         var styles=strings(tags).stream().filter(vocabulary::contains).distinct().toList();
         if(styles.isEmpty())return intent;
-        var unknown=intent.wantStyles().stream().filter(w->com.smartcloset.recommend.FeatureTables.defaults().canonicalStyles(w).isEmpty()).toList();
+        // With style looks on, words that have a look (甜、多巴胺、千金) are scored by their own cues: neither learned nor mapped here.
+        var unknown=intent.wantStyles().stream().filter(w->com.smartcloset.recommend.FeatureTables.defaults().canonicalStyles(w).isEmpty()&&!(looksEnabled&&com.smartcloset.recommend.StyleLooks.defaults().find(w).isPresent())).toList();
         if(unknown.size()==1)styleResolver.learn(unknown.getFirst(),styles);
         var evidence=new LinkedHashMap<String,String>();for(String w:unknown)evidence.put(w,"≈"+String.join("/",styles)+"（助手判断）");
         var merged=new ArrayList<>(intent.inferredStyles());styles.forEach(st->{if(!merged.contains(st))merged.add(st);});

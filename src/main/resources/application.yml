@@ -46,6 +46,9 @@ closet:
     outer-warmth-enabled: ${CLOSET_RECOMMEND_OUTER_WARMTH:true}
     # Approved recipes generate their own candidates (S1); nothing changes until an admin approves templates.
     recipes-enabled: ${CLOSET_RECOMMEND_RECIPES:true}
+    # Style looks (docs/design/2026-10-10-风格画像设计.md): 甜、多巴胺、千金 … scored by colour/pattern/fabric cues instead of
+    # the seven vocabulary styles; false = the previous vocabulary-only behaviour.
+    looks-enabled: ${CLOSET_RECOMMEND_LOOKS:true}
     # Shadow run: also compute the P4 behaviour in the background and log first-page differences ("recommend shadow ...").
     shadow-enabled: ${CLOSET_RECOMMEND_SHADOW:false}
   cors:
