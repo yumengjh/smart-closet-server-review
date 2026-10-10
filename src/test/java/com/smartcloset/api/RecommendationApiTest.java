@@ -80,6 +80,34 @@ class RecommendationApiTest {
         return ids;
     }
 
+    /** Issue #5: a skirt recognised as a dress was shown alone, and no feedback option fitted. */
+    @Test void incompleteOrWrongCategoryFeedbackHoldsTheGarmentUntilItIsChecked() throws Exception {
+        String owner = "rec-" + UUID.randomUUID().toString().substring(0, 8);
+        var me = signIn(owner);
+        String dress = garment(owner, Map.of("category", List.of("连衣裙"), "primaryColor", List.of("米色"), "styles", List.of("甜美")));
+        String misnamed = garment(owner, Map.of("category", List.of("连衣裙"), "primaryColor", List.of("白色"), "styles", List.of("甜美")));
+        db.update("UPDATE garment SET name='米色纱裙' WHERE id=?", dress);
+        db.update("UPDATE garment SET name='白色百褶半身裙' WHERE id=?", misnamed);
+        garment(owner, Map.of("category", List.of("连衣裙"), "primaryColor", List.of("粉色"), "styles", List.of("休闲")));
+        garment(owner, Map.of("category", List.of("凉鞋"), "primaryColor", List.of("白色")));
+        var first = me.ok("POST", "/api/recommendations", Map.of("occasion", "DAILY", "temperatureC", 24, "wantCategories", List.of("裙子")));
+        assertTrue(first.path("limits").toString().contains("名称是半身裙"), first.path("limits").toString());
+        for (var o : first.path("outfits")) for (var g : o.path("garments")) assertNotEquals(misnamed, g.path("id").asText(), "a dress named 半身裙 is never shown alone");
+        var withDress = java.util.stream.StreamSupport.stream(first.path("outfits").spliterator(), false)
+            .filter(o -> o.path("garments").toString().contains(dress)).findFirst().orElseThrow();
+        var answer = me.ok("POST", "/api/recommendations/logs/" + withDress.path("logId").asText() + "/feedback", Map.of("verdict", "DOWN", "reasons", List.of("INCOMPLETE")));
+        assertEquals(dress, answer.path("doubted").path("garmentId").asText(), "不成套 on a one-garment outfit names that garment: " + answer);
+        var held = me.ok("POST", "/api/recommendations", Map.of("occasion", "DAILY", "temperatureC", 24, "wantCategories", List.of("裙子")));
+        assertFalse(held.toString().contains(dress), "held until checked");
+        assertTrue(held.path("limits").toString().contains("反馈过品类识别有误"), held.path("limits").toString());
+        assertEquals(400, me.send("POST", "/api/recommendations/logs/" + withDress.path("logId").asText() + "/feedback", Map.of("verdict", "DOWN", "reasons", List.of("WRONG_CATEGORY")), true).statusCode(),
+            "品类识别错了 needs the garment");
+        // Checking or editing the garment (a new revision) lifts the hold.
+        db.update("UPDATE garment SET revision=revision+1 WHERE id=?", dress);
+        var back = me.ok("POST", "/api/recommendations", Map.of("occasion", "DAILY", "temperatureC", 24, "wantCategories", List.of("裙子"), "count", 3));
+        assertTrue(back.toString().contains(dress), back.path("limits").toString());
+    }
+
     @Test void recommendExplainsLogsAndAcceptsFeedbackWithinTheAccount() throws Exception {
         String owner = "rec-" + UUID.randomUUID().toString().substring(0, 8);
         var me = signIn(owner); var ids = seed(owner);
