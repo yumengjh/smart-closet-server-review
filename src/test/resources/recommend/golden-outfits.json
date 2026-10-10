@@ -1,6 +1,6 @@
 {
- "version": "golden-v1",
- "note": "人工认定的好/坏搭配考试题。每题要求：好搭配不违反硬规则且总分不低于 minGood；坏搭配要么被硬规则排除，要么比该题最差的好搭配低至少 margin 分。改规则导致失败时先判断是题错了还是规则错了。",
+ "version": "golden-v2",
+ "note": "人工认定的好/坏搭配考试题。每题要求：好搭配不违反硬规则且总分不低于 minGood；坏搭配要么被硬规则排除，要么比该题最差的好搭配低至少 margin 分。改规则导致失败时先判断是题错了还是规则错了。 v2（2026-10-10）：衣物补充版型 fit 与长度 garmentLength（按常识填写，供比例规则使用），新增季节感、经典优先、比例三题。",
  "minGood": 60,
  "margin": 5,
  "wardrobe": [
@@ -11,7 +11,9 @@
    "styles": "通勤/正式",
    "seasons": "春/秋",
    "patterns": "纯色",
-   "sleeveLength": "长袖"
+   "sleeveLength": "长袖",
+   "fit": "合体",
+   "garmentLength": "常规"
   },
   {
    "id": "shirt-blue",
@@ -20,7 +22,9 @@
    "styles": "通勤",
    "seasons": "春/秋",
    "patterns": "纯色",
-   "sleeveLength": "长袖"
+   "sleeveLength": "长袖",
+   "fit": "合体",
+   "garmentLength": "常规"
   },
   {
    "id": "tee-white",
@@ -29,7 +33,9 @@
    "styles": "休闲",
    "seasons": "春/夏/秋",
    "patterns": "纯色",
-   "sleeveLength": "短袖"
+   "sleeveLength": "短袖",
+   "fit": "合体",
+   "garmentLength": "常规"
   },
   {
    "id": "tee-black",
@@ -38,7 +44,9 @@
    "styles": "休闲",
    "seasons": "春/夏/秋",
    "patterns": "纯色",
-   "sleeveLength": "短袖"
+   "sleeveLength": "短袖",
+   "fit": "宽松",
+   "garmentLength": "常规"
   },
   {
    "id": "tee-red",
@@ -47,7 +55,9 @@
    "styles": "休闲",
    "seasons": "夏",
    "patterns": "纯色",
-   "sleeveLength": "短袖"
+   "sleeveLength": "短袖",
+   "fit": "合体",
+   "garmentLength": "常规"
   },
   {
    "id": "tee-floral",
@@ -56,7 +66,9 @@
    "styles": "休闲",
    "seasons": "夏",
    "patterns": "花卉",
-   "sleeveLength": "短袖"
+   "sleeveLength": "短袖",
+   "fit": "宽松",
+   "garmentLength": "常规"
   },
   {
    "id": "tank",
@@ -65,7 +77,9 @@
    "styles": "休闲",
    "seasons": "夏",
    "patterns": "纯色",
-   "sleeveLength": "无袖"
+   "sleeveLength": "无袖",
+   "fit": "修身",
+   "garmentLength": "常规"
   },
   {
    "id": "sweater-navy",
@@ -74,7 +88,9 @@
    "styles": "休闲/通勤",
    "seasons": "秋/冬",
    "patterns": "纯色",
-   "sleeveLength": "长袖"
+   "sleeveLength": "长袖",
+   "fit": "宽松",
+   "garmentLength": "常规"
   },
   {
    "id": "hoodie-gray",
@@ -83,7 +99,9 @@
    "styles": "休闲/运动",
    "seasons": "春/秋/冬",
    "patterns": "纯色",
-   "sleeveLength": "长袖"
+   "sleeveLength": "长袖",
+   "fit": "宽松",
+   "garmentLength": "常规"
   },
   {
    "id": "knit-beige",
@@ -92,7 +110,9 @@
    "styles": "通勤/甜美",
    "seasons": "春/秋",
    "patterns": "纯色",
-   "sleeveLength": "长袖"
+   "sleeveLength": "长袖",
+   "fit": "合体",
+   "garmentLength": "常规"
   },
   {
    "id": "trousers-black",
@@ -100,7 +120,9 @@
    "color": "黑色",
    "styles": "通勤/正式",
    "seasons": "春/秋/冬",
-   "patterns": "纯色"
+   "patterns": "纯色",
+   "fit": "合体",
+   "garmentLength": "长款"
   },
   {
    "id": "chinos",
@@ -108,7 +130,9 @@
    "color": "卡其色",
    "styles": "休闲/通勤",
    "seasons": "春/秋",
-   "patterns": "纯色"
+   "patterns": "纯色",
+   "fit": "合体",
+   "garmentLength": "长款"
   },
   {
    "id": "jeans",
@@ -116,7 +140,9 @@
    "color": "蓝色",
    "styles": "休闲",
    "seasons": "春/秋/冬",
-   "patterns": "纯色"
+   "patterns": "纯色",
+   "fit": "合体",
+   "garmentLength": "长款"
   },
   {
    "id": "pants-green",
@@ -124,7 +150,9 @@
    "color": "绿色",
    "styles": "休闲",
    "seasons": "春/秋",
-   "patterns": "纯色"
+   "patterns": "纯色",
+   "fit": "合体",
+   "garmentLength": "长款"
   },
   {
    "id": "pants-purple",
@@ -132,7 +160,9 @@
    "color": "紫色",
    "styles": "休闲",
    "seasons": "春/秋",
-   "patterns": "纯色"
+   "patterns": "纯色",
+   "fit": "合体",
+   "garmentLength": "长款"
   },
   {
    "id": "pants-check",
@@ -140,7 +170,9 @@
    "color": "灰色",
    "styles": "休闲",
    "seasons": "春/秋",
-   "patterns": "格纹"
+   "patterns": "格纹",
+   "fit": "宽松",
+   "garmentLength": "长款"
   },
   {
    "id": "sweatpants",
@@ -148,7 +180,9 @@
    "color": "黑色",
    "styles": "运动",
    "seasons": "春/秋/冬",
-   "patterns": "纯色"
+   "patterns": "纯色",
+   "fit": "宽松",
+   "garmentLength": "长款"
   },
   {
    "id": "shorts",
@@ -156,7 +190,9 @@
    "color": "灰色",
    "styles": "休闲/运动",
    "seasons": "夏",
-   "patterns": "纯色"
+   "patterns": "纯色",
+   "fit": "宽松",
+   "garmentLength": "短款"
   },
   {
    "id": "denim-shorts",
@@ -164,7 +200,9 @@
    "color": "蓝色",
    "styles": "休闲",
    "seasons": "夏",
-   "patterns": "纯色"
+   "patterns": "纯色",
+   "fit": "合体",
+   "garmentLength": "短款"
   },
   {
    "id": "skirt-pleat",
@@ -172,7 +210,8 @@
    "color": "米色",
    "styles": "甜美/通勤",
    "seasons": "春/秋",
-   "patterns": "纯色"
+   "patterns": "纯色",
+   "garmentLength": "中长款"
   },
   {
    "id": "dress-black",
@@ -180,7 +219,9 @@
    "color": "黑色",
    "styles": "通勤/正式",
    "seasons": "春/夏/秋",
-   "patterns": "纯色"
+   "patterns": "纯色",
+   "fit": "修身",
+   "garmentLength": "中长款"
   },
   {
    "id": "dress-floral",
@@ -188,7 +229,9 @@
    "color": "多色",
    "styles": "甜美",
    "seasons": "夏",
-   "patterns": "花卉"
+   "patterns": "花卉",
+   "fit": "宽松",
+   "garmentLength": "中长款"
   },
   {
    "id": "sneaker-white",
@@ -238,6 +281,68 @@
    "color": "黄色",
    "styles": "休闲",
    "seasons": "春/夏/秋"
+  },
+  {
+   "id": "overall-denim",
+   "category": "牛仔背带裤",
+   "color": "蓝色",
+   "styles": "休闲",
+   "seasons": "春/夏/秋",
+   "patterns": "纯色",
+   "fit": "宽松",
+   "garmentLength": "长款"
+  },
+  {
+   "id": "vest-denim",
+   "category": "牛仔背心",
+   "color": "蓝色",
+   "styles": "休闲",
+   "seasons": "春/夏/秋",
+   "patterns": "纯色",
+   "sleeveLength": "无袖",
+   "fit": "合体"
+  },
+  {
+   "id": "shirt-denim",
+   "category": "牛仔衬衫",
+   "color": "蓝色",
+   "styles": "休闲",
+   "seasons": "春/秋",
+   "patterns": "纯色",
+   "sleeveLength": "长袖",
+   "fit": "合体",
+   "garmentLength": "常规"
+  },
+  {
+   "id": "knit-crop",
+   "category": "针织衫",
+   "color": "米色",
+   "styles": "休闲/甜美",
+   "seasons": "春/秋",
+   "patterns": "纯色",
+   "sleeveLength": "长袖",
+   "fit": "修身",
+   "garmentLength": "短款"
+  },
+  {
+   "id": "wide-pants-high",
+   "category": "高腰阔腿裤",
+   "color": "黑色",
+   "styles": "休闲/通勤",
+   "seasons": "春/秋/冬",
+   "patterns": "纯色",
+   "garmentLength": "长款"
+  },
+  {
+   "id": "hoodie-long",
+   "category": "卫衣",
+   "color": "灰色",
+   "styles": "休闲",
+   "seasons": "春/秋/冬",
+   "patterns": "纯色",
+   "sleeveLength": "长袖",
+   "fit": "宽松",
+   "garmentLength": "长款"
   }
  ],
  "cases": [
@@ -529,6 +634,111 @@
      "knit-beige",
      "sweatpants",
      "heels"
+    ]
+   ]
+  },
+  {
+   "name": "背带裤：配T恤胜过配牛仔马甲或牛仔衬衫",
+   "occasion": "DAILY",
+   "temperatureC": 22,
+   "sex": "UNSET",
+   "good": [
+    [
+     "tee-white",
+     "overall-denim",
+     "sneaker-white"
+    ]
+   ],
+   "bad": [
+    [
+     "vest-denim",
+     "overall-denim",
+     "sneaker-white"
+    ],
+    [
+     "shirt-denim",
+     "overall-denim",
+     "sneaker-white"
+    ]
+   ]
+  },
+  {
+   "name": "牛仔叠牛仔：白T配牛仔裤胜过牛仔衬衫配牛仔裤",
+   "occasion": "DAILY",
+   "temperatureC": 18,
+   "sex": "UNSET",
+   "good": [
+    [
+     "tee-white",
+     "jeans",
+     "sneaker-white"
+    ]
+   ],
+   "bad": [
+    [
+     "shirt-denim",
+     "jeans",
+     "sneaker-white"
+    ]
+   ]
+  },
+  {
+   "name": "季节感：毛衣配短靴胜过毛衣配凉鞋",
+   "occasion": "DAILY",
+   "temperatureC": 16,
+   "sex": "UNSET",
+   "good": [
+    [
+     "sweater-navy",
+     "chinos",
+     "boots"
+    ]
+   ],
+   "bad": [
+    [
+     "sweater-navy",
+     "chinos",
+     "sandals"
+    ]
+   ]
+  },
+  {
+   "name": "经典优先：白T牛仔小白鞋胜过毛衣格纹裤凉鞋",
+   "occasion": "DAILY",
+   "temperatureC": 20,
+   "sex": "UNSET",
+   "good": [
+    [
+     "tee-white",
+     "jeans",
+     "sneaker-white"
+    ]
+   ],
+   "bad": [
+    [
+     "sweater-navy",
+     "pants-check",
+     "sandals"
+    ]
+   ]
+  },
+  {
+   "name": "比例：短款针织配高腰阔腿裤胜过长款宽松卫衣配阔腿裤",
+   "occasion": "DAILY",
+   "temperatureC": 18,
+   "sex": "UNSET",
+   "good": [
+    [
+     "knit-crop",
+     "wide-pants-high",
+     "sneaker-white"
+    ]
+   ],
+   "bad": [
+    [
+     "hoodie-long",
+     "wide-pants-high",
+     "sneaker-white"
     ]
    ]
   }

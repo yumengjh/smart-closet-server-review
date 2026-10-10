@@ -651,7 +651,8 @@ public class AgentService {
     /** Model-facing summary: a few lines per outfit instead of full garment metadata. */
     private Map<String,Object> compactOutfit(com.smartcloset.recommend.RecommendationService.OutfitView v){
         return Map.of("rank",v.rank(),"outfitKey",v.key(),"name",v.name(),"score",v.score(),
-            "items",v.garments().stream().map(g->g.name()+"（"+g.color()+"）").toList(),"highlights",v.highlights(),"warnings",v.warnings(),"tags",v.tags());
+            "items",v.garments().stream().map(g->g.name()+"（"+g.color()+"）").toList(),"highlights",v.highlights(),"warnings",v.warnings(),"tags",v.tags(),
+            "accessories",v.accessories()==null?List.of():v.accessories().stream().map(x->x.name()).toList(),"tips",v.tips()==null?List.of():v.tips());
     }
     /** Shows recommendations as a confirmation card (default) or opens them on the temporary workspace. */
     /** limits and notes go to the card only; the model sees limits through the tool result and never sees notes (wearer sex). */

@@ -79,12 +79,36 @@ public class GarmentRepository {
         }
         return new ImageProcessing(uuid(row.latestImage()), status, true, !assets.isEmpty(), assets.isEmpty() ? null : assets.getFirst());
     }
+    /** Closet browsing orders; the projection already arrives newest-updated first, which is {@code updated}. */
+    public static final Set<String> CLOSET_SORTS = Set.of("updated", "created", "created_asc", "favorite", "category", "color", "name");
     public ClosetPage listCloset(String owner, String status, String query, String category, String color, String season, int page, int size) {
+        return listCloset(owner, status, query, category, color, season, page, size, "updated");
+    }
+    public ClosetPage listCloset(String owner, String status, String query, String category, String color, String season, int page, int size, String sort) {
         if (page < 1 || size < 1 || size > 50) throw ProcessingException.invalid("page 从 1 开始，size 为 1 到 50。");
-        var rows = projection(owner).stream().filter(g -> g.status().equals(status))
-            .filter(g -> matches(g, query, category, color, season)).toList();
+        if (!CLOSET_SORTS.contains(sort)) throw ProcessingException.invalid("sort 只能是 " + String.join("、", new TreeSet<>(CLOSET_SORTS)) + "。");
+        var rows = sorted(owner, projection(owner).stream().filter(g -> g.status().equals(status))
+            .filter(g -> matches(g, query, category, color, season)).toList(), sort);
         int from = (int)Math.min(rows.size(), (long)(page - 1) * size), to = Math.min(rows.size(), from + size);
         return new ClosetPage(rows.subList(from, to).stream().map(g -> get(g.id())).toList(), rows.size(), page, size);
+    }
+    private List<Projection> sorted(String owner, List<Projection> rows, String sort) {
+        if (sort.equals("updated")) return rows;
+        if (sort.equals("favorite")) return rows.stream().sorted(Comparator.comparing((Projection g) -> !g.favorite())).toList();
+        if (sort.startsWith("created")) {
+            Map<UUID,Long> created = new HashMap<>();
+            jdbc.query("SELECT id,created_at_ms FROM garment WHERE owner_username=?", rs -> { created.put(UUID.fromString(rs.getString(1)), rs.getLong(2)); }, owner);
+            Comparator<Projection> order = Comparator.comparingLong(g -> created.getOrDefault(g.id(), 0L));
+            return rows.stream().sorted(sort.equals("created") ? order.reversed() : order).toList();
+        }
+        // Text orders: pinyin collation, items without the value go last, ties keep the newest-updated order (stable sort).
+        var collator = java.text.Collator.getInstance(java.util.Locale.CHINA);
+        return rows.stream().sorted(Comparator.comparing((Projection g) -> sortKey(g, sort).isEmpty()).thenComparing(g -> sortKey(g, sort), collator)).toList();
+    }
+    private static String sortKey(Projection g, String sort) {
+        if (sort.equals("name")) return g.name() == null ? "" : g.name().trim();
+        var v = g.fields().getOrDefault(sort.equals("color") ? "primaryColor" : "category", List.of());
+        return v.isEmpty() ? "" : v.getFirst();
     }
     public record Projection(UUID id, long revision, String status, String name, boolean favorite,
             Map<String,List<String>> fields, String family, boolean wearingConfirmed) {}
@@ -162,6 +186,11 @@ public class GarmentRepository {
             var values = new LinkedHashSet<>(f.options()); values.addAll(choices.get(f.key()));
             return new RecognitionSchema.Field(f.key(), f.label(), List.copyOf(values), f.multiple(), f.suggestion());
         }).toList();
+    }
+    /** Category family of one stored row (closet-families-v1), for aggregate exports that must not load whole wardrobes. */
+    public String family(String automaticJson, String overridesJson) {
+        var automatic = automaticJson == null ? null : json.readValue(automaticJson, Recognition.Result.class);
+        return ClosetClassification.family(effective(automatic, overrides(overridesJson == null ? "{}" : overridesJson)).getOrDefault("category", List.of()));
     }
     private Map<String, List<String>> effective(Recognition.Result automatic, Map<String, List<String>> overrides) {
         var values = new LinkedHashMap<String, List<String>>();

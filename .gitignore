@@ -3,6 +3,8 @@ data/
 models/*.onnx
 models/*.part
 models/embedding-*
+models/image-*
+models/.image-model-*/
 models/.download-parts/
 models/.download-*/
 .idea/
@@ -32,6 +34,7 @@ models/.download-*/
 /src/main/resources/static/assets/
 # Browser verification snapshots and logs are local artifacts.
 /.playwright-cli/
+/.playwright-mcp/
 
 # Agent runtime dependencies and compiled output are recreated by npm scripts.
 /agent-runtime/node_modules/

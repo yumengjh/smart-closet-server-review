@@ -18,7 +18,10 @@ ENV SERVER_ADDRESS=0.0.0.0 \
     CLOSET_STORAGE_DIR=/data \
     CLOSET_MODEL_PATH=/models/u2net.onnx \
     CLOSET_EMBEDDING_MODEL_PATH=/models/embedding-fp32.onnx \
-    CLOSET_EMBEDDING_VOCAB_PATH=/models/embedding-vocab.txt
+    CLOSET_EMBEDDING_VOCAB_PATH=/models/embedding-vocab.txt \
+    CLOSET_IMAGE_MODEL_PATH=/models/image-model-int8.onnx \
+    CLOSET_IMAGE_TEXT_MODEL_PATH=/models/image-text-model-int8.onnx \
+    CLOSET_IMAGE_TEXT_VOCAB_PATH=/models/image-text-vocab.txt
 VOLUME ["/data", "/models"]
 EXPOSE 8080
 HEALTHCHECK --interval=30s --timeout=5s --start-period=90s --retries=3 \

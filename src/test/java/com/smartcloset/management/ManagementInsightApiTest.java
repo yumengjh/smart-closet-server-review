@@ -146,7 +146,7 @@ class ManagementInsightApiTest {
         assertEquals(400, status("/api/manage/v1/insights/overview?from=2024-01-01&to=2026-01-01"));
         assertEquals(400, status("/api/manage/v1/insights/trends?metric=revenue"));
         assertEquals(400, status("/api/manage/v1/insights/trends"));
-        assertEquals(400, status("/api/manage/v1/insights/trends?metric=garments_created&granularity=month"));
+        assertEquals(400, status("/api/manage/v1/insights/trends?metric=garments_created&granularity=quarter"));   // month is supported since 1.1
         assertEquals(400, status("/api/manage/v1/insights/overview?from=yesterday"));
     }
 }

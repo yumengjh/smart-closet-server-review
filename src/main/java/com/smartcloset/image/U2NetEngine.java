@@ -6,9 +6,14 @@ import jakarta.annotation.PreDestroy;
 import java.awt.image.BufferedImage;
 import java.nio.FloatBuffer;
 import java.nio.file.Files;
+import java.time.Duration;
 import java.util.*;
+import java.util.concurrent.*;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
 
@@ -20,8 +25,45 @@ public class U2NetEngine implements SegmentationEngine {
     private OrtSession session;
     private String inputName;
     private String outputName;
+    /**
+     * Idle unload (design 模型内存与图像向量 M-1): matting is only needed while garments are being added, so the session
+     * (a few hundred MB of native memory) is released after this much inactivity and reloaded on the next use (~1 s).
+     * Zero or negative keeps it loaded forever.
+     */
+    private final Duration idleUnload;
+    final ReentrantReadWriteLock lifecycle = new ReentrantReadWriteLock();
+    private volatile long lastUsedMs;
+    private volatile int unloads;
+    private final ScheduledExecutorService reaper;
 
-    public U2NetEngine(ClosetProperties properties) { this.properties = properties; }
+    public U2NetEngine(ClosetProperties properties) { this(properties, Duration.ofMinutes(10)); }
+
+    @Autowired
+    public U2NetEngine(ClosetProperties properties, @Value("${closet.segmentation-idle-unload:10m}") Duration idleUnload) {
+        this.properties = properties; this.idleUnload = idleUnload;
+        if (idleUnload.isPositive()) {
+            reaper = Executors.newSingleThreadScheduledExecutor(r -> { var t = new Thread(r, "u2net-idle-unload"); t.setDaemon(true); return t; });
+            long every = Math.max(1, Math.min(60, idleUnload.toSeconds() / 4));
+            reaper.scheduleWithFixedDelay(() -> unloadIfIdle(System.currentTimeMillis()), every, every, TimeUnit.SECONDS);
+        } else reaper = null;
+    }
+    public Duration idleUnload() { return idleUnload; }
+    public int unloads() { return unloads; }
+
+    /** Releases the session when it has not been used for {@link #idleUnload}; never interrupts a running inference. */
+    boolean unloadIfIdle(long nowMs) {
+        if (!idleUnload.isPositive() || !loaded() || nowMs - lastUsedMs < idleUnload.toMillis()) return false;
+        if (!lifecycle.writeLock().tryLock()) return false;   // an inference is running: try again next round
+        try {
+            synchronized (this) {
+                if (session == null || nowMs - lastUsedMs < idleUnload.toMillis()) return false;
+                try { session.close(); } catch (OrtException e) { log.warn("U2Net session close failed: {}", e.getMessage()); }
+                session = null; unloads++;
+            }
+            log.info("抠图模型闲置 {} 分钟，已释放内存；下次使用时自动重新加载", idleUnload.toMinutes());
+            return true;
+        } finally { lifecycle.writeLock().unlock(); }
+    }
     public Method method() { return Method.U2NET; }
     public boolean modelPresent() { return Files.isRegularFile(properties.modelPath()); }
     public synchronized boolean loaded() { return session != null; }
@@ -51,6 +93,12 @@ public class U2NetEngine implements SegmentationEngine {
     }
 
     public MaskResult segment(BufferedImage original, Region region) {
+        lifecycle.readLock().lock();
+        try { return infer(original, region); }
+        finally { lastUsedMs = System.currentTimeMillis(); lifecycle.readLock().unlock(); }
+    }
+
+    private MaskResult infer(BufferedImage original, Region region) {
         int ow = original.getWidth(), oh = original.getHeight();
         if (region != null) region.validate(ow, oh);
         BufferedImage input = region == null ? original
@@ -97,6 +145,7 @@ public class U2NetEngine implements SegmentationEngine {
 
     @PreDestroy
     public synchronized void close() throws OrtException {
+        if (reaper != null) reaper.shutdownNow();
         if (session != null) { session.close(); session = null; }
     }
 }

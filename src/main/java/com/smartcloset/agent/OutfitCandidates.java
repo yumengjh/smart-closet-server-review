@@ -14,14 +14,16 @@ final class OutfitCandidates {
         var fixed=required.stream().map(index::get).toList();
         try{OutfitRules.validate(fixed.stream().map(Item::fields).toList(),false);}catch(com.smartcloset.image.ProcessingException invalid){return List.of();}
         var output=new ArrayList<List<String>>();var seen=new HashSet<String>();var bases=new ArrayList<List<Item>>();
-        var extras=items.stream().filter(i -> !Set.of(OutfitRules.Role.TOP,OutfitRules.Role.BOTTOM,OutfitRules.Role.ONE_PIECE,OutfitRules.Role.OTHER).contains(OutfitRules.role(i.fields()))).toList();
+        var extras=items.stream().filter(i -> !Set.of(OutfitRules.Role.TOP,OutfitRules.Role.BOTTOM,OutfitRules.Role.ONE_PIECE,OutfitRules.Role.OVERALL,OutfitRules.Role.OTHER).contains(OutfitRules.role(i.fields()))).toList();
         int baseLimit=extras.isEmpty()||limit<3?limit:Math.max(3,limit/2);
         var requiredOuter=fixed.stream().filter(i->OutfitRules.role(i.fields())==OutfitRules.Role.OUTER).findFirst();
         var tops=constrained(byRole.getOrDefault(OutfitRules.Role.TOP,List.of()),required);
-        var bottoms=constrained(byRole.getOrDefault(OutfitRules.Role.BOTTOM,List.of()),required);
+        // A pinafore (OVERALL) takes the bottom's place next to a top (D44).
+        var lowers=new ArrayList<>(byRole.getOrDefault(OutfitRules.Role.BOTTOM,List.of()));lowers.addAll(byRole.getOrDefault(OutfitRules.Role.OVERALL,List.of()));
+        var bottoms=constrained(lowers,required);
         if(requiredOuter.isPresent())tops=tops.stream().filter(i->OutfitRules.compatiblePair(i.fields(),requiredOuter.get().fields())).toList();
         boolean fixedOne=fixed.stream().anyMatch(i->OutfitRules.role(i.fields())==OutfitRules.Role.ONE_PIECE);
-        boolean fixedSeparates=fixed.stream().anyMatch(i->Set.of(OutfitRules.Role.TOP,OutfitRules.Role.BOTTOM).contains(OutfitRules.role(i.fields())));
+        boolean fixedSeparates=fixed.stream().anyMatch(i->Set.of(OutfitRules.Role.TOP,OutfitRules.Role.BOTTOM,OutfitRules.Role.OVERALL).contains(OutfitRules.role(i.fields())));
         if(fixedOne)tops=List.of();
         for(var dress:constrained(byRole.getOrDefault(OutfitRules.Role.ONE_PIECE,List.of()),required)){
             if(fixedSeparates||requiredOuter.isPresent()&&!OutfitRules.compatiblePair(dress.fields(),requiredOuter.get().fields()))continue;

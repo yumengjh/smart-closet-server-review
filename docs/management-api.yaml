@@ -1,10 +1,11 @@
 openapi: 3.1.0
 info:
   title: Smart Closet Management API
-  version: 1.0.0
+  version: 1.1.0
   description: |
     鱼搭中立管理接口。默认关闭（`closet.management.enabled=false`），开启后供任意宿主平台以服务身份调用。
-    设计说明见 `docs/design/2026-10-07-管理平台接入与可插拔管理接口设计.md`。
+    设计说明见 `docs/design/2026-10-07-管理平台接入与可插拔管理接口设计.md`；1.1（运维、KPI、大屏与数据出口、模板审核）见
+    `docs/design/2026-10-09-管理接口二期：运维、KPI与大屏数据设计.md`。
 
     认证：每个请求都必须携带 HMAC 签名头（见 `components.securitySchemes.closetHmac`）。
     时间字段均为 Unix 毫秒，字段名以 `AtMs` 结尾；日期参数为 `YYYY-MM-DD`，按 Asia/Shanghai 解释，`to` 含当天。
@@ -18,6 +19,14 @@ security:
 tags:
   - name: users
   - name: insights
+  - name: ops
+    description: 运维状态、后台任务、管理操作日志（只读）
+  - name: dashboard
+    description: 大屏快照（只含汇总，不含用户名）
+  - name: exports
+    description: 数仓出口：按天宽表与去标识明细事件
+  - name: templates
+    description: 搭配模板审核
 paths:
   /users:
     get:
@@ -319,15 +328,202 @@ paths:
           schema:
             type: array
             minItems: 1
-            maxItems: 7
+            maxItems: 15
             items: { $ref: '#/components/schemas/TrendMetric' }
-        - { name: granularity, in: query, schema: { type: string, enum: [day, week], default: day } }
+        - { name: granularity, in: query, schema: { type: string, enum: [day, week, month], default: day } }
       responses:
         '200':
-          description: 时间序列（空桶补 0，周以周一为起点）
+          description: 时间序列（空桶补 0，周以周一为起点，月以 1 日为起点；active_users 按桶去重）
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Trends' }
+        '400': { $ref: '#/components/responses/Problem' }
+        '401': { $ref: '#/components/responses/Problem' }
+        '404': { $ref: '#/components/responses/Problem' }
+  /insights/recommendations:
+    get:
+      tags: [insights]
+      operationId: insightRecommendations
+      description: 推荐效果 KPI。采用＝点赞、在搭台打开，或展示后 3 天内打卡穿过这一套的全部衣物（按用户分别匹配后汇总）。
+      parameters:
+        - $ref: '#/components/parameters/ScopeUsername'
+        - $ref: '#/components/parameters/From'
+        - $ref: '#/components/parameters/To'
+      responses:
+        '200':
+          description: 推荐效果
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RecommendationKpi' }
+        '400': { $ref: '#/components/responses/Problem' }
+        '401': { $ref: '#/components/responses/Problem' }
+        '404': { $ref: '#/components/responses/Problem' }
+  /insights/ai:
+    get:
+      tags: [insights]
+      operationId: insightAi
+      description: 模型与额度用量（只给 token 数，费用由接入方按单价换算）。不传 username 时附 token 用量 Top 10 用户。
+      parameters:
+        - $ref: '#/components/parameters/ScopeUsername'
+        - $ref: '#/components/parameters/From'
+        - $ref: '#/components/parameters/To'
+      responses:
+        '200':
+          description: 模型用量
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AiUsage' }
+        '400': { $ref: '#/components/responses/Problem' }
+        '401': { $ref: '#/components/responses/Problem' }
+        '404': { $ref: '#/components/responses/Problem' }
+  /ops/status:
+    get:
+      tags: [ops]
+      operationId: opsStatus
+      description: 运维总览。status 为 UP 或 DEGRADED，issues 给出原因代码与说明；不含密钥、服务商地址、用户名。
+      responses:
+        '200':
+          description: 运维状态
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OpsStatus' }
+        '401': { $ref: '#/components/responses/Problem' }
+  /ops/tasks:
+    get:
+      tags: [ops]
+      operationId: opsTasks
+      parameters:
+        - name: status
+          in: query
+          style: form
+          explode: true
+          description: 默认 FAILED
+          schema:
+            type: array
+            items: { type: string, enum: [QUEUED, RUNNING, WAITING_QUOTA, CANCEL_REQUESTED, SUCCEEDED, FAILED, UNKNOWN, INTERRUPTED, CANCELLED] }
+        - { name: kind, in: query, schema: { type: string, pattern: '^[A-Z_]{1,40}$' } }
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Size'
+      responses:
+        '200':
+          description: 后台任务（不含载荷）
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TaskPage' }
+        '400': { $ref: '#/components/responses/Problem' }
+        '401': { $ref: '#/components/responses/Problem' }
+  /ops/operation-log:
+    get:
+      tags: [ops]
+      operationId: opsOperationLog
+      parameters:
+        - $ref: '#/components/parameters/From'
+        - $ref: '#/components/parameters/To'
+        - { name: action, in: query, schema: { type: string, maxLength: 64 } }
+        - { name: targetUsername, in: query, schema: { type: string, pattern: '^[A-Za-z0-9_.-]{2,80}$' } }
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Size'
+      responses:
+        '200':
+          description: 管理接口操作日志
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OperationLogPage' }
+        '400': { $ref: '#/components/responses/Problem' }
+        '401': { $ref: '#/components/responses/Problem' }
+  /dashboard/snapshot:
+    get:
+      tags: [dashboard]
+      operationId: dashboardSnapshot
+      description: 大屏一次拿全。缓存 15 秒，建议按 refreshAfterMs 轮询。只含汇总，不含用户名、衣物名称或图片。
+      responses:
+        '200':
+          description: 大屏快照
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DashboardSnapshot' }
+        '401': { $ref: '#/components/responses/Problem' }
+  /exports/daily:
+    get:
+      tags: [exports]
+      operationId: exportDaily
+      description: 按天宽表，最长 366 天。format=csv 时返回带表头的 UTF-8 CSV。
+      parameters:
+        - $ref: '#/components/parameters/From'
+        - $ref: '#/components/parameters/To'
+        - { name: format, in: query, schema: { type: string, enum: [json, csv], default: json } }
+      responses:
+        '200':
+          description: 每天一行
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DailyExport' }
+            text/csv:
+              schema: { type: string }
+        '400': { $ref: '#/components/responses/Problem' }
+        '401': { $ref: '#/components/responses/Problem' }
+  /exports/events:
+    get:
+      tags: [exports]
+      operationId: exportEvents
+      description: |
+        去标识明细事件，按 (atMs, type, id) 排序，用 nextCursor 增量拉取；同一游标重复拉取结果一致。
+        只返回 watermarkMs（当前时间−5 秒）之前的事件。用户只以 userKey（HMAC-SHA256(盐, 用户名) 前 16 位）出现。
+      parameters:
+        - { name: cursor, in: query, schema: { type: string, maxLength: 200 } }
+        - { name: since, in: query, description: 起始毫秒时间戳（含），与 cursor 二选一, schema: { type: integer, format: int64, minimum: 0 } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 1000, default: 500 } }
+        - name: types
+          in: query
+          style: form
+          explode: true
+          schema:
+            type: array
+            items: { $ref: '#/components/schemas/EventType' }
+      responses:
+        '200':
+          description: 一页事件
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/EventPage' }
+        '400': { $ref: '#/components/responses/Problem' }
+        '401': { $ref: '#/components/responses/Problem' }
+  /templates:
+    get:
+      tags: [templates]
+      operationId: listTemplates
+      responses:
+        '200':
+          description: 全部搭配模板（资源文件 + 样本生成的草稿）
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TemplateList' }
+        '401': { $ref: '#/components/responses/Problem' }
+  /templates/{id}:
+    patch:
+      tags: [templates]
+      operationId: reviewTemplate
+      description: 与鱼搭管理员审核共用存储，立即生效；记操作日志，审核人记为 manage:{keyId}:{X-Operator}。
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, pattern: '^[A-Za-z0-9_.-]{1,80}$' } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              minProperties: 1
+              properties:
+                reviewStatus: { type: string, enum: [PENDING_REVIEW, APPROVED, REJECTED] }
+                enabled: { type: boolean }
+                bonus: { type: number, minimum: 0, maximum: 5 }
+      responses:
+        '200':
+          description: 审核后的模板
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Template' }
         '400': { $ref: '#/components/responses/Problem' }
         '401': { $ref: '#/components/responses/Problem' }
         '404': { $ref: '#/components/responses/Problem' }
@@ -621,12 +817,13 @@ components:
               usedInOutfits: { type: integer }
     TrendMetric:
       type: string
-      enum: [garments_created, garments_adopted, outfits_created, quick_intakes, image_units, agent_messages, users_created]
+      enum: [garments_created, garments_adopted, outfits_created, quick_intakes, image_units, agent_messages, users_created,
+             active_users, recommendations_shown, recommendation_likes, recommendation_dislikes, wear_logs, model_calls, model_tokens, ootd_samples]
     Trends:
       type: object
       required: [granularity, buckets, series]
       properties:
-        granularity: { type: string, enum: [day, week] }
+        granularity: { type: string, enum: [day, week, month] }
         buckets: { type: array, items: { type: string, format: date } }
         series:
           type: array
@@ -636,3 +833,207 @@ components:
             properties:
               metric: { $ref: '#/components/schemas/TrendMetric' }
               values: { type: array, items: { type: integer } }
+    Rate:
+      type: [number, 'null']
+      description: 0~1，分母为 0 时为 null
+    AdoptionRow:
+      type: object
+      properties:
+        shown: { type: integer }
+        adopted: { type: integer }
+        adoptionRate: { $ref: '#/components/schemas/Rate' }
+    RecommendationKpi:
+      type: object
+      required: [scope, shown, adopted, adoptionRate, liked, disliked, likeRate, openedInWorkspace, wornWithin3Days, swaps, users, bySource, byRank, templates, daily, definition]
+      properties:
+        scope: { type: object }
+        shown: { type: integer }
+        adopted: { type: integer }
+        adoptionRate: { $ref: '#/components/schemas/Rate' }
+        liked: { type: integer }
+        disliked: { type: integer }
+        likeRate: { $ref: '#/components/schemas/Rate' }
+        openedInWorkspace: { type: integer }
+        wornWithin3Days: { type: integer }
+        swaps: { type: integer }
+        users: { type: integer, description: 范围内收到过推荐的用户数 }
+        bySource: { type: array, items: { allOf: [{ $ref: '#/components/schemas/AdoptionRow' }, { type: object, properties: { source: { type: string, description: 'PAGE 推荐区 / AGENT 助手 / INSPIRATION 今日灵感 / SWAP / MORE' } } }] } }
+        byRank: { type: array, items: { allOf: [{ $ref: '#/components/schemas/AdoptionRow' }, { type: object, properties: { rank: { type: integer } } }] } }
+        templates: { type: array, items: { allOf: [{ $ref: '#/components/schemas/AdoptionRow' }, { type: object, properties: { template: { type: string } } }] } }
+        daily: { type: array, items: { type: object, properties: { date: { type: string, format: date }, shown: { type: integer }, adopted: { type: integer } } } }
+        definition: { type: string }
+    AiUsage:
+      type: object
+      required: [scope, byFeature, totals, imageUnits, agentMessages, recommendations, note]
+      properties:
+        scope: { type: object }
+        byFeature:
+          type: array
+          items:
+            type: object
+            properties:
+              feature: { type: string, description: 'AGENT 助手、OOTD_EXTRACT 整套穿搭样本提取等' }
+              calls: { type: integer }
+              inputTokens: { type: integer }
+              outputTokens: { type: integer }
+              unknownUsage: { type: integer, description: 上游未返回用量的调用次数 }
+        totals: { type: object, properties: { calls: { type: integer }, inputTokens: { type: integer }, outputTokens: { type: integer } } }
+        imageUnits: { type: integer }
+        agentMessages: { type: integer }
+        recommendations: { type: object, properties: { total: { type: integer }, zeroModel: { type: integer }, zeroModelRatio: { type: number } } }
+        topUsers: { type: array, items: { type: object, properties: { username: { type: string }, calls: { type: integer }, tokens: { type: integer } } } }
+        note: { type: string }
+    OpsIssue:
+      type: object
+      required: [code, message]
+      properties:
+        code: { type: string, enum: [EMBEDDING_MODEL_MISSING, SEGMENTATION_MODEL_MISSING, SEMANTIC_INDEX_BEHIND, QUEUE_BACKLOG, TASK_FAILURES, DISK_FULL, RECOGNITION_NOT_CONFIGURED, AGENT_RUNTIME_UNREACHABLE] }
+        message: { type: string }
+    OpsStatus:
+      type: object
+      required: [status, issues, app, jvm, storage, models, indexes, queue, providers, sessions, generatedAtMs]
+      properties:
+        status: { type: string, enum: [UP, DEGRADED] }
+        issues: { type: array, items: { $ref: '#/components/schemas/OpsIssue' } }
+        app: { type: object, properties: { version: { type: string }, startedAtMs: { type: integer }, uptimeMs: { type: integer }, java: { type: string } } }
+        jvm: { type: object, properties: { heapUsedBytes: { type: integer }, heapMaxBytes: { type: integer }, nonHeapUsedBytes: { type: integer }, threads: { type: integer }, processors: { type: integer }, systemLoadAverage: { type: number }, processCpuLoad: { type: [number, 'null'] }, processRssBytes: { type: [integer, 'null'], description: '进程常驻内存（含模型的堆外内存），仅 Linux' }, systemMemoryTotalBytes: { type: integer }, systemMemoryFreeBytes: { type: integer } } }
+        storage: { type: object, properties: { totalBytes: { type: integer }, usableBytes: { type: integer }, usedRatio: { type: number }, databaseBytes: { type: [integer, 'null'] } } }
+        models: { type: object }
+        indexes: { type: object }
+        queue: { type: object, properties: { byStatus: { type: object }, byKind: { type: array, items: { type: object } }, oldestQueuedAgeMs: { type: [integer, 'null'] }, failed24h: { type: integer } } }
+        providers: { type: object }
+        sessions: { type: object, properties: { active: { type: integer }, onlineLast5Min: { type: integer } } }
+        generatedAtMs: { type: integer }
+    TaskPage:
+      type: object
+      required: [items, total, page, size]
+      properties:
+        items:
+          type: array
+          items:
+            type: object
+            properties:
+              id: { type: string }
+              kind: { type: string }
+              ownerUsername: { type: [string, 'null'] }
+              status: { type: string }
+              stage: { type: integer }
+              pool: { type: string }
+              priority: { type: integer }
+              waitReason: { type: [string, 'null'] }
+              errorMessage: { type: [string, 'null'], description: 截断到 300 字 }
+              attempts: { type: integer }
+              createdAtMs: { type: integer }
+              updatedAtMs: { type: integer }
+              nextRunAtMs: { type: integer }
+        total: { type: integer }
+        page: { type: integer }
+        size: { type: integer }
+    OperationLogPage:
+      type: object
+      required: [items, total, page, size]
+      properties:
+        items:
+          type: array
+          items:
+            type: object
+            properties:
+              id: { type: string }
+              occurredAtMs: { type: integer }
+              keyId: { type: string }
+              operator: { type: [string, 'null'] }
+              requestId: { type: [string, 'null'] }
+              action: { type: string }
+              targetUsername: { type: [string, 'null'] }
+              result: { type: string }
+              detail: { type: [string, 'null'] }
+        total: { type: integer }
+        page: { type: integer }
+        size: { type: integer }
+    DashboardSnapshot:
+      type: object
+      required: [generatedAtMs, refreshAfterMs, tiles, hourly, daily, distributions, ops]
+      properties:
+        generatedAtMs: { type: integer }
+        refreshAfterMs: { type: integer }
+        tiles:
+          type: object
+          properties:
+            usersTotal: { type: integer }
+            usersNewToday: { type: integer }
+            activeToday: { type: integer }
+            active7d: { type: integer }
+            active30d: { type: integer }
+            onlineNow: { type: integer, description: 近 5 分钟有请求的登录用户 }
+            garmentsActive: { type: integer }
+            garmentsToday: { type: integer }
+            outfitsTotal: { type: integer }
+            outfitsToday: { type: integer }
+            recommendationsToday: { type: integer }
+            adoptionRate7d: { $ref: '#/components/schemas/Rate' }
+            wearLogsToday: { type: integer }
+            agentMessagesToday: { type: integer }
+            imageUnitsToday: { type: integer }
+            modelTokensToday: { type: integer }
+        hourly: { type: object, description: 近 24 个整点（含当前小时）, properties: { hours: { type: array, items: { type: string } }, series: { type: array, items: { type: object } } } }
+        daily: { type: object, description: 近 30 天, properties: { days: { type: array, items: { type: string, format: date } }, series: { type: array, items: { type: object } } } }
+        distributions: { type: object }
+        ops: { type: object, properties: { status: { type: string }, issues: { type: integer }, queueBacklog: { type: integer }, failed24h: { type: integer } } }
+    DailyExport:
+      type: object
+      required: [from, to, columns, rows]
+      properties:
+        from: { type: string, format: date }
+        to: { type: string, format: date }
+        columns: { type: array, items: { type: string } }
+        rows: { type: array, items: { type: object, additionalProperties: true } }
+    EventType:
+      type: string
+      enum: [garment_created, model_usage, outfit_created, quick_intake, recommendation_feedback, recommendation_shown, user_created, wear_logged]
+    EventPage:
+      type: object
+      required: [items, nextCursor, hasMore, watermarkMs]
+      properties:
+        items:
+          type: array
+          items:
+            type: object
+            required: [type, id, atMs, userKey, attrs]
+            properties:
+              type: { $ref: '#/components/schemas/EventType' }
+              id: { type: string }
+              atMs: { type: integer }
+              userKey: { type: string, description: 'HMAC-SHA256(盐, 用户名) 前 16 位十六进制；换盐即变' }
+              attrs: { type: object, additionalProperties: true }
+        nextCursor: { type: string }
+        hasMore: { type: boolean }
+        watermarkMs: { type: integer }
+    Template:
+      type: object
+      properties:
+        id: { type: string }
+        text: { type: string }
+        source: { type: string, enum: [FILE, SAMPLE] }
+        reviewStatus: { type: string, enum: [PENDING_REVIEW, APPROVED, REJECTED] }
+        enabled: { type: boolean }
+        active: { type: boolean }
+        bonus: { type: number }
+        defaultBonus: { type: number }
+        reviewedBy: { type: [string, 'null'] }
+        reviewedAtMs: { type: integer }
+        kind: { type: string, enum: [CLASSIC, TREND] }
+        audience: { type: array, items: { type: string } }
+        seasons: { type: array, items: { type: string } }
+        occasions: { type: array, items: { type: string } }
+        validFrom: { type: [string, 'null'], format: date }
+        validUntil: { type: [string, 'null'], format: date }
+        reference: { type: string }
+        slots: { type: array, items: { type: object } }
+    TemplateList:
+      type: object
+      required: [version, maxBonus, active, items]
+      properties:
+        version: { type: string }
+        maxBonus: { type: number }
+        active: { type: integer }
+        items: { type: array, items: { $ref: '#/components/schemas/Template' } }

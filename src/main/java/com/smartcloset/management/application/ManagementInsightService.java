@@ -26,7 +26,12 @@ import tools.jackson.databind.ObjectMapper;
 @ConditionalOnManagementEnabled
 public class ManagementInsightService {
     public static final Set<String> METRICS = new LinkedHashSet<>(List.of("garments_created", "garments_adopted", "outfits_created",
-            "quick_intakes", "image_units", "agent_messages", "users_created"));
+            "quick_intakes", "image_units", "agent_messages", "users_created",
+            // 二期 (design 管理接口二期 §6, M6)
+            "active_users", "recommendations_shown", "recommendation_likes", "recommendation_dislikes", "wear_logs", "model_calls", "model_tokens", "ootd_samples"));
+    /** Columns of /exports/daily, in order (input/output tokens are split there). */
+    public static final List<String> DAILY_COLUMNS = List.of("users_created", "active_users", "garments_created", "garments_adopted", "outfits_created", "quick_intakes",
+            "recommendations_shown", "recommendation_likes", "recommendation_dislikes", "wear_logs", "agent_messages", "image_units", "model_calls", "input_tokens", "output_tokens", "ootd_samples");
     private static final Set<String> SEASONS = Set.of("春", "夏", "秋", "冬");
     private static final int MAX_CACHE = 500;
 
@@ -43,13 +48,14 @@ public class ManagementInsightService {
             boolean wearingConfirmed, Map<String, List<String>> fields) {}
 
     private final JdbcTemplate jdbc;
+    private final ManagementActivity activity;
     private final GarmentRepository garments;
     private final ObjectMapper json;
     private final long ttlMs;
     private final Map<String, Cached> cache = new ConcurrentHashMap<>();
 
-    public ManagementInsightService(JdbcTemplate jdbc, GarmentRepository garments, ObjectMapper json, ManagementProperties properties) {
-        this.jdbc = jdbc; this.garments = garments; this.json = json; this.ttlMs = properties.insightsCacheTtl().toMillis();
+    public ManagementInsightService(JdbcTemplate jdbc, ManagementActivity activity, GarmentRepository garments, ObjectMapper json, ManagementProperties properties) {
+        this.jdbc = jdbc; this.activity = activity; this.garments = garments; this.json = json; this.ttlMs = properties.insightsCacheTtl().toMillis();
     }
 
     public static Range range(LocalDate from, LocalDate to) {
@@ -155,16 +161,18 @@ public class ManagementInsightService {
     public Map<String, Object> trends(String username, Range range, List<String> metrics, String granularity) {
         if (metrics == null || metrics.isEmpty()) throw ManagementException.invalid("至少需要一个 metric。");
         if (metrics.size() > METRICS.size() || !METRICS.containsAll(metrics)) throw ManagementException.invalid("metric 只能是 " + String.join("、", METRICS) + "。");
-        if (!List.of("day", "week").contains(granularity)) throw ManagementException.invalid("granularity 只能是 day 或 week。");
+        if (!List.of("day", "week", "month").contains(granularity)) throw ManagementException.invalid("granularity 只能是 day、week 或 month。");
         var distinct = new ArrayList<>(new LinkedHashSet<>(metrics));
         return cached("trends:" + distinct + ":" + granularity, username, range, () -> {
             requireUser(username);
             var buckets = new ArrayList<LocalDate>();
-            for (LocalDate d = bucket(range.from(), granularity); !d.isAfter(range.to()); d = "week".equals(granularity) ? d.plusWeeks(1) : d.plusDays(1)) buckets.add(d);
+            for (LocalDate d = bucket(range.from(), granularity); !d.isAfter(range.to()); d = "week".equals(granularity) ? d.plusWeeks(1) : "month".equals(granularity) ? d.plusMonths(1) : d.plusDays(1)) buckets.add(d);
             var series = new ArrayList<Map<String, Object>>();
             for (String metric : distinct) {
                 var counts = new HashMap<LocalDate, Long>();
-                for (var point : points(metric, username, range)) counts.merge(bucket(point.getKey(), granularity), point.getValue(), Long::sum);
+                // Active users are distinct per bucket (a weekly value is not the sum of seven daily values).
+                if ("active_users".equals(metric)) activity.byDay(range.from(), range.to(), username, d -> bucket(d, granularity)).forEach((b, users) -> counts.put(b, (long) users.size()));
+                else for (var point : points(metric, username, range)) counts.merge(bucket(point.getKey(), granularity), point.getValue(), Long::sum);
                 series.add(Map.of("metric", metric, "values", buckets.stream().map(b -> counts.getOrDefault(b, 0L)).toList()));
             }
             var result = new LinkedHashMap<String, Object>();
@@ -185,6 +193,15 @@ public class ManagementInsightService {
             case "users_created" -> timestamps("SELECT created_at_ms FROM closet_user WHERE created_at_ms>=? AND created_at_ms<?" + (username == null ? "" : " AND username=?"), username, range);
             case "image_units" -> daily("ai_daily_quota", owner, username, range);
             case "agent_messages" -> daily("agent_daily_quota", owner, username, range);
+            case "recommendations_shown" -> timestamps("SELECT created_at_ms FROM recommendation_log WHERE created_at_ms>=? AND created_at_ms<?" + owner, username, range);
+            case "recommendation_likes" -> timestamps("SELECT created_at_ms FROM recommendation_feedback WHERE verdict='UP' AND created_at_ms>=? AND created_at_ms<?" + owner, username, range);
+            case "recommendation_dislikes" -> timestamps("SELECT created_at_ms FROM recommendation_feedback WHERE verdict='DOWN' AND created_at_ms>=? AND created_at_ms<?" + owner, username, range);
+            case "wear_logs" -> timestamps("SELECT created_at_ms FROM wear_log WHERE created_at_ms>=? AND created_at_ms<?" + owner, username, range);
+            case "model_calls" -> timestamps("SELECT created_at_ms FROM model_usage WHERE created_at_ms>=? AND created_at_ms<?" + owner, username, range);
+            case "model_tokens" -> weighted("SELECT created_at_ms, COALESCE(input_tokens,0)+COALESCE(output_tokens,0) FROM model_usage WHERE created_at_ms>=? AND created_at_ms<?" + owner, username, range);
+            case "input_tokens" -> weighted("SELECT created_at_ms, COALESCE(input_tokens,0) FROM model_usage WHERE created_at_ms>=? AND created_at_ms<?" + owner, username, range);
+            case "output_tokens" -> weighted("SELECT created_at_ms, COALESCE(output_tokens,0) FROM model_usage WHERE created_at_ms>=? AND created_at_ms<?" + owner, username, range);
+            case "ootd_samples" -> timestamps("SELECT created_at_ms FROM ootd_sample WHERE created_at_ms>=? AND created_at_ms<?" + (username == null ? "" : " AND created_by=?"), username, range);
             default -> throw ManagementException.invalid("未知 metric：" + metric);
         };
     }
@@ -195,6 +212,33 @@ public class ManagementInsightService {
         return jdbc.query(sql, (r, n) -> Map.entry(java.time.Instant.ofEpochMilli(r.getLong(1)).atZone(QuotaPolicy.ZONE).toLocalDate(), 1L), args.toArray());
     }
 
+    private List<Map.Entry<LocalDate, Long>> weighted(String sql, String username, Range range) {
+        var args = new ArrayList<Object>(List.of(range.fromMs(), range.toMsExclusive()));
+        if (username != null) args.add(username);
+        return jdbc.query(sql, (r, n) -> Map.entry(java.time.Instant.ofEpochMilli(r.getLong(1)).atZone(QuotaPolicy.ZONE).toLocalDate(), r.getLong(2)), args.toArray());
+    }
+
+    /**
+     * /exports/daily (design 管理接口二期 §7.2): one row per day with every daily metric, platform-wide. Not cached (BI pulls it
+     * rarely); a full year is a handful of grouped queries.
+     */
+    public List<Map<String, Object>> dailyTable(Range range) {
+        var columns = new LinkedHashMap<String, Map<LocalDate, Long>>();
+        for (String column : DAILY_COLUMNS) {
+            var counts = new HashMap<LocalDate, Long>();
+            if ("active_users".equals(column)) activity.byDay(range.from(), range.to(), null, d -> d).forEach((d, users) -> counts.put(d, (long) users.size()));
+            else for (var point : points(column, null, range)) counts.merge(point.getKey(), point.getValue(), Long::sum);
+            columns.put(column, counts);
+        }
+        var rows = new ArrayList<Map<String, Object>>();
+        for (LocalDate d = range.from(); !d.isAfter(range.to()); d = d.plusDays(1)) {
+            var row = new LinkedHashMap<String, Object>(); row.put("date", d.toString());
+            for (var e : columns.entrySet()) row.put(e.getKey(), e.getValue().getOrDefault(d, 0L));
+            rows.add(row);
+        }
+        return rows;
+    }
+
     private List<Map.Entry<LocalDate, Long>> daily(String table, String owner, String username, Range range) {
         var args = new ArrayList<Object>(List.of(java.sql.Date.valueOf(range.from()), java.sql.Date.valueOf(range.to())));
         if (username != null) args.add(username);
@@ -203,7 +247,7 @@ public class ManagementInsightService {
     }
 
     private static LocalDate bucket(LocalDate day, String granularity) {
-        return "week".equals(granularity) ? day.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY)) : day;
+        return "week".equals(granularity) ? day.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY)) : "month".equals(granularity) ? day.withDayOfMonth(1) : day;
     }
 
     private List<Garment> activeGarments(String username) {

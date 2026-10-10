@@ -7,7 +7,16 @@ import java.util.List;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
 @ConfigurationProperties("closet.management")
-public record ManagementProperties(boolean enabled, Auth auth, Integer maxBodyBytes, Duration insightsCacheTtl) {
+public record ManagementProperties(boolean enabled, Auth auth, Integer maxBodyBytes, Duration insightsCacheTtl, Duration dashboardCacheTtl, String exportSalt, Ops ops) {
+    /** Thresholds that turn /ops/status from UP into DEGRADED (design 管理接口二期 §4.1). */
+    public record Ops(Duration queueBacklogWarn, Integer failedTasksWarn, Double diskUsedWarn, Double semanticCoverageWarn) {
+        public Ops {
+            queueBacklogWarn = queueBacklogWarn == null ? Duration.ofMinutes(10) : queueBacklogWarn;
+            failedTasksWarn = failedTasksWarn == null ? 10 : failedTasksWarn;
+            diskUsedWarn = diskUsedWarn == null ? 0.9 : diskUsedWarn;
+            semanticCoverageWarn = semanticCoverageWarn == null ? 0.9 : semanticCoverageWarn;
+        }
+    }
     public record Key(String id, String secret) {}
     public record Auth(String mode, Duration clockSkew, Duration nonceTtl, List<Key> keys) {}
 
@@ -20,6 +29,9 @@ public record ManagementProperties(boolean enabled, Auth auth, Integer maxBodyBy
                         .filter(k -> k != null && k.secret() != null && !k.secret().isBlank()).toList());
         maxBodyBytes = maxBodyBytes == null ? 65536 : maxBodyBytes;
         insightsCacheTtl = insightsCacheTtl == null ? Duration.ofSeconds(60) : insightsCacheTtl;
+        dashboardCacheTtl = dashboardCacheTtl == null ? Duration.ofSeconds(15) : dashboardCacheTtl;
+        exportSalt = exportSalt == null ? "" : exportSalt;
+        if (ops == null) ops = new Ops(null, null, null, null);
         if (enabled) validate(auth, maxBodyBytes);
     }
 

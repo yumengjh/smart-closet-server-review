@@ -37,10 +37,23 @@ spring:
       file-size-threshold: 0
 closet:
   quick-intake-enabled: ${CLOSET_QUICK_INTAKE_ENABLED:false}
+  # Recommendation mechanisms of 2026-10-10 (design docs/design/2026-10-09-搭配审美…设计.md 第四十一节). Each switch
+  # falls back to the P4 behaviour when false: aesthetic group of the judge, exposure balance, outer layers counting
+  # for warmth. Rollback = set to false and restart; no data migration involved.
+  recommend:
+    aesthetic-enabled: ${CLOSET_RECOMMEND_AESTHETIC:true}
+    balance-enabled: ${CLOSET_RECOMMEND_BALANCE:true}
+    outer-warmth-enabled: ${CLOSET_RECOMMEND_OUTER_WARMTH:true}
+    # Approved recipes generate their own candidates (S1); nothing changes until an admin approves templates.
+    recipes-enabled: ${CLOSET_RECOMMEND_RECIPES:true}
+    # Shadow run: also compute the P4 behaviour in the background and log first-page differences ("recommend shadow ...").
+    shadow-enabled: ${CLOSET_RECOMMEND_SHADOW:false}
   cors:
     allowed-origins: ${CLOSET_CORS_ALLOWED_ORIGINS:}
   storage-dir: ${CLOSET_STORAGE_DIR:./data}
   model-path: ${CLOSET_MODEL_PATH:./models/u2net.onnx}
+  # Matting model is released after this much inactivity and reloaded on next use (0 = keep loaded). Saves a few hundred MB.
+  segmentation-idle-unload: ${CLOSET_SEGMENTATION_IDLE_UNLOAD:10m}
   embedding-model-path: ${CLOSET_EMBEDDING_MODEL_PATH:./models/embedding-fp32.onnx}
   embedding-vocab-path: ${CLOSET_EMBEDDING_VOCAB_PATH:./models/embedding-vocab.txt}
   embedding-max-tokens: ${CLOSET_EMBEDDING_MAX_TOKENS:512}
@@ -49,6 +62,19 @@ closet:
   semantic-threshold: ${CLOSET_SEMANTIC_THRESHOLD:0.35}
   semantic-margin: ${CLOSET_SEMANTIC_MARGIN:0.06}
   semantic-window: ${CLOSET_SEMANTIC_WINDOW:0.12}
+  # Local image-text model (Chinese-CLIP ViT-B/16, exported by scripts/export-image-model.sh). Optional: without it, similar
+  # garments and picture search fall back to colour/silhouette and "find pictures by words" is off. Loaded on use,
+  # released when idle, not loaded at all when free memory is below what it needs (file size x 1.5 + 256 MB, or the fixed value).
+  image-model-path: ${CLOSET_IMAGE_MODEL_PATH:./models/image-model-int8.onnx}
+  image-text-model-path: ${CLOSET_IMAGE_TEXT_MODEL_PATH:./models/image-text-model-int8.onnx}
+  image-text-vocab-path: ${CLOSET_IMAGE_TEXT_VOCAB_PATH:./models/image-text-vocab.txt}
+  image-model-idle-unload: ${CLOSET_IMAGE_MODEL_IDLE_UNLOAD:10m}
+  image-text-model-idle-unload: ${CLOSET_IMAGE_TEXT_MODEL_IDLE_UNLOAD:30m}
+  image-model-min-free-mb: ${CLOSET_IMAGE_MODEL_MIN_FREE_MB:0}
+  # Text-to-picture relevance (image-text cosines): floor, lead over the query's median, distance below the best match.
+  image-text-threshold: ${CLOSET_IMAGE_TEXT_THRESHOLD:0.25}
+  image-text-margin: ${CLOSET_IMAGE_TEXT_MARGIN:0.05}
+  image-text-window: ${CLOSET_IMAGE_TEXT_WINDOW:0.06}
   max-pixels: 12000000
   grabcut-max-side: 1000
   inference-threads: 2
@@ -64,6 +90,14 @@ closet:
           secret: ${CLOSET_MANAGEMENT_SECRET:}
     max-body-bytes: 65536
     insights-cache-ttl: 60s
+    dashboard-cache-ttl: 15s
+    # Salt for de-identified user keys in /exports/events; empty = derived from the first management key.
+    export-salt: ${CLOSET_MANAGEMENT_EXPORT_SALT:}
+    ops:
+      queue-backlog-warn: 10m
+      failed-tasks-warn: 10
+      disk-used-warn: 0.9
+      semantic-coverage-warn: 0.9
 workflow:
   max-queued: 30
   poll-ms: 300

@@ -39,12 +39,39 @@ class OutfitRulesTest {
         for(var category:List.of("针织开衫","cardigan","西装外套","牛仔外套"))assertEquals(OutfitRules.Role.OUTER,OutfitRules.role(garment(category)),category);
         for(var category:List.of("西装裤","牛仔裤","半身裙","skirt"))assertEquals(OutfitRules.Role.BOTTOM,OutfitRules.role(garment(category)),category);
         for(var category:List.of("连帽卫衣","带帽衬衫","hoodie"))assertEquals(OutfitRules.Role.TOP,OutfitRules.role(garment(category)),category);
-        for(var category:List.of("背心裙","衬衫连衣裙","连体裤","dress"))assertEquals(OutfitRules.Role.ONE_PIECE,OutfitRules.role(garment(category)),category);
+        for(var category:List.of("背心裙","马甲裙","衬衫连衣裙","连体裤","dress"))assertEquals(OutfitRules.Role.ONE_PIECE,OutfitRules.role(garment(category)),category);
+    }
+    @Test void waistcoatsAreLayersButTanksAreTops() {
+        for(var category:List.of("马甲","牛仔马甲","牛仔背心","针织背心","毛衣背心","西装背心","羽绒背心","waistcoat"))assertEquals(OutfitRules.Role.OUTER,OutfitRules.role(garment(category)),category);
+        for(var category:List.of("背心","吊带背心","运动背心","工字背心"))assertEquals(OutfitRules.Role.TOP,OutfitRules.role(garment(category)),category);
+        // A waistcoat is not the top a pinafore needs underneath.
+        assertThrows(ProcessingException.class,()->OutfitRules.validate(clothes("牛仔背心","背带裤"),true));
     }
     @Test void jewelryPositionsAreKnownAndDoNotCollide(){
         assertDoesNotThrow(()->OutfitRules.validate(clothes("衬衫","长裤","项链","耳环"),true));
         assertThrows(ProcessingException.class,()->OutfitRules.validate(clothes("衬衫","长裤","项链","项链"),true));
         assertThrows(ProcessingException.class,()->OutfitRules.validate(clothes("连衣裙","戒指"),true));
         var ring=new HashMap<String,List<String>>(garment("戒指"));ring.put("_accessoryPosition",List.of("HAND_LEFT"));assertDoesNotThrow(()->OutfitRules.validate(List.of(garment("连衣裙"),ring),true));
+    }
+    /** D43: the skirt/dress list from the full-body enhancement review, plus tights, hair accessories and hand-held objects. */
+    @Test void fullBodyCategoriesMapToTheRightPositions() {
+        var expected=new LinkedHashMap<String,OutfitRules.Role>();
+        for(var c:List.of("A字半身裙","百褶裙","牛仔半身裙","包臀裙","鱼尾裙","蛋糕裙","伞裙","迷你裙","长款半身裙","JK制服裙","网纱裙","洛丽塔SK","SK","裙裤","打底裤"))expected.put(c,OutfitRules.Role.BOTTOM);
+        for(var c:List.of("碎花连衣裙","吊带连衣裙","针织连衣裙","衬衫连衣裙","泡泡袖连衣裙","抹胸连衣裙","蕾丝连衣裙","小黑裙","礼服裙","洛丽塔OP","OP","水手服套装","西装套装","旗袍"))expected.put(c,OutfitRules.Role.ONE_PIECE);
+        for(var c:List.of("背带裙","背带裤","洛丽塔JSK","JSK","吊带裤","overalls"))expected.put(c,OutfitRules.Role.OVERALL);
+        for(var c:List.of("裤袜","连裤袜","丝袜","打底袜","过膝袜","长筒袜","短袜","袜子","连体袜","tights"))expected.put(c,OutfitRules.Role.SOCKS);
+        for(var c:List.of("发箍","蝴蝶结发夹","发卡","发带","头饰","头花","KC","头纱","抓夹"))expected.put(c,OutfitRules.Role.HEADWEAR);
+        for(var c:List.of("小熊玩偶","毛绒公仔","雨伞","阳伞","相机","拍立得","花束","团扇"))expected.put(c,OutfitRules.Role.HANDHELD);
+        // Compound names that must not be taken for the new positions.
+        expected.put("娃娃领衬衫",OutfitRules.Role.TOP); expected.put("娃娃鞋",OutfitRules.Role.SHOES); expected.put("玛丽珍鞋",OutfitRules.Role.SHOES);
+        expected.put("袜靴",OutfitRules.Role.SHOES); expected.put("手拿包",OutfitRules.Role.BAG); expected.put("毛绒外套",OutfitRules.Role.OUTER); expected.put("毛绒帽",OutfitRules.Role.HAT);
+        expected.forEach((category,role)->assertEquals(role,OutfitRules.role(garment(category)),category));
+    }
+    @Test void pinaforesNeedATopAndReplaceTheBottom() {
+        for(var set:List.of(clothes("衬衫","背带裙"),clothes("T恤","背带裤","帆布鞋"),clothes("衬衫","洛丽塔JSK","过膝袜","发箍","玛丽珍鞋")))
+            assertDoesNotThrow(()->OutfitRules.validate(set,true),set.toString());
+        for(var set:List.of(clothes("背带裙"),clothes("衬衫","背带裙","半身裙"),clothes("背带裙","连衣裙"),clothes("衬衫","背带裙","背带裤"),
+            clothes("衬衫","长裤","发箍","发夹"),clothes("衬衫","长裤","小熊玩偶","雨伞"),clothes("T恤","连裤袜")))
+            assertThrows(ProcessingException.class,()->OutfitRules.validate(set,true),set.toString());
     }
 }
