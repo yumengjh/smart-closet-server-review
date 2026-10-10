@@ -98,7 +98,10 @@ def main():
 
     from onnxruntime.quantization import QuantType, quantize_dynamic
     quantize_dynamic(out("image_fp32"), out("image_int8"), weight_type=QuantType.QInt8)
-    quantize_dynamic(out("text_fp32"), out("text_int8"), weight_type=QuantType.QInt8)
+    # The text tower loses too much with per-tensor scales (min cosine 0.82 against fp32 on the check texts, issue #15);
+    # per-channel scales keep it at 0.97 with the same file size. The image tower is fine per-tensor (0.97) and stays
+    # as it was, so image vectors already in the database keep their model version.
+    quantize_dynamic(out("text_fp32"), out("text_int8"), weight_type=QuantType.QInt8, per_channel=True)
     shutil.copyfile(os.path.join(os.path.dirname(clip.__file__), "vocab.txt"), out("vocab"))
 
     # Reference outputs from PyTorch, then every ONNX file against them.
