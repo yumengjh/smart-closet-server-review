@@ -30,6 +30,7 @@ public class SimilarGarmentController {
     private final ClosetOwnership ownership;
     private final List<SegmentationEngine> engines;
     private final DuplicateScans scans;
+    @org.springframework.beans.factory.annotation.Autowired private com.smartcloset.similar.GarmentProcessingStatus processingStatus;
 
     public SimilarGarmentController(SimilarGarments similar, ClosetOwnership ownership, List<SegmentationEngine> engines, DuplicateScans scans) {
         this.similar = similar; this.ownership = ownership; this.engines = engines; this.scans = scans;
@@ -40,6 +41,10 @@ public class SimilarGarmentController {
         ownership.garment(id);
         return similar.similar(ClosetIdentity.username(), id.toString(), limit);
     }
+
+    /** Issue #2: which background steps have run for this garment (recognition, colours, fingerprint, vectors, style, duplicates). */
+    @GetMapping("/{id}/processing-status")
+    public Map<String, Object> processingStatus(@PathVariable UUID id) { return Map.of("steps", processingStatus.steps(ClosetIdentity.username(), id.toString())); }
 
     @GetMapping("/duplicates")
     public Map<String, Object> duplicates() { return Map.of("items", similar.duplicates(ClosetIdentity.username()), "imageModel", similar.images().status(ClosetIdentity.username())); }
