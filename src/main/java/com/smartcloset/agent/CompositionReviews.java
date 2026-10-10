@@ -34,6 +34,7 @@ public class CompositionReviews {
             if(!garment.status().equals("ACTIVE"))blockers.add(new Issue("GARMENT_INACTIVE","衣物已回收或未入柜："+id,"更换或排除衣物"));
             var f=new LinkedHashMap<>(garment.effective());f.put("_layeringConfirmed",List.of("fit","thickness","wearingModes").stream().allMatch(k -> garment.overrides().containsKey(k)&&!garment.overrides().get(k).isEmpty())?List.of("yes"):List.of());
             if(Boolean.TRUE.equals(input.multiLayer()))f.put("_multiLayer",List.of("yes"));
+            OutfitRules.markWornAlone(f,garment.name());
             String requested=input.wearRoles()==null?null:input.wearRoles().get(id.toString());
             var actual=OutfitRules.actualRole(f);
             if(requested!=null&&requested.startsWith("ACCESSORY:")&&actual==OutfitRules.Role.ACCESSORY){
@@ -42,7 +43,7 @@ public class CompositionReviews {
                 String inferred=OutfitRules.accessoryPosition(f);
                 if(!inferred.equals("UNKNOWN")&&!inferred.equals(position))blockers.add(new Issue("ACCESSORY_POSITION_CONFLICT","配饰品类与指定位置不符。","核对佩戴位置"));
                 else f.put("_accessoryPosition",List.of(position));
-            }else if(requested!=null&&!requested.equals(actual.name())) {
+            }else if(requested!=null&&!requested.equals(actual.name())&&!requested.equals(OutfitRules.role(f).name())) {
                 if(requested.equals("INNER")&&actual==OutfitRules.Role.TOP&&Boolean.TRUE.equals(input.multiLayer()))f.put("_wearRole",List.of("INNER"));
                 else blockers.add(new Issue("ROLE_CONFLICT","指定穿法与真实品类不符，不能改变显示角色来绕过检查。","核对穿法或品类"));
             }

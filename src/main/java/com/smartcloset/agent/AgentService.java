@@ -380,7 +380,7 @@ public class AgentService {
             case "get_outfit_candidates" -> {
                 var snapshot=garments.projection(owner).stream().filter(g -> g.status().equals("ACTIVE")).toList();boolean truncated=false;
                 var required=new HashSet<>(pinned(grant));for(var id:a.path("requiredGarmentIds")){garment(owner,id.asText(),true);required.add(id.asText());}
-                var options=OutfitCandidates.generate(snapshot.stream().map(g -> {var f=new LinkedHashMap<>(g.fields());f.put("_layeringConfirmed",g.wearingConfirmed()?List.of("yes"):List.of());return new OutfitCandidates.Item(g.id().toString(),f);}).toList(),required,40);
+                var options=OutfitCandidates.generate(snapshot.stream().map(g -> {var f=new LinkedHashMap<>(g.fields());f.put("_layeringConfirmed",g.wearingConfirmed()?List.of("yes"):List.of());OutfitRules.markWornAlone(f,g.name());return new OutfitCandidates.Item(g.id().toString(),f);}).toList(),required,40);
                 var inventory=new LinkedHashMap<String,GarmentRepository.View>();for(String id:options.stream().flatMap(List::stream).distinct().toList())inventory.put(id,garment(owner,id,true));
                 var pool=new LinkedHashMap<String,List<String>>();var result=new ArrayList<Object>();
                 for(var option:options) {String id=UUID.randomUUID().toString();pool.put(id,option);result.add(Map.of("candidateId",id,"garmentIds",option,"bodySignature",option.stream().filter(gid -> Set.of(OutfitRules.Role.TOP,OutfitRules.Role.BOTTOM,OutfitRules.Role.ONE_PIECE).contains(OutfitRules.role(inventory.get(gid).effective()))).sorted().toList()));}

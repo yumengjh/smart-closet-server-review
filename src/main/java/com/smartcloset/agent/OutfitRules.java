@@ -16,8 +16,21 @@ public final class OutfitRules {
     private static boolean matches(String text, String pattern) {
         return Pattern.compile(pattern, Pattern.CASE_INSENSITIVE).matcher(text).find();
     }
+    /**
+     * Marks an apron-style pinafore (围裙式背带裙/背带裤, by name or category) as worn alone: it covers chest and back, so
+     * it forms an outfit by itself and never goes over a shirt (2026-10-10 feedback). Callers that know the garment name
+     * call this before {@link #role}.
+     */
+    public static void markWornAlone(Map<String,List<String>> fields, String name) {
+        String text=(name==null?"":name)+" "+String.join(" ",fields.getOrDefault("category",List.of()));
+        if(text.contains("围裙")&&actualRole(fields)==Role.OVERALL)fields.put("_wearRole",List.of("ALONE"));
+    }
     public static Role role(Map<String,List<String>> fields) {
-        Role actual=actualRole(fields);return actual==Role.TOP&&fields.getOrDefault("_wearRole",List.of()).contains("INNER")?Role.INNER:actual;
+        Role actual=actualRole(fields);var wear=fields.getOrDefault("_wearRole",List.of());
+        if(actual==Role.TOP&&wear.contains("INNER"))return Role.INNER;
+        // An apron-style pinafore (围裙式背带裙) covers the upper body and is worn alone, like a dress (2026-10-10 feedback).
+        if(actual==Role.OVERALL&&wear.contains("ALONE"))return Role.ONE_PIECE;
+        return actual;
     }
     public static Role actualRole(Map<String,List<String>> fields) {
         var categories=fields.getOrDefault("category",List.of());if(categories.size()>1){var roles=new HashSet<Role>();for(String c:categories)roles.add(actualRole(Map.of("category",List.of(c))));return roles.size()==1?roles.iterator().next():Role.OTHER;}
