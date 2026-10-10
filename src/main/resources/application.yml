@@ -46,6 +46,8 @@ closet:
     outer-warmth-enabled: ${CLOSET_RECOMMEND_OUTER_WARMTH:true}
     # Approved recipes generate their own candidates (S1); nothing changes until an admin approves templates.
     recipes-enabled: ${CLOSET_RECOMMEND_RECIPES:true}
+    # Shadow run: also compute the P4 behaviour in the background and log first-page differences ("recommend shadow ...").
+    shadow-enabled: ${CLOSET_RECOMMEND_SHADOW:false}
   cors:
     allowed-origins: ${CLOSET_CORS_ALLOWED_ORIGINS:}
   storage-dir: ${CLOSET_STORAGE_DIR:./data}
