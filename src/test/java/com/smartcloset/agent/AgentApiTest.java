@@ -241,7 +241,7 @@ class AgentApiTest {
     assertEquals(2,result.path("shown").size());assertFalse(result.path("shown").get(0).path("highlights").isEmpty());
     assertFalse(result.toString().contains("\"fields\""),"model must not receive full garment metadata");
     var card=result.path("presented").path("proposal");assertEquals("RECOMMENDATION",card.path("kind").asText());proposalId.set(card.path("id").asText());
-    assertEquals(7,card.path("payload").path("candidates").get(0).path("recommendation").path("dimensions").size());
+    assertEquals(11,card.path("payload").path("candidates").get(0).path("recommendation").path("dimensions").size());
     String runId=result.path("runId").asText(),key=result.path("shown").get(0).path("outfitKey").asText();
     var invented=json.valueToTree(Map.of("runId",runId,"choices",List.of(Map.of("outfitKey",key,"reason","粉色大衣很温柔"))));
     var error=assertThrows(com.smartcloset.image.ProcessingException.class,()->service.tool(token,new AgentService.ToolRequest("present_outfits",invented)));

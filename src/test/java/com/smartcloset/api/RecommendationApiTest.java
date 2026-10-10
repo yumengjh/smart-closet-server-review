@@ -89,7 +89,7 @@ class RecommendationApiTest {
         assertTrue(view.path("intent").path("description").asText().contains("通勤"));
         for (var o : outfits) {
             assertFalse(o.path("logId").asText().isBlank());
-            assertEquals(7, o.path("dimensions").size());
+            assertEquals(11, o.path("dimensions").size(), "seven classic dimensions plus the aesthetic group");
             assertFalse(o.path("highlights").isEmpty());
             for (var g : o.path("garments")) assertNotEquals(ids.get("red"), g.path("id").asText());
         }
