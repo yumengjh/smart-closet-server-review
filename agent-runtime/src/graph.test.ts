@@ -224,6 +224,33 @@ test('search_wardrobe choice card is shown to the user and not echoed to the mod
   } finally { server.closeAllConnections(); await new Promise<void>(resolve => server.close(() => resolve())) }
 })
 
+test('closet_summary list card is shown to the user and not echoed to the model (issue #8)', async () => {
+  let requests = 0; const frames: Frame[] = []
+  const server = createServer(async (req, res) => {
+    let raw = ''; for await (const chunk of req) raw += chunk
+    const body = raw ? JSON.parse(raw) : {}
+    if(req.url === '/permits'){res.setHeader('Content-Type','application/json');res.end(JSON.stringify({status:'GRANTED',permit:'fixture-'+body.iteration}));return}
+    if (req.url === '/callback') {
+      res.setHeader('Content-Type', 'application/json')
+      res.end(JSON.stringify({ count: 2, items: [{ id: 'g1', name: '卡通T恤' }, { id: 'g2', name: '小熊卫衣' }], itemsTruncated: false, listCard: { id: 'l-1', kind: 'GARMENT_LIST', payload: { total: 2, items: [{ id: 'g1', name: '卡通T恤' }, { id: 'g2', name: '小熊卫衣' }] } } }))
+      return
+    }
+    requests++
+    if (requests === 2) { const tool = body.messages.find((m: any) => m.role === 'tool').content; assert.match(tool, /衣物清单卡已展示给用户/); assert.doesNotMatch(tool, /"payload"/) }
+    const delta = requests === 1
+      ? { role: 'assistant', tool_calls: [{ index: 0, id: 'search-1', type: 'function', function: { name: 'closet_summary', arguments: JSON.stringify({ imageStyle: 'ILLUSTRATION', show: true }) } }] }
+      : { role: 'assistant', content: '有 2 件卡通画风的衣物，清单已经列出来了。' }
+    res.setHeader('Content-Type', 'text/event-stream'); res.end('data: ' + JSON.stringify({ id: 'search', choices: [{ index: 0, delta, finish_reason: null }] }) + '\n\ndata: [DONE]\n\n')
+  })
+  const url = await listen(server)
+  try {
+    await runAgent({ model: 'fixture', apiKey: 'fake', baseURL: url + '/v1', permitURL: url + '/permits', callbackURL: url + '/callback', callbackToken: 'test', maxToolCalls: 5, timeoutSeconds: 5, context: {}, memories: [], messages: [{ role: 'user', content: '列出卡通画风的衣物' }] }, f => frames.push(f), AbortSignal.timeout(10000))
+    assert.equal(requests, 2)
+    const proposals = frames.filter(f => f.event === 'proposal')
+    assert.equal(proposals.length, 1); assert.equal((proposals[0].data as any).kind, 'GARMENT_LIST')
+  } finally { server.closeAllConnections(); await new Promise<void>(resolve => server.close(() => resolve())) }
+})
+
 test('explain_recommendation is offered as a read-only tool', () => {
   const definition = definitions.find(d => d.name === 'explain_recommendation')!
   assert.ok(definition)

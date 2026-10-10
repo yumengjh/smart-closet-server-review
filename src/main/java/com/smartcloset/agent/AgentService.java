@@ -364,7 +364,16 @@ public class AgentService {
                 grant.channel().send("command",prepared);yield prepared;
             }
             case "review_outfit" -> reviews.review(owner,new CompositionReviews.Request(null,null,contextFor(grant).path("scene"),null,null,false));
-            case "closet_summary" -> closetSummary.summary(owner,a.path("query").asText(""),a.path("category").asText(""),a.path("color").asText(""),a.path("season").asText(""),a.has("favorite")?a.path("favorite").asBoolean():null);
+            case "closet_summary" -> {
+                var summary=new LinkedHashMap<>(closetSummary.summary(owner,a.path("query").asText(""),a.path("category").asText(""),a.path("color").asText(""),a.path("season").asText(""),a.has("favorite")?a.path("favorite").asBoolean():null,a.path("imageStyle").asText("")));
+                // Issue #8: "列出来/哪几件" shows the exact matching garments as a card the user can open one by one.
+                if(a.path("show").asBoolean(false)&&!((List<?>)summary.get("items")).isEmpty()) {
+                    var payload=json.createObjectNode();payload.set("items",json.valueToTree(summary.get("items")));payload.put("total",((Number)summary.get("count")).intValue());
+                    payload.put("truncated",(Boolean)summary.get("itemsTruncated"));payload.set("filter",json.valueToTree(summary.get("filter")));
+                    summary.put("listCard",repo.propose(owner,grant.session(),"GARMENT_LIST",payload,contextFor(grant)));
+                }
+                yield summary;
+            }
             case "list_outfits" -> db.queryForList("SELECT id,name,revision,created_at_ms,updated_at_ms FROM outfit WHERE owner_username=? ORDER BY updated_at_ms DESC",owner);
             case "list_tasks" -> db.queryForList("SELECT id,kind,status,wait_reason,created_at_ms FROM execution_task WHERE owner_username=? ORDER BY created_at_ms DESC LIMIT 50",owner);
             case "search_help" -> {var hits=help.search(a.path("query").asText());yield Map.of("known",!hits.isEmpty(),"articles",hits,"unknownAnswer","暂时不知道，可以向平台反馈这个问题；目前尚无反馈提交入口。");}
