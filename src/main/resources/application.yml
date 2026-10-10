@@ -37,6 +37,13 @@ spring:
       file-size-threshold: 0
 closet:
   quick-intake-enabled: ${CLOSET_QUICK_INTAKE_ENABLED:false}
+  # Recommendation mechanisms of 2026-10-10 (design docs/design/2026-10-09-搭配审美…设计.md 第四十一节). Each switch
+  # falls back to the P4 behaviour when false: aesthetic group of the judge, exposure balance, outer layers counting
+  # for warmth. Rollback = set to false and restart; no data migration involved.
+  recommend:
+    aesthetic-enabled: ${CLOSET_RECOMMEND_AESTHETIC:true}
+    balance-enabled: ${CLOSET_RECOMMEND_BALANCE:true}
+    outer-warmth-enabled: ${CLOSET_RECOMMEND_OUTER_WARMTH:true}
   cors:
     allowed-origins: ${CLOSET_CORS_ALLOWED_ORIGINS:}
   storage-dir: ${CLOSET_STORAGE_DIR:./data}
