@@ -242,6 +242,17 @@ class RecommendationApiTest {
         assertEquals(404, other.send("GET", "/api/wear-logs/garments/" + ids.get("shirt"), null, true).statusCode());
     }
 
+    @Test void feedbackTargetMustBeAGarmentOfThatOutfitExactly() throws Exception {
+        String owner = "rec-fb-" + UUID.randomUUID().toString().substring(0, 8);
+        var me = signIn(owner); var ids = seed(owner);
+        var top = me.ok("POST", "/api/recommendations", Map.of("occasion", "DAILY", "temperatureC", 20)).path("outfits").get(0);
+        String garment = top.path("garments").get(0).path("id").asText();
+        String path = "/api/recommendations/logs/" + top.path("logId").asText() + "/feedback";
+        // A fragment of a real id used to pass the substring check and was stored as the feedback target.
+        assertEquals(400, me.send("POST", path, Map.of("verdict", "DOWN", "reasons", List.of("DISLIKE_ITEM"), "garmentId", garment.substring(0, 8)), true).statusCode());
+        me.ok("POST", path, Map.of("verdict", "DOWN", "reasons", List.of("DISLIKE_ITEM"), "garmentId", garment));
+    }
+
     @Test void invalidIntentIsRejected() throws Exception {
         var me = signIn("rec-bad-" + UUID.randomUUID().toString().substring(0, 8));
         assertEquals(400, me.send("POST", "/api/recommendations", Map.of("temperatureC", 99), true).statusCode());
