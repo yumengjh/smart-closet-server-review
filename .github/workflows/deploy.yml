@@ -41,6 +41,8 @@ jobs:
       SSH_HOST: ${{ secrets.DEPLOY_SSH_HOST }}
       SSH_PORT: ${{ secrets.DEPLOY_SSH_PORT }}
       SSH_USER: ${{ secrets.DEPLOY_SSH_USER }}
+      # Read by sshpass -e in every step that connects (only used when there is no DEPLOY_SSH_KEY).
+      SSHPASS: ${{ secrets.DEPLOY_SSH_PASSWORD }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -83,7 +85,7 @@ jobs:
       # weights and checked against PyTorch by the export script; cached until the export code changes.
       - name: Restore exported image-text model
         id: clip-cache
-        uses: actions/cache@v4
+        uses: actions/cache/restore@v4
         with:
           path: .image-model
           key: image-model-${{ hashFiles('scripts/export_image_model.py', 'scripts/export-image-model.sh') }}
@@ -101,6 +103,14 @@ jobs:
           cp models/image-model-int8.onnx models/image-model-fp32.onnx models/image-text-model-int8.onnx \
              models/image-text-model-fp32.onnx models/image-text-vocab.txt models/image-model-manifest.json .image-model/
 
+      # Saved right away, so a later failure (SSH, server) does not throw the 6-minute export away.
+      - name: Save exported image-text model
+        if: steps.clip-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: .image-model
+          key: ${{ steps.clip-cache.outputs.cache-primary-key }}
+
       - name: Prepare deployment bundle
         run: |
           set -euo pipefail
@@ -112,7 +122,6 @@ jobs:
       - name: Set up SSH
         env:
           SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
-          SSH_PASSWORD: ${{ secrets.DEPLOY_SSH_PASSWORD }}
           KNOWN_HOSTS: ${{ secrets.DEPLOY_SSH_KNOWN_HOSTS }}
         run: |
           set -euo pipefail
@@ -126,7 +135,7 @@ jobs:
             opts+=(-i ~/.ssh/deploy_key -o IdentitiesOnly=yes); pre=""
           else
             sudo apt-get install -y -qq sshpass >/dev/null
-            echo "SSHPASS=$SSH_PASSWORD" >> "$GITHUB_ENV"; pre="sshpass -e"
+            pre="sshpass -e"
             opts+=(-o PubkeyAuthentication=no)
           fi
           # Two wrappers so later steps stay short; scp takes -P instead of -p.
