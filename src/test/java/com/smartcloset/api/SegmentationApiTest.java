@@ -107,7 +107,9 @@ class SegmentationApiTest {
     }
 
     @Test void healthMethodsMissingResultAndFileAllowlist() throws Exception {
-        assertEquals(200, get("/api/health").statusCode());
+        var health = get("/api/health");
+        assertEquals(200, health.statusCode());
+        assertEquals("dev", json.readTree(health.body()).path("version").asText());
         var methods = json.readTree(get("/api/segmentation-methods").body());
         assertFalse(methods.path("clothingClassification").asBoolean());
         assertEquals(404, get("/api/segmentations/00000000-0000-0000-0000-000000000000").statusCode());

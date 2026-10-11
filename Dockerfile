@@ -13,7 +13,11 @@ RUN apt-get update \
     && chown app:app /data /models
 WORKDIR /app
 COPY --from=build --chown=app:app /workspace/target/*.jar /app/app.jar
-ENV SERVER_ADDRESS=0.0.0.0 \
+ARG CLOSET_VERSION=dev
+ARG CLOSET_COMMIT=
+ENV CLOSET_VERSION=$CLOSET_VERSION \
+    CLOSET_COMMIT=$CLOSET_COMMIT \
+    SERVER_ADDRESS=0.0.0.0 \
     PORT=8080 \
     CLOSET_STORAGE_DIR=/data \
     CLOSET_MODEL_PATH=/models/u2net.onnx \

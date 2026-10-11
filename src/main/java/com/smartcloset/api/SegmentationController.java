@@ -21,8 +21,13 @@ public class SegmentationController {
     private final ClosetOwnership ownership;
     public SegmentationController(SegmentationService service, U2NetEngine u2net, ClosetOwnership ownership) { this.service = service; this.u2net = u2net; this.ownership = ownership; }
 
+    // Version and commit are baked into the image by CI (Dockerfile ARG); a local build reports "dev".
+    private static final Map<String, String> HEALTH = Map.of("status", "UP",
+            "version", Objects.requireNonNullElse(System.getenv("CLOSET_VERSION"), "dev"),
+            "commit", Objects.requireNonNullElse(System.getenv("CLOSET_COMMIT"), ""));
+
     @GetMapping("/health")
-    public Map<String, String> health() { return Map.of("status", "UP"); }
+    public Map<String, String> health() { return HEALTH; }
 
     @GetMapping("/segmentation-methods")
     public Map<String, Object> methods() {

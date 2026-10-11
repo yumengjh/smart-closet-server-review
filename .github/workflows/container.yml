@@ -125,6 +125,9 @@ jobs:
           context: .
           file: Dockerfile
           push: true
+          build-args: |
+            CLOSET_VERSION=${{ steps.backend-metadata.outputs.version }}
+            CLOSET_COMMIT=${{ github.sha }}
           tags: ${{ steps.backend-metadata.outputs.tags }}
           labels: ${{ steps.backend-metadata.outputs.labels }}
           cache-from: type=gha,scope=server
