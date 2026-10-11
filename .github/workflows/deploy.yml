@@ -1,0 +1,174 @@
+name: Deploy
+
+# Pushing a tag v* runs "Backend containers" (tests, images to GHCR); when that succeeds this workflow deploys the
+# same commit to the server over SSH. It can also be run by hand (Actions → Deploy → Run workflow) with any published
+# image tag. Server side: scripts/deploy/remote-deploy.sh (detects the running compose project, its directory and the
+# /models mount, installs every model, pulls, recreates, waits for health, rolls back on failure).
+# Settings: repository secrets only (Settings → Secrets and variables → Actions); the optional ones may also be variables.
+on:
+  workflow_run:
+    workflows: ["Backend containers"]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: "要部署的镜像标签，例如 latest、1.4.0、sha-abc1234"
+        required: true
+        default: latest
+      sync_compose:
+        description: "用仓库的 compose.yaml 覆盖服务器上的（会先备份）"
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+  packages: read
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy to server
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push' &&
+       startsWith(github.event.workflow_run.head_branch, 'v'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      SSH_HOST: ${{ secrets.DEPLOY_SSH_HOST }}
+      SSH_PORT: ${{ secrets.DEPLOY_SSH_PORT }}
+      SSH_USER: ${{ secrets.DEPLOY_SSH_USER }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+
+      - name: Resolve what to deploy
+        id: target
+        env:
+          EVENT: ${{ github.event_name }}
+          INPUT_TAG: ${{ inputs.image_tag }}
+          INPUT_SYNC: ${{ inputs.sync_compose }}
+          RUN_SHA: ${{ github.event.workflow_run.head_sha }}
+          RUN_REF: ${{ github.event.workflow_run.head_branch }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT" = workflow_dispatch ]; then
+            [[ "$INPUT_TAG" =~ ^[A-Za-z0-9_.-]+$ ]] || { echo "镜像标签只能包含字母、数字、. _ -"; exit 1; }
+            echo "image_tag=$INPUT_TAG" >> "$GITHUB_OUTPUT"
+            echo "sync=${INPUT_SYNC:-true}" >> "$GITHUB_OUTPUT"
+          else
+            # Only a real tag v* on exactly this commit deploys (a branch named "v…" also matches head_branch).
+            tagged=$(git ls-remote --tags origin "refs/tags/$RUN_REF" "refs/tags/$RUN_REF^{}" | awk '{print $1}')
+            grep -qx "$RUN_SHA" <<< "$tagged" || { echo "$RUN_REF 不是指向 $RUN_SHA 的标签，跳过部署"; exit 1; }
+            echo "image_tag=sha-${RUN_SHA:0:7}" >> "$GITHUB_OUTPUT"
+            echo "sync=${{ secrets.DEPLOY_SYNC_COMPOSE || vars.DEPLOY_SYNC_COMPOSE || 'true' }}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Check deployment secrets
+        env:
+          SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          SSH_PASSWORD: ${{ secrets.DEPLOY_SSH_PASSWORD }}
+        run: |
+          missing=()
+          [ -n "$SSH_HOST" ] || missing+=(DEPLOY_SSH_HOST)
+          [ -n "$SSH_USER" ] || missing+=(DEPLOY_SSH_USER)
+          [ -n "$SSH_KEY$SSH_PASSWORD" ] || missing+=("DEPLOY_SSH_KEY 或 DEPLOY_SSH_PASSWORD")
+          [ ${#missing[@]} -eq 0 ] || { echo "缺少 secrets：${missing[*]}"; exit 1; }
+
+      # Image-text model (Chinese-CLIP): no official ONNX download, so it is exported here from the official PyTorch
+      # weights and checked against PyTorch by the export script; cached until the export code changes.
+      - name: Restore exported image-text model
+        id: clip-cache
+        uses: actions/cache@v4
+        with:
+          path: .image-model
+          key: image-model-${{ hashFiles('scripts/export_image_model.py', 'scripts/export-image-model.sh') }}
+
+      - name: Install uv
+        if: steps.clip-cache.outputs.cache-hit != 'true'
+        uses: astral-sh/setup-uv@v6
+
+      - name: Export image-text model (about 6 minutes)
+        if: steps.clip-cache.outputs.cache-hit != 'true'
+        run: |
+          set -euo pipefail
+          bash scripts/export-image-model.sh huggingface
+          mkdir -p .image-model
+          cp models/image-model-int8.onnx models/image-model-fp32.onnx models/image-text-model-int8.onnx \
+             models/image-text-model-fp32.onnx models/image-text-vocab.txt models/image-model-manifest.json .image-model/
+
+      - name: Prepare deployment bundle
+        run: |
+          set -euo pipefail
+          mkdir -p bundle/image
+          cp scripts/deploy/remote-deploy.sh scripts/download-model.sh scripts/download-embedding-model.sh compose.yaml bundle/
+          (cd .image-model && sha256sum ./* | sed 's#  \./#  #') > bundle/image-models.sha256
+          cat bundle/image-models.sha256
+
+      - name: Set up SSH
+        env:
+          SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          SSH_PASSWORD: ${{ secrets.DEPLOY_SSH_PASSWORD }}
+          KNOWN_HOSTS: ${{ secrets.DEPLOY_SSH_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          port=${SSH_PORT:-22}
+          if [ -n "$KNOWN_HOSTS" ]; then printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+          else ssh-keyscan -p "$port" -T 15 "$SSH_HOST" > ~/.ssh/known_hosts 2>/dev/null; echo "::warning::未设置 DEPLOY_SSH_KNOWN_HOSTS，本次信任扫描到的主机指纹"; fi
+          opts=(-p "$port" -o BatchMode=no -o ServerAliveInterval=30 -o ConnectTimeout=20 -o StrictHostKeyChecking=yes)
+          if [ -n "$SSH_KEY" ]; then
+            printf '%s\n' "$SSH_KEY" > ~/.ssh/deploy_key && chmod 600 ~/.ssh/deploy_key
+            opts+=(-i ~/.ssh/deploy_key -o IdentitiesOnly=yes); pre=""
+          else
+            sudo apt-get install -y -qq sshpass >/dev/null
+            echo "SSHPASS=$SSH_PASSWORD" >> "$GITHUB_ENV"; pre="sshpass -e"
+            opts+=(-o PubkeyAuthentication=no)
+          fi
+          # Two wrappers so later steps stay short; scp takes -P instead of -p.
+          printf '#!/usr/bin/env bash\nexec %s ssh %s "%s@%s" "$@"\n' "$pre" "${opts[*]}" "$SSH_USER" "$SSH_HOST" > ~/remote && chmod +x ~/remote
+          printf '#!/usr/bin/env bash\nexec %s scp %s "$@"\n' "$pre" "${opts[*]/-p/-P}" > ~/upload && chmod +x ~/upload
+          echo "DEST=/tmp/smart-closet-deploy-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" >> "$GITHUB_ENV"
+          ~/remote 'echo "已连接 $(hostname)"'
+
+      - name: Upload bundle and plan
+        id: plan
+        env:
+          DEPLOY_DIR: ${{ secrets.DEPLOY_DIR || vars.DEPLOY_DIR }}
+          DEPLOY_ENV_FILE: ${{ secrets.DEPLOY_ENV_FILE || vars.DEPLOY_ENV_FILE }}
+        run: |
+          set -euo pipefail
+          ~/remote "rm -rf '$DEST' && mkdir -p '$DEST/image' && chmod 700 '$DEST'"
+          ~/upload bundle/remote-deploy.sh bundle/download-model.sh bundle/download-embedding-model.sh bundle/compose.yaml bundle/image-models.sha256 "$SSH_USER@$SSH_HOST:$DEST/"
+          ~/remote "DEPLOY_DIR=$(printf %q "$DEPLOY_DIR") DEPLOY_ENV_FILE=$(printf %q "$DEPLOY_ENV_FILE") bash '$DEST/remote-deploy.sh' plan" | tee plan.txt
+          files=$(awk '$1=="UPLOAD"{print $2}' plan.txt | tr '\n' ' ')
+          echo "upload=$files" >> "$GITHUB_OUTPUT"
+
+      - name: Upload image-text model files
+        if: steps.plan.outputs.upload != ''
+        env:
+          FILES: ${{ steps.plan.outputs.upload }}
+        run: |
+          set -euo pipefail
+          paths=(); for f in $FILES; do paths+=(".image-model/$f"); done
+          ~/upload "${paths[@]}" "$SSH_USER@$SSH_HOST:$DEST/image/"
+
+      - name: Deploy
+        env:
+          IMAGE_TAG: ${{ steps.target.outputs.image_tag }}
+          SYNC_COMPOSE: ${{ steps.target.outputs.sync }}
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          echo "部署镜像标签：$IMAGE_TAG"
+          printf '%s' "$GHCR_TOKEN" | ~/remote "IMAGE_TAG=$(printf %q "$IMAGE_TAG") SYNC_COMPOSE=$(printf %q "$SYNC_COMPOSE") GHCR_USER=$(printf %q "$GITHUB_ACTOR") bash '$DEST/remote-deploy.sh' apply"
+
+      - name: Clean up
+        if: always()
+        run: |
+          [ -x ~/remote ] && [ -n "${DEST:-}" ] && ~/remote "rm -rf '$DEST'" || true
+          rm -f ~/.ssh/deploy_key

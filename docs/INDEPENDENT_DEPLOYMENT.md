@@ -83,3 +83,43 @@ CLOSET_TRUSTED_PROXIES='127\.0\.0\.1|::1|0:0:0:0:0:0:0:1|172\.20\.0\.1'
 - 刷新 `/wardrobe`、衣物详情和搭配深链；请求必须进入 API 域名，前端域名的 `/api/` 不作反向代理。
 - 本地 `npm run dev` 保留 Vite 同源代理；`build:server` 继续提供后端同源界面。HTTP 本地配置使用空 Origin 白名单、关闭 Secure 或保留自动判断。
 - 发布前保留前后端上一版本产物与环境配置。回退使用完整旧前端目录及匹配后端镜像，不删除数据库或数据卷。本次没有数据库迁移。
+
+## 5. 用 GitHub Actions 自动部署（`.github/workflows/deploy.yml`）
+
+### 触发方式
+- **推送 `v*` 标签**（例如 `git tag v1.4.0 && git push origin v1.4.0`）：先跑“Backend containers”（测试、发布镜像到 GHCR），成功后自动部署这个提交，镜像标签为 `sha-<提交前 7 位>`。
+- **手动运行**：Actions → Deploy → Run workflow，填写任意已发布的镜像标签（`latest`、`1.4.0`、`sha-abc1234`）。
+
+### 每次部署做什么
+服务器端脚本是 `scripts/deploy/remote-deploy.sh`，通过 SSH 上传后执行：
+
+1. **找到现有部署。** 在服务器上找挂载了 `/models` 的 server 容器，从 compose 标签读出项目名、目录、compose 文件和环境文件，从挂载信息读出模型目录。数据卷沿用原项目名，不会换卷。
+   - 第一次部署（还没有容器）时，用仓库变量 `DEPLOY_DIR`。
+   - 环境文件按这个顺序找：`DEPLOY_ENV_FILE`、compose 标签、`$DEPLOY_DIR/.env`、`/etc/smart-closet/server.env`、`~/smart-closet-server.env`。
+2. **补齐模型。**
+   - 抠图模型 U²-Net 和文字向量模型 bge-small-zh：在服务器上下载，并校验 SHA-256，已有且一致的不重复下载。
+   - 图文模型 Chinese-CLIP：在 GitHub 运行器上用官方权重导出，并与 PyTorch 对拍。导出结果按导出脚本缓存，只上传服务器缺少或版本不同的文件。会按容器正在使用的精度（int8 或 fp32）补对应文件，2026-10-10 之前导出的文本塔会被替换（#15）。
+3. **同步 compose 文件。** 用仓库的 `compose.yaml` 覆盖服务器上的，先备份为 `compose.yaml.bak-时间`，校验失败就恢复原文件。仓库变量 `DEPLOY_SYNC_COMPOSE=false` 可以关掉这一步。
+4. **拉镜像。** 先拉镜像，拉不到就停止，此时服务器上什么都没改。GHCR 用本次运行的临时令牌登录，结束后登出。
+5. **重建容器。** 只重建 `server` 和 `agent-runtime`，然后等健康检查，并确认运行的就是新镜像。
+6. **检查模型。** 确认容器内能读到每个模型文件，文字向量模型 3 分钟内完成加载，日志里没有“无法加载”或“降级”。
+7. **失败回滚。** 重建或健康检查失败时，恢复原 compose 文件，切回部署前的镜像（打上 `rollback` 标签）。模型检查失败只让工作流报错，不回滚，因为服务本身健康。
+
+### 需要配置的 secrets
+全部放在仓库 secrets 里：Settings → Secrets and variables → Actions → New repository secret（`/settings/secrets/actions/new`）。不需要建 Environment。
+
+| 名称 | 必填 | 说明 |
+|---|---|---|
+| `DEPLOY_SSH_HOST` | 是 | 服务器地址 |
+| `DEPLOY_SSH_PORT` | 否 | SSH 端口，默认 22 |
+| `DEPLOY_SSH_USER` | 是 | 登录用户，需要能用 docker，或能免密 sudo |
+| `DEPLOY_SSH_PASSWORD` | 二选一 | 登录密码 |
+| `DEPLOY_SSH_KEY` | 二选一 | 私钥全文，有私钥时优先使用 |
+| `DEPLOY_SSH_KNOWN_HOSTS` | 否 | `ssh-keyscan -p 端口 主机` 的输出；不填时每次信任扫描到的指纹，并给出警告 |
+| `DEPLOY_DIR` | 否 | 部署目录，只在首次部署（服务器上还没有容器）或需要覆盖时填写 |
+| `DEPLOY_ENV_FILE` | 否 | 环境文件路径，覆盖自动识别结果 |
+| `DEPLOY_SYNC_COMPOSE` | 否 | 填 `false` 时不覆盖服务器的 compose 文件 |
+
+最后三项也可以放在同页的 Variables 标签里，效果相同。
+
+服务器需要：Docker 和 compose v2 插件、`curl`、`sha256sum`，能访问 GitHub 和 Hugging Face（下载模型），能访问 ghcr.io（拉镜像）。
