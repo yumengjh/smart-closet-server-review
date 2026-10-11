@@ -251,7 +251,8 @@ java -jar target/smart-closet-server-0.0.1-SNAPSHOT.jar
 | 环境变量 | 默认值 | 说明 |
 | --- | --- | --- |
 | `PORT` | `8080` | HTTP 端口 |
-| `CLOSET_STORAGE_DIR` | `./data` | 原图和结果存储目录 |
+| `CLOSET_STORAGE_DIR` | `./data` | 数据库、锁和删除记录所在目录；本机存储时图片也在这里 |
+| `CLOSET_STORAGE_TYPE` | `local` | 图片存储：`local` 本机磁盘，`s3` S3 兼容存储桶（腾讯云 COS 等），见下方「图片存储桶」 |
 | `CLOSET_MODEL_PATH` | `./models/u2net.onnx` | 同一 U2Net 模型文件路径，不是任意模型通用接口 |
 
 POM 按当前 OS/架构选择 OpenCV 本地依赖；macOS arm64、macOS x64、Linux x64/arm64、Windows x64 有配置，实际验证平台记录在实验报告。跨平台打包可使用 `-Dnative.platform=linux-x86_64` 等显式指定，目标平台仍需要运行验证。
@@ -271,6 +272,19 @@ docker compose --env-file "$HOME/smart-closet-server.env" up -d --build
 服务默认通过 `http://localhost:8080` 访问。Compose 命名卷 `closet-data` 保存数据库、会话和处理图片；宿主机 `models/` 用于挂载 `u2net.onnx`，AI 供应商配置放在宿主机 `.local/generation.yml`，不会打进镜像。Agent 只在 Compose 内部网络开放。
 
 **模型文件**（抠图 `u2net.onnx` 与语义向量 `embedding-*`，镜像不含）：在宿主机仓库目录执行 `bash scripts/install-models.sh` 即可，容器已挂载 `./models`。**容器可以先启动、模型之后再装，不需要重启**：向量模型放好 5 秒后自动加载，后台每 30 秒扫描并为所有用户的全部衣物补算向量，之后新增和修改的衣物自动跟进；在此期间搜索与推荐降级为字段加关键词。详见 [models/README.md](models/README.md)。
+
+### 图片存储桶（S3 兼容 / 腾讯云 COS）
+
+默认图片存放在服务器磁盘。改用存储桶后，衣物图、基准人物、设计图都放到桶里，浏览器经后端鉴权后被 302 到限时签名直链，直接从桶里下载；数据库、锁和删除记录仍在 `/data`。配置项为 `CLOSET_STORAGE_S3_ENDPOINT / REGION / BUCKET / ACCESS_KEY / SECRET_KEY`，可选 `PREFIX`、`PATH_STYLE`（MinIO 用 `true`）、`SERVE`（`redirect` 默认，`proxy` 由后端转发）、`URL_TTL`（直链时间窗，默认 `1h`）。桶保持私有读写，不需要配置 CORS。
+
+已有数据用一键脚本迁移（在你自己的电脑上执行，通过 SSH 操作服务器，图片由服务器直传到桶）：
+
+```bash
+cp scripts/storage/env.storage.example .env.storage   # 填写桶和密钥，已被 .gitignore 忽略
+scripts/storage/migrate-to-s3.sh --host ubuntu@服务器IP
+```
+
+脚本依次统计、在线复制、停服补齐、按数据库核对、写入配置并启动，失败自动保持或切回本机存储；服务器上的旧图片不会删除。回滚用 `--rollback`。设计与细节见 [对象存储设计](docs/design/2026-10-11-对象存储（S3兼容·腾讯云COS）设计.md)。
 
 GitHub Actions 会在推送和 PR 上运行 Java/Agent 检查并构建两个容器；推送默认分支或 `v*` 标签时发布到 GHCR。发布后如需匿名拉取，请在 GitHub Packages 中分别把 `smart-closet-server` 和 `smart-closet-server-agent` 设为 Public，然后在部署主机运行 `docker compose --env-file "$HOME/smart-closet-server.env" pull && docker compose --env-file "$HOME/smart-closet-server.env" up -d --no-build`。
 

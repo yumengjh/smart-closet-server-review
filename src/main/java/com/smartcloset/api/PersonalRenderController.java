@@ -9,8 +9,8 @@ import com.smartcloset.security.ClosetIdentity;
 import tools.jackson.databind.ObjectMapper;
 @RestController
 public class PersonalRenderController {
-    private final WearerProfiles profiles;private final PrivateMedia media;private final PersonalRenders renders;private final RenderCapabilities capabilities;private final ObjectMapper json;
-    public PersonalRenderController(WearerProfiles profiles,PrivateMedia media,PersonalRenders renders,RenderCapabilities capabilities,ObjectMapper json){this.profiles=profiles;this.media=media;this.renders=renders;this.capabilities=capabilities;this.json=json;}
+    private final WearerProfiles profiles;private final PrivateMedia media;private final PersonalRenders renders;private final RenderCapabilities capabilities;private final ObjectMapper json;private final com.smartcloset.storage.StoredMedia stored;
+    public PersonalRenderController(WearerProfiles profiles,PrivateMedia media,PersonalRenders renders,RenderCapabilities capabilities,ObjectMapper json,com.smartcloset.storage.StoredMedia stored){this.stored=stored;this.profiles=profiles;this.media=media;this.renders=renders;this.capabilities=capabilities;this.json=json;}
     @GetMapping("/api/me/wearer-profile") public Object profile(){return profiles.get(ClosetIdentity.username());}
     @PutMapping("/api/me/wearer-profile") public Object profile(@RequestBody WearerProfiles.Profile request){return profiles.update(ClosetIdentity.username(),request);}
     @GetMapping("/api/me/wearer-profile/render-preview") public Object preview(){return WearerProfiles.snapshot(profiles.get(ClosetIdentity.username()));}
@@ -26,7 +26,10 @@ public class PersonalRenderController {
     @PostMapping("/api/me/person-baselines/{id}/confirm") public Object confirm(@PathVariable String id,@RequestBody Revision request){return renders.activate(ClosetIdentity.username(),id,request.revision());}
     @DeleteMapping("/api/me/person-baselines/{id}") public ResponseEntity<Void> deleteBaseline(@PathVariable String id,@RequestBody Revision request){renders.deleteBaseline(ClosetIdentity.username(),id,request.revision());return ResponseEntity.noContent().build();}
     @GetMapping("/api/me/reference-photos") public Object photos(){return media.list(ClosetIdentity.username(),"PHOTO");}
-    @GetMapping("/api/me/private-media/{id}") public ResponseEntity<byte[]> image(@PathVariable UUID id)throws IOException{return ResponseEntity.ok().header("Cache-Control","private, no-store, max-age=0").header("Pragma","no-cache").header("X-Content-Type-Options","nosniff").contentType(MediaType.IMAGE_PNG).body(media.read(ClosetIdentity.username(),id));}
+    @GetMapping("/api/me/private-media/{id}") public ResponseEntity<?> image(@PathVariable UUID id)throws IOException{
+        // Local disk: read and verify the checksum as before; a bucket answers with a short-lived link.
+        if(stored.local())return ResponseEntity.ok().header("Cache-Control","private, no-store, max-age=0").header("Pragma","no-cache").header("X-Content-Type-Options","nosniff").contentType(MediaType.IMAGE_PNG).body(media.read(ClosetIdentity.username(),id));
+        return stored.personal(media.activeKey(ClosetIdentity.username(),id));}
     @DeleteMapping("/api/me/reference-photos/{id}") public Object deletePhoto(@PathVariable UUID id){var m=media.get(ClosetIdentity.username(),id);if(!m.purpose().equals("PHOTO"))throw com.smartcloset.image.ProcessingException.invalid("请选择全身照；人物和 OOTD 从各自页面删除。");return media.delete(ClosetIdentity.username(),id);}
     @GetMapping("/api/render-capabilities") public Object capabilities(){return capabilities.list();}
     @PutMapping("/api/admin/render-capabilities") public Object capability(@RequestBody RenderCapabilities.Capability request){return capabilities.update(request);}

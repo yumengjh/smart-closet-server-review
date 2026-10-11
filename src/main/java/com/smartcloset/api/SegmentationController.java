@@ -19,7 +19,8 @@ public class SegmentationController {
     private final SegmentationService service;
     private final U2NetEngine u2net;
     private final ClosetOwnership ownership;
-    public SegmentationController(SegmentationService service, U2NetEngine u2net, ClosetOwnership ownership) { this.service = service; this.u2net = u2net; this.ownership = ownership; }
+    private final com.smartcloset.storage.StoredMedia media;
+    public SegmentationController(SegmentationService service, U2NetEngine u2net, ClosetOwnership ownership, com.smartcloset.storage.StoredMedia media) { this.media = media; this.service = service; this.u2net = u2net; this.ownership = ownership; }
 
     // Version and commit are baked into the image by CI (Dockerfile ARG); a local build reports "dev".
     private static final Map<String, String> HEALTH = Map.of("status", "UP",
@@ -69,13 +70,9 @@ public class SegmentationController {
     public SegmentationResult result(@PathVariable UUID id) throws IOException { ownership.segmentation(id); return service.get(id); }
 
     @GetMapping("/segmentations/{id}/files/{name}")
-    public ResponseEntity<FileSystemResource> image(@PathVariable UUID id, @PathVariable String name) {
+    public ResponseEntity<?> image(@PathVariable UUID id, @PathVariable String name) throws IOException {
         ownership.segmentation(id);
-        var path = service.file(id, name);
-        return ResponseEntity.ok().contentType(name.endsWith(".jpg") ? MediaType.IMAGE_JPEG : MediaType.IMAGE_PNG)
-                .header("X-Content-Type-Options", "nosniff")
-                .header(HttpHeaders.CACHE_CONTROL, "private, max-age=3600")
-                .body(new FileSystemResource(path));
+        return media.shared(service.key(id, name));
     }
 
     private ResponseEntity<SegmentationResult> created(SegmentationResult result) {

@@ -5,7 +5,8 @@ import com.smartcloset.image.SegmentationEngine.Method;
 import java.io.IOException;
 import java.io.ByteArrayOutputStream;
 import java.awt.image.BufferedImage;
-import java.nio.file.*;
+import com.smartcloset.storage.BlobStore;
+import com.smartcloset.storage.LocalBlobStore;
 import java.time.Instant;
 import java.util.*;
 import java.util.concurrent.Semaphore;
@@ -20,11 +21,17 @@ public class SegmentationService {
     private final ClosetProperties properties;
     private final Map<Method, SegmentationEngine> engines = new EnumMap<>(Method.class);
     private final ObjectMapper mapper;
+    private final BlobStore store;
     // Bound native memory and CPU usage; don't queue large decoded images in HTTP threads.
     private final Semaphore capacity = new Semaphore(1);
 
     public SegmentationService(ClosetProperties properties, List<SegmentationEngine> engines, ObjectMapper mapper) {
-        this.properties = properties;
+        this(properties, engines, mapper, new LocalBlobStore(properties.storageDir()));
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public SegmentationService(ClosetProperties properties, List<SegmentationEngine> engines, ObjectMapper mapper, BlobStore store) {
+        this.properties = properties; this.store = store;
         engines.forEach(engine -> this.engines.put(engine.method(), engine));
         this.mapper = mapper;
     }
@@ -60,7 +67,7 @@ public class SegmentationService {
             double angle = Images.rotation(rotationDegrees);
             var previous = get(id);
             // The saved original is already EXIF/angle-corrected. Apply only this request's extra angle.
-            var decoded = Images.decode(Files.readAllBytes(file(id, "original.png")), properties.maxPixels());
+            var decoded = Images.decode(read(id, "original.png"), properties.maxPixels());
             double total = ((previous.rotationDegrees() == null ? 0 : previous.rotationDegrees()) + angle) % 360;
             return process(Images.rotate(decoded.image(), angle, properties.maxPixels()), method, region,
                     previous.exifOrientation(), total, started);
@@ -81,46 +88,45 @@ public class SegmentationService {
         String id = UUID.randomUUID().toString();
         String base = "/api/segmentations/" + id + "/files/";
         String source = "source.png";
-        Path root = properties.storageDir().toAbsolutePath().normalize();
-        Files.createDirectories(root);
-        Path staging = Files.createTempDirectory(root, ".processing-");
-        try {
-            // Persist the corrected photo only, with no EXIF rotation tag to apply again.
-            var corrected = new ByteArrayOutputStream(); ImageIO.write(image, "png", corrected);
-            Files.write(staging.resolve(source), corrected.toByteArray());
-            Files.write(staging.resolve("original.png"), corrected.toByteArray());
-            ImageIO.write(processed.mask(), "png", staging.resolve("mask.png").toFile());
-            ImageIO.write(processed.cutout(), "png", staging.resolve("cutout.png").toFile());
-            ImageIO.write(processed.cropped(), "png", staging.resolve("cropped.png").toFile());
-            var result = new SegmentationResult(id, Instant.now(), method, method == Method.U2NET ? "u2net" : null,
-                    image.getWidth(), image.getHeight(), exifOrientation, region, processed.bounds(),
-                    (System.nanoTime() - started) / 1_000_000, processed.foregroundRatio(), processed.colors(), warnings,
-                    base + source, base + "original.png", base + "mask.png", base + "cutout.png", base + "cropped.png", rotationDegrees);
-            mapper.writerWithDefaultPrettyPrinter().writeValue(staging.resolve("result.json").toFile(), result);
-            Files.move(staging, root.resolve(id), StandardCopyOption.ATOMIC_MOVE);
-            return result;
-        } finally {
-            if (Files.exists(staging)) {
-                try (var children = Files.list(staging)) {
-                    for (Path child : children.toList()) Files.deleteIfExists(child);
-                }
-                Files.deleteIfExists(staging);
-            }
-        }
+        // Images first, result.json last: a result counts only once result.json exists, so a crash leaves no half result.
+        var corrected = png(image);
+        store.put(id + "/" + source, corrected, "image/png");
+        store.put(id + "/original.png", corrected, "image/png");
+        store.put(id + "/mask.png", png(processed.mask()), "image/png");
+        store.put(id + "/cutout.png", png(processed.cutout()), "image/png");
+        store.put(id + "/cropped.png", png(processed.cropped()), "image/png");
+        var result = new SegmentationResult(id, Instant.now(), method, method == Method.U2NET ? "u2net" : null,
+                image.getWidth(), image.getHeight(), exifOrientation, region, processed.bounds(),
+                (System.nanoTime() - started) / 1_000_000, processed.foregroundRatio(), processed.colors(), warnings,
+                base + source, base + "original.png", base + "mask.png", base + "cutout.png", base + "cropped.png", rotationDegrees);
+        store.put(id + "/result.json", mapper.writerWithDefaultPrettyPrinter().writeValueAsBytes(result), "application/json");
+        return result;
+    }
+
+    private static byte[] png(BufferedImage image) throws IOException {
+        var out = new ByteArrayOutputStream(); ImageIO.write(image, "png", out); return out.toByteArray();
     }
 
     public SegmentationResult get(UUID id) throws IOException {
-        Path path = properties.storageDir().resolve(id.toString()).resolve("result.json");
-        if (!Files.isRegularFile(path)) throw notFound();
-        return mapper.readValue(path.toFile(), SegmentationResult.class);
+        byte[] bytes = store.get(id + "/result.json");
+        if (bytes == null) throw notFound();
+        return mapper.readValue(bytes, SegmentationResult.class);
     }
 
-    public Path file(UUID id, String name) {
+    /** Storage key of a finished result's image; not found unless result.json was written. */
+    public String key(UUID id, String name) throws IOException {
         if (!Set.of("source.jpg", "source.png", "original.png", "mask.png", "cutout.png", "cropped.png").contains(name)) throw notFound();
-        Path path = properties.storageDir().resolve(id.toString()).resolve(name);
-        if (!Files.isRegularFile(path) || !Files.isRegularFile(path.getParent().resolve("result.json"))) throw notFound();
-        return path;
+        if (!store.exists(id + "/result.json")) throw notFound();
+        return id + "/" + name;
     }
+
+    public byte[] read(UUID id, String name) throws IOException {
+        byte[] bytes = store.get(key(id, name));
+        if (bytes == null) throw notFound();
+        return bytes;
+    }
+
+    public BlobStore store() { return store; }
 
     private ProcessingException notFound() {
         return new ProcessingException(HttpStatus.NOT_FOUND, "RESULT_NOT_FOUND", "没有找到这份处理结果或图片。");

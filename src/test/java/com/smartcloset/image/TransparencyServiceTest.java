@@ -21,7 +21,7 @@ class TransparencyServiceTest {
     static byte[] png(BufferedImage image)throws IOException{var out=new ByteArrayOutputStream();ImageIO.write(image,"png",out);return out.toByteArray();}
     void output(BufferedImage image)throws Exception{
         var id=UUID.randomUUID();var result=mock(SegmentationResult.class);when(result.id()).thenReturn(id.toString());
-        var file=root.resolve("cutout.png");Files.write(file,png(image));when(segmentation.uploadBytes(any(),any(),isNull(),eq(0d))).thenReturn(result);when(segmentation.file(id,"cutout.png")).thenReturn(file);
+        var file=root.resolve("cutout.png");Files.write(file,png(image));when(segmentation.uploadBytes(any(),any(),isNull(),eq(0d))).thenReturn(result);when(segmentation.read(id,"cutout.png")).thenReturn(Files.readAllBytes(file));
     }
     @Test void autoReusesValidAlphaByteForByteWithoutSegmentation()throws Exception{
         byte[] bytes=png(valid());var result=service.ensure(bytes,Policy.AUTO,SegmentationEngine.Method.U2NET);

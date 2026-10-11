@@ -54,6 +54,22 @@ closet:
   cors:
     allowed-origins: ${CLOSET_CORS_ALLOWED_ORIGINS:}
   storage-dir: ${CLOSET_STORAGE_DIR:./data}
+  # Where images go (docs/design/2026-10-11-对象存储（S3兼容·腾讯云COS）设计.md). local = files under storage-dir (default);
+  # s3 = any S3-compatible bucket such as Tencent COS. The database, locks and the deletion ledger always stay in storage-dir.
+  storage:
+    type: ${CLOSET_STORAGE_TYPE:local}
+    s3:
+      endpoint: ${CLOSET_STORAGE_S3_ENDPOINT:}
+      region: ${CLOSET_STORAGE_S3_REGION:}
+      bucket: ${CLOSET_STORAGE_S3_BUCKET:}
+      access-key: ${CLOSET_STORAGE_S3_ACCESS_KEY:}
+      secret-key: ${CLOSET_STORAGE_S3_SECRET_KEY:}
+      prefix: ${CLOSET_STORAGE_S3_PREFIX:}
+      path-style: ${CLOSET_STORAGE_S3_PATH_STYLE:false}
+      # redirect = browsers fetch images from the bucket by a presigned link; proxy = the server streams them.
+      serve: ${CLOSET_STORAGE_S3_SERVE:redirect}
+      # Presigned links are identical within this window (cacheable) and valid for two windows.
+      url-ttl: ${CLOSET_STORAGE_S3_URL_TTL:1h}
   model-path: ${CLOSET_MODEL_PATH:./models/u2net.onnx}
   # Matting model is released after this much inactivity and reloaded on next use (0 = keep loaded). Saves a few hundred MB.
   segmentation-idle-unload: ${CLOSET_SEGMENTATION_IDLE_UNLOAD:10m}

@@ -14,10 +14,16 @@ import static org.mockito.Mockito.*;
 class StickerServiceTest {
     @TempDir Path storage;
 
+    private void stub(SegmentationService segmentations, UUID id, Path source) throws Exception {
+        when(segmentations.read(id, "cutout.png")).thenReturn(Files.readAllBytes(source));
+        when(segmentations.key(id, "cutout.png")).thenReturn(id + "/cutout.png");
+        when(segmentations.store()).thenReturn(new com.smartcloset.storage.LocalBlobStore(storage));
+    }
+
     @Test void persistedCacheSurvivesServiceRecreationWithoutRenderingAgain() throws Exception {
         UUID id = UUID.randomUUID(); Path source = source();
         var segmentations = mock(SegmentationService.class);
-        when(segmentations.file(id, "cutout.png")).thenReturn(source);
+        stub(segmentations, id, source);
         var mapper = JsonMapper.builder().build();
         var first = new StickerService(segmentations, new StickerRenderer(), mapper).create(id);
         assertTrue(first.created());
@@ -25,14 +31,14 @@ class StickerServiceTest {
         var afterRestart = new StickerService(segmentations, unusedRenderer, mapper);
         assertEquals(first.result(), afterRestart.get(id));
         assertFalse(afterRestart.create(id).created());
-        assertTrue(Files.isRegularFile(afterRestart.image(id)));
+        assertTrue(Files.isRegularFile(storage.resolve(afterRestart.image(id))));
         verifyNoInteractions(unusedRenderer);
     }
 
     @Test void refusesConcurrentRenderAndReleasesCapacityAfterFailure() throws Exception {
         UUID id = UUID.randomUUID(); Path source = source();
         var segmentations = mock(SegmentationService.class);
-        when(segmentations.file(id, "cutout.png")).thenReturn(source);
+        stub(segmentations, id, source);
         var renderer = mock(StickerRenderer.class);
         CountDownLatch started = new CountDownLatch(1), release = new CountDownLatch(1);
         when(renderer.render(any())).thenAnswer(invocation -> {

@@ -2,7 +2,6 @@ package com.smartcloset.image;
 
 import com.smartcloset.ClosetProperties;
 import java.io.IOException;
-import java.nio.file.Files;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
 
@@ -37,7 +36,7 @@ public class TransparencyService {
         if (policy == Policy.PRESERVE || (policy == Policy.AUTO && before.verdict() == TransparencyInspector.Verdict.SUSPICIOUS))
             return new Result(png, null, new Decision(policy, Action.NEEDS_REVIEW, before, before));
         var segmented = segmentations.uploadBytes(png, method, null, 0);
-        UUID id = UUID.fromString(segmented.id()); byte[] result = Files.readAllBytes(segmentations.file(id, "cutout.png"));
+        UUID id = UUID.fromString(segmented.id()); byte[] result = segmentations.read(id, "cutout.png");
         var after = inspect(result);
         Action action = switch (after.verdict()) {
             case USABLE -> Action.SEGMENTED;

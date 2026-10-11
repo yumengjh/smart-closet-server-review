@@ -1,6 +1,5 @@
 package com.smartcloset.ootd;
 
-import com.smartcloset.ClosetProperties;
 import com.smartcloset.agent.OutfitRules.Role;
 import com.smartcloset.image.Images;
 import com.smartcloset.image.ProcessingException;
@@ -9,7 +8,6 @@ import com.smartcloset.recommend.TemplateCatalog;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.file.Files;
-import java.nio.file.Path;
 import java.security.MessageDigest;
 import java.time.LocalDate;
 import java.util.*;
@@ -46,10 +44,10 @@ public class OotdSampleService {
     private final JdbcTemplate db;
     private final OotdExtractor extractor;
     private final TemplateCatalog templates;
-    private final Path dir;
+    private final com.smartcloset.storage.BlobStore store;
 
-    public OotdSampleService(JdbcTemplate db, OotdExtractor extractor, TemplateCatalog templates, ClosetProperties properties) {
-        this.db = db; this.extractor = extractor; this.templates = templates; this.dir = properties.storageDir().resolve("ootd-samples");
+    public OotdSampleService(JdbcTemplate db, OotdExtractor extractor, TemplateCatalog templates, com.smartcloset.storage.BlobStore store) {
+        this.db = db; this.extractor = extractor; this.templates = templates; this.store = store;
     }
 
     // ---- upload and extraction ----
@@ -68,11 +66,10 @@ public class OotdSampleService {
         // JPEG/PNG only, orientation applied and long side capped; only this re-encoded copy is stored, never the original file.
         byte[] png = png(Images.sampled(bytes, MAX_SIDE).image());
         String id = UUID.randomUUID().toString(); long now = System.currentTimeMillis();
-        Path file = dir.resolve(id + ".png");
-        try { Files.createDirectories(dir); Files.write(file, png); }
+        try { store.put("ootd-samples/" + id + ".png", png, "image/png"); }
         catch (IOException e) { throw new ProcessingException(HttpStatus.INTERNAL_SERVER_ERROR, "OOTD_SAMPLE_STORAGE", "样本图片无法保存。"); }
         db.update("INSERT INTO ootd_sample(id,status,source_url,license,note,image_sha256,image_path,created_by,created_at_ms,updated_at_ms) VALUES(?,'PENDING',?,?,?,?,?,?,?,?)",
-            id, url.isEmpty() ? null : url, lic, remark.isEmpty() ? null : remark, sha, file.getFileName().toString(), admin, now, now);
+            id, url.isEmpty() ? null : url, lic, remark.isEmpty() ? null : remark, sha, id + ".png", admin, now, now);
         return extract(id, admin);
     }
 
@@ -173,8 +170,8 @@ public class OotdSampleService {
     public byte[] image(String id) {
         var name = db.queryForList("SELECT image_path FROM ootd_sample WHERE id=?", String.class, id);
         if (name.isEmpty() || name.getFirst() == null) throw new ProcessingException(HttpStatus.NOT_FOUND, "OOTD_SAMPLE_IMAGE_GONE", "原图已在审核后删除。");
-        try { return Files.readAllBytes(dir.resolve(name.getFirst())); }
-        catch (IOException e) { throw new ProcessingException(HttpStatus.NOT_FOUND, "OOTD_SAMPLE_IMAGE_GONE", "原图文件不存在。"); }
+        try { byte[] bytes = store.get("ootd-samples/" + name.getFirst()); if (bytes == null) throw new IOException("missing"); return bytes; }
+        catch (IOException | IllegalArgumentException e) { throw new ProcessingException(HttpStatus.NOT_FOUND, "OOTD_SAMPLE_IMAGE_GONE", "原图文件不存在。"); }
     }
 
     private Sample row(java.sql.ResultSet rs, int n) throws java.sql.SQLException {
@@ -335,7 +332,7 @@ public class OotdSampleService {
     // ---- files ----
 
     private void deleteImage(String id) {
-        try { Files.deleteIfExists(dir.resolve(id + ".png")); }
+        try { store.delete("ootd-samples/" + id + ".png"); }
         catch (IOException e) { log.warn("ootd sample image not deleted: {}", id); }
     }
     private static byte[] png(java.awt.image.BufferedImage image) {

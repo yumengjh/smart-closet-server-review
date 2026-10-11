@@ -77,7 +77,7 @@ class QuickIntakeServiceTest {
   var cutout=new BufferedImage(80,100,BufferedImage.TYPE_INT_ARGB);var g=cutout.createGraphics();g.setColor(Color.BLUE);g.fillRect(20,15,40,70);g.dispose();var bytes=new ByteArrayOutputStream();ImageIO.write(cutout,"png",bytes);
   var path=Files.createTempFile(root,"cutout-",".png");Files.write(path,bytes.toByteArray());var segmentationId=UUID.randomUUID();
   doReturn(new SegmentationResult(segmentationId.toString(),java.time.Instant.now(),SegmentationEngine.Method.U2NET,"fixture",80,100,1,null,null,1,.5,java.util.List.of(),java.util.List.of(),null,null,null,null,null,0d)).when(segmentation).uploadBytes(any(),any(),any(),anyDouble());
-  when(segmentation.file(segmentationId,"cutout.png")).thenReturn(path);
+  when(segmentation.read(segmentationId,"cutout.png")).thenReturn(Files.readAllBytes(path));
   var view=quick.create(UUID.randomUUID(),null,photo());var task=new ProcessingStore.Task("fixture","fixture",owner,"QUICK",view.intakeId().toString(),0,"CPU",null,100,"RUNNING",0,0,null,null);quick.execute(task);
   var ready=quick.get(view.intakeId());assertEquals("ACTIVE",ready.garment().status());assertEquals("PENDING",ready.task().steps().get(1).status().name());assertTrue(ready.garment().imageProcessing().stickerReady());
   var base=jobs.assetByFile(view.intakeId(),"base-cutout.png");var sticker=jobs.assetByFile(view.intakeId(),"step-0.png");assertEquals("BASE",base.kind);assertEquals("BASE_STICKER",sticker.kind);assertNotEquals(base.id,sticker.id);assertArrayEquals(bytes.toByteArray(),files.readVerified(base));assertEquals(UUID.fromString(sticker.id),ready.garment().displayAssetId());

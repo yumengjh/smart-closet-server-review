@@ -12,7 +12,8 @@ import org.springframework.http.*;
 @RequestMapping("/api/closet/batches")
 public class BatchController {
     private final BatchService batches;
-    public BatchController(BatchService batches) { this.batches=batches; }
+    private final com.smartcloset.storage.StoredMedia media;
+    public BatchController(BatchService batches,com.smartcloset.storage.StoredMedia media) { this.batches=batches;this.media=media; }
     @PostMapping(consumes=MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<Batch.View> upload(@RequestHeader("Idempotency-Key") UUID key,@RequestPart("options") Batch.Upload options,@RequestPart("file") MultipartFile file) throws IOException {
         return ResponseEntity.accepted().body(batches.upload(key,options,file));
@@ -26,8 +27,7 @@ public class BatchController {
     @PostMapping("/{id}/start") public ResponseEntity<Batch.View> start(@PathVariable UUID id,@RequestHeader("Idempotency-Key") UUID key,@RequestBody Batch.Start request) {return ResponseEntity.accepted().body(batches.start(id,key,request));}
     @PostMapping("/{id}/generate") public ResponseEntity<Batch.View> generate(@PathVariable UUID id,@RequestHeader("Idempotency-Key") UUID key,@RequestBody Batch.Generate request) {return ResponseEntity.accepted().body(batches.generate(id,key,request));}
     @PostMapping("/{id}/calls/{callId}/resume-local") public Batch.View resumeLocal(@PathVariable UUID id,@PathVariable UUID callId) throws IOException {return batches.resumeLocal(id,callId);}
-    @GetMapping("/{id}/files/{name}") public ResponseEntity<FileSystemResource> file(@PathVariable UUID id,@PathVariable String name) throws IOException {
-        return ResponseEntity.ok().contentType(name.endsWith(".jpg")?MediaType.IMAGE_JPEG:MediaType.IMAGE_PNG)
-            .header("X-Content-Type-Options","nosniff").header(HttpHeaders.CACHE_CONTROL,"private, max-age=3600").body(new FileSystemResource(batches.file(id,name)));
+    @GetMapping("/{id}/files/{name}") public ResponseEntity<?> file(@PathVariable UUID id,@PathVariable String name) throws IOException {
+        return media.shared(batches.file(id,name));
     }
 }

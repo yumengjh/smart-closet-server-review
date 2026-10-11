@@ -30,7 +30,7 @@ import static com.smartcloset.batch.Batch.*;
 public class BatchService implements com.smartcloset.processing.ProcessingHandler {
     private final JdbcTemplate db;
     private final ObjectMapper json;
-    private final Path root;
+    private final com.smartcloset.storage.BlobStore store;
     private final TransactionTemplate tx;
     private final RecognitionService recognition;
     private final BatchRecognition detector;
@@ -45,10 +45,9 @@ public class BatchService implements com.smartcloset.processing.ProcessingHandle
     private record Command(UUID id,UUID batchId,String type,String payload,String status) {}
     public BatchService(JdbcTemplate db,ObjectMapper json,ClosetProperties closet,PlatformTransactionManager manager,
             RecognitionService recognition,BatchRecognition detector,GenerationService generation,GenerationProperties providers,
-            ClosetModelPolicy policy,WorkflowRepository quota,WorkflowService workflows,Flyway workflowMigrations) throws IOException {
-        this.db=db;this.json=json;this.root=closet.storageDir().toAbsolutePath().resolve("batches");this.tx=new TransactionTemplate(manager);
+            ClosetModelPolicy policy,WorkflowRepository quota,WorkflowService workflows,Flyway workflowMigrations,com.smartcloset.storage.BlobStore store) throws IOException {
+        this.db=db;this.json=json;this.store=store;this.tx=new TransactionTemplate(manager);
         this.recognition=recognition;this.detector=detector;this.generation=generation;this.providers=providers;this.policy=policy;this.quota=quota;this.workflows=workflows;
-        Files.createDirectories(root);
         // Unified execution owns startup recovery and stage dispatch.
     }
     private ProcessingException error(HttpStatus status,String code,String message) { return new ProcessingException(status,code,message); }
@@ -93,15 +92,17 @@ public class BatchService implements com.smartcloset.processing.ProcessingHandle
         return Map.of();
     }
     private String url(UUID id,String file) { return "/api/closet/batches/"+id+"/files/"+file; }
-    private Path path(UUID id,String file) {
+    private String key(UUID id,String file) {
         if(!file.matches("(source|preview|reference|atlas)-[a-f0-9-]{36}\\.(png|jpg)") && !file.matches("(recognition|recognition-receipt|generation-receipt)-[a-f0-9-]{36}\\.json")) throw ProcessingException.invalid("批次图片名称无效。");
-        return root.resolve(id.toString()).resolve(file);
+        return "batches/"+id+"/"+file;
     }
-    private void write(UUID id,String file,byte[] bytes) throws IOException {
-        Files.createDirectories(root.resolve(id.toString()));var target=path(id,file);var tmp=Files.createTempFile(target.getParent(),".pending-",".tmp");
-        try { try(var channel=java.nio.channels.FileChannel.open(tmp,StandardOpenOption.WRITE)){var buffer=java.nio.ByteBuffer.wrap(bytes);while(buffer.hasRemaining())channel.write(buffer);channel.force(true);}Files.move(tmp,target,StandardCopyOption.ATOMIC_MOVE,StandardCopyOption.REPLACE_EXISTING); }
-        finally { Files.deleteIfExists(tmp); }
+    private void write(UUID id,String file,byte[] bytes) throws IOException { store.put(key(id,file),bytes,com.smartcloset.storage.BlobStore.contentType(file)); }
+    private byte[] read(UUID id,String file) throws IOException {
+        byte[] bytes=store.get(key(id,file));
+        if(bytes==null) throw new java.nio.file.NoSuchFileException("Batch file missing: "+id+"/"+file);
+        return bytes;
     }
+    private boolean exists(UUID id,String file) { try { return store.exists(key(id,file)); } catch(IOException e) { throw new java.io.UncheckedIOException(e); } }
     public synchronized View upload(UUID key,Upload options,MultipartFile file) throws IOException {
         if(key==null||options==null||options.channel()==null||options.strategy()==null) throw ProcessingException.invalid("请选择单件或多件通道及处理方式。");
         byte[] original=file.getBytes();String hash=WorkflowFiles.hash(original);
@@ -130,17 +131,20 @@ public class BatchService implements com.smartcloset.processing.ProcessingHandle
         return new Source(key,name==null?"照片":name.substring(0,Math.min(name.length(),180)),url(v.id,raw),url(v.id,preview),WorkflowFiles.hash(original),WorkflowFiles.hash(small),raw,preview,original.length,decoded.image().getWidth(),decoded.image().getHeight());
     }
     private byte[] verified(View v,Source source,boolean original) throws IOException {
-        byte[] bytes=Files.readAllBytes(path(v.id,original?source.originalFile():source.previewFile()));
+        byte[] bytes=read(v.id,original?source.originalFile():source.previewFile());
         if(!WorkflowFiles.hash(bytes).equals(original?source.originalHash():source.previewHash())) throw new IOException("Source checksum mismatch");return bytes;
     }
-    public synchronized Path file(UUID id,String name) throws IOException {
+    /** Storage key of a batch image the caller owns. */
+    public synchronized String file(UUID id,String name) throws IOException {
         owned(id);var v=read(id);boolean known=false;
-        for(var s:v.sources) if(s.originalFile().equals(name)||s.previewFile().equals(name)) { verified(v,s,s.originalFile().equals(name));known=true; }
+        // Local reads are cheap enough to re-check the source hash on every view; a bucket is checked when processing reads it.
+        boolean local=store instanceof com.smartcloset.storage.LocalBlobStore;
+        for(var s:v.sources) if(s.originalFile().equals(name)||s.previewFile().equals(name)) { if(local)verified(v,s,s.originalFile().equals(name));known=true; }
         if(!known) {
             var calls=db.query("SELECT result_json FROM batch_call WHERE batch_id=?",(r,n)->json.readValue(r.getString(1),Call.class),id.toString());
             known=calls.stream().anyMatch(c->url(id,name).equals(c.referenceUrl())||url(id,name).equals(c.atlasUrl()));
         }
-        if(!known || !Files.isRegularFile(path(id,name))) throw error(HttpStatus.NOT_FOUND,"BATCH_IMAGE_NOT_FOUND","没有找到批次图片。");return path(id,name);
+        if(!known || local && !exists(id,name)) throw error(HttpStatus.NOT_FOUND,"BATCH_IMAGE_NOT_FOUND","没有找到批次图片。");return key(id,name);
     }
     private UUID commandId(UUID key,int index) { return UUID.nameUUIDFromBytes((key+":"+index).getBytes(java.nio.charset.StandardCharsets.UTF_8)); }
     private boolean repeat(UUID id,UUID batch,String fingerprint) {
@@ -233,7 +237,7 @@ public class BatchService implements com.smartcloset.processing.ProcessingHandle
         var c=rows.getFirst();var call=json.readValue(db.queryForObject("SELECT result_json FROM batch_call WHERE id=?",String.class,callId.toString()),Call.class);
         if(call.atlasUrl()==null) throw ProcessingException.invalid("没有已保存的生成图；结果未知的云端调用不会自动重发。");
         var p=json.readValue(c.payload,GenerationPrepared.class);var v=get(id);
-        var pieces=BatchImages.split(Files.readAllBytes(path(id,"atlas-"+callId+".png")),p.targetIds().size(),call.size());
+        var pieces=BatchImages.split(read(id,"atlas-"+callId+".png"),p.targetIds().size(),call.size());
         for(int i=0;i<p.targetIds().size();i++) {
             var tid=p.targetIds().get(i);var target=v.targets.stream().filter(t->t.id.equals(tid)).findFirst().orElseThrow();
             UUID stableJobId=UUID.nameUUIDFromBytes((callId+":"+tid).getBytes(java.nio.charset.StandardCharsets.UTF_8));
@@ -267,14 +271,14 @@ public class BatchService implements com.smartcloset.processing.ProcessingHandle
         var rows=db.query("SELECT id FROM batch_call WHERE status IN ('QUEUED','RUNNING') AND NOT EXISTS(SELECT 1 FROM execution_task e WHERE e.kind='BATCH' AND e.business_id=batch_call.id AND e.status IN ('QUEUED','RUNNING','WAITING_QUOTA','CANCEL_REQUESTED')) ORDER BY created_at_ms LIMIT 1000",(r,n)->r.getString(1));
         var out=new ArrayList<com.smartcloset.processing.ProcessingHandler.Candidate>();
         for(var id:rows){var c=command(id);var call=call(c);boolean rec=c.type.startsWith("RECOGNIZE:");
-            if(!rec&&call.atlasUrl()==null&&Files.exists(path(c.batchId,generationReceiptName(c))))try{
-                var receipt=json.readValue(Files.readAllBytes(path(c.batchId,generationReceiptName(c))),GenerationReceipt.class);
+            if(!rec&&call.atlasUrl()==null&&exists(c.batchId,generationReceiptName(c)))try{
+                var receipt=json.readValue(read(c.batchId,generationReceiptName(c)),GenerationReceipt.class);
                 if(!WorkflowFiles.hash(receipt.png()).equals(receipt.sha256()))throw new IOException("Atlas receipt checksum mismatch");
                 BatchImages.split(receipt.png(),call.targetIds().size(),call.size());
                 write(c.batchId,"atlas-"+c.id+".png",receipt.png());
                 finish(c,new Call(call.id(),call.type(),"RUNNING",call.provider(),call.model(),call.startedAtMs(),null,receipt.usage(),ImageCosts.usd(call.model(),receipt.usage()),null,call.targetIds(),url(c.batchId,"reference-"+c.id+".png"),url(c.batchId,"atlas-"+c.id+".png"),call.size(),call.quality(),call.referenceSide(),receipt.requestId()));call=call(c);
             }catch(IOException e){throw new IllegalStateException("Cannot reconcile persisted atlas",e);}
-            int stage=rec?(Files.exists(path(c.batchId,receiptName(c)))?1:0):call.atlasUrl()!=null?2:Files.exists(path(c.batchId,"reference-"+c.id+".png"))?1:0;
+            int stage=rec?(exists(c.batchId,receiptName(c))?1:0):call.atlasUrl()!=null?2:exists(c.batchId,"reference-"+c.id+".png")?1:0;
             // An old in-flight cloud call without a durable receipt is never replayed.
             int tracked=db.queryForObject("SELECT COUNT(*) FROM execution_task WHERE kind='BATCH' AND business_id=?",Integer.class,id);
             int unknown=db.queryForObject("SELECT COUNT(*) FROM execution_task WHERE kind='BATCH' AND business_id=? AND status IN ('UNKNOWN','FAILED','CANCELLED','SKIPPED')",Integer.class,id);
@@ -297,7 +301,7 @@ public class BatchService implements com.smartcloset.processing.ProcessingHandle
                 write(c.batchId,receiptName(c),json.writeValueAsBytes(output==null?Map.of("skipped",true):output));
                 if(output!=null)write(c.batchId,"recognition-"+c.id+".json",json.writeValueAsBytes(output.raw()));
             }else{
-                var raw=json.readTree(Files.readAllBytes(path(c.batchId,receiptName(c))));boolean skipped=raw.path("skipped").asBoolean(false);
+                var raw=json.readTree(read(c.batchId,receiptName(c)));boolean skipped=raw.path("skipped").asBoolean(false);
                 if(!skipped){var found=detector.validate(raw.get("raw"),src,snapshot.channel,snapshot.strategy,p.request().markers());
                     for(int i=0;i<found.size();i++){found.get(i).id=UUID.nameUUIDFromBytes((c.id+":target:"+i).getBytes(java.nio.charset.StandardCharsets.UTF_8));found.get(i).garmentId=found.get(i).id;}
                     synchronized(this){var latest=read(c.batchId);for(var t:found)if(latest.targets.stream().noneMatch(x->x.id.equals(t.id)))latest.targets.add(t);save(latest);}
@@ -308,14 +312,14 @@ public class BatchService implements com.smartcloset.processing.ProcessingHandle
         }else{
             var p=json.readValue(c.payload,GenerationPrepared.class);
             if(task.stage()==0){var images=new ArrayList<BufferedImage>();for(var tid:p.targetIds()){var target=snapshot.targets.stream().filter(t->t.id.equals(tid)).findFirst().orElseThrow();var src=snapshot.sources.stream().filter(x->x.id().equals(target.sourceId)).findFirst().orElseThrow();images.add(BatchImages.crop(verified(snapshot,src,true),target.recognition.target().bounds(),p.request().referenceSide()));}write(c.batchId,"reference-"+c.id+".png",BatchImages.png(BatchImages.reference(images,p.request().referenceSide())));}
-            else if(task.stage()==1){var frozen=generation.frozen(new GenerationService.Request(p.generation().provider(),p.generation().model(),p.generation().prompt(),p.generation().parameters()),p.revision());var output=generation.generate(frozen,Files.readAllBytes(path(c.batchId,"reference-"+c.id+".png")));write(c.batchId,generationReceiptName(c),json.writeValueAsBytes(new GenerationReceipt(output.png(),WorkflowFiles.hash(output.png()),output.usage(),output.requestId())));write(c.batchId,"atlas-"+c.id+".png",output.png());finish(c,new Call(current.id(),current.type(),"RUNNING",current.provider(),current.model(),current.startedAtMs(),null,output.usage(),ImageCosts.usd(current.model(),output.usage()),null,current.targetIds(),url(c.batchId,"reference-"+c.id+".png"),url(c.batchId,"atlas-"+c.id+".png"),current.size(),current.quality(),current.referenceSide(),output.requestId()));}
+            else if(task.stage()==1){var frozen=generation.frozen(new GenerationService.Request(p.generation().provider(),p.generation().model(),p.generation().prompt(),p.generation().parameters()),p.revision());var output=generation.generate(frozen,read(c.batchId,"reference-"+c.id+".png"));write(c.batchId,generationReceiptName(c),json.writeValueAsBytes(new GenerationReceipt(output.png(),WorkflowFiles.hash(output.png()),output.usage(),output.requestId())));write(c.batchId,"atlas-"+c.id+".png",output.png());finish(c,new Call(current.id(),current.type(),"RUNNING",current.provider(),current.model(),current.startedAtMs(),null,output.usage(),ImageCosts.usd(current.model(),output.usage()),null,current.targetIds(),url(c.batchId,"reference-"+c.id+".png"),url(c.batchId,"atlas-"+c.id+".png"),current.size(),current.quality(),current.referenceSide(),output.requestId()));}
             else{splitAndImport(c);advanceBatch(c);}
         }
     }
     private synchronized void splitAndImport(Command c)throws IOException{
         if(command(c.id.toString()).status.equals("CANCELLED"))return;
         var call=call(c);var p=json.readValue(c.payload,GenerationPrepared.class);var v=read(c.batchId);
-        var pieces=BatchImages.split(Files.readAllBytes(path(c.batchId,"atlas-"+c.id+".png")),p.targetIds().size(),call.size());
+        var pieces=BatchImages.split(read(c.batchId,"atlas-"+c.id+".png"),p.targetIds().size(),call.size());
         for(int i=0;i<p.targetIds().size();i++){var tid=p.targetIds().get(i);var target=v.targets.stream().filter(t->t.id.equals(tid)).findFirst().orElseThrow();UUID jobId=UUID.nameUUIDFromBytes((c.id+":"+tid).getBytes(java.nio.charset.StandardCharsets.UTF_8));if(target.confirmed||target.pendingCallId!=null&&!target.pendingCallId.equals(c.id)||target.pendingCallId==null&&target.jobId!=null&&!target.jobId.equals(jobId))continue;var src=v.sources.stream().filter(x->x.id().equals(target.sourceId)).findFirst().orElseThrow();var job=workflows.importBatchResult(jobId,target.garmentId,BatchImages.png(BatchImages.crop(verified(v,src,true),target.recognition.target().bounds(),p.request().referenceSide())),pieces.get(i),completedMetadata(target),p.generation());target.jobId=job.id();target.pendingCallId=null;target.status=job.status().name();target.outputUrl=job.outputUrl();save(v);}
         finish(c,new Call(call.id(),call.type(),"SUCCEEDED",call.provider(),call.model(),call.startedAtMs(),System.currentTimeMillis(),call.usage(),call.costUsd(),null,call.targetIds(),call.referenceUrl(),call.atlasUrl(),call.size(),call.quality(),call.referenceSide(),call.providerRequestId()));
     }

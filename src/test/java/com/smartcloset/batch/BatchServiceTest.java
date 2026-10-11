@@ -34,7 +34,7 @@ class BatchServiceTest {
         p.add("generation.providers.test.protocol",()->"OPENAI_IMAGES");p.add("generation.providers.test.base-url",()->"http://127.0.0.1:1/v1");p.add("generation.providers.test.api-key",()->"test-secret");
     }
     @Autowired BatchService batches;@Autowired ClosetAccountService accounts;@Autowired ObjectMapper json;@Autowired JdbcTemplate db;@Autowired WorkflowService workflows;
-    @Autowired com.smartcloset.processing.ProcessingResources resources;
+    @Autowired com.smartcloset.processing.ProcessingResources resources;@Autowired com.smartcloset.storage.BlobStore store;
     @MockitoBean RecognitionService recognition;@MockitoBean GenerationService generation;
     String username;AtomicInteger recognized;
     @BeforeEach void setup() throws Exception {
@@ -90,7 +90,7 @@ class BatchServiceTest {
     }
     @Test void repeatedSubmissionAndSingleRedoReuseRecognitionAndPreserveOriginals()throws Exception {
         var v=two(Strategy.SMART);UUID key=UUID.randomUUID();var request=new Detect(List.of(),"test","gpt-6-luna");batches.detect(v.id,key,request);batches.detect(v.id,key,request);v=settled(v.id);
-        assertEquals(2,recognized.get());assertEquals(2,quota());assertEquals(2,v.targets.size());assertArrayEquals(photo().getBytes(),Files.readAllBytes(batches.file(v.id,v.sources.getFirst().originalFile())));
+        assertEquals(2,recognized.get());assertEquals(2,quota());assertEquals(2,v.targets.size());assertArrayEquals(photo().getBytes(),store.get(batches.file(v.id,v.sources.getFirst().originalFile())));
         var ids=v.targets.stream().map(t->t.id).toList();var generate=new Generate(ids,2,1024,"FIXED","test","gpt-image-2.5-flare","low");UUID genkey=UUID.randomUUID();batches.generate(v.id,genkey,generate);batches.generate(v.id,genkey,generate);v=settled(v.id);
         assertEquals(3,quota());UUID atlasCall=v.calls.stream().filter(c->c.type().equals("GENERATE")).findFirst().orElseThrow().id();batches.resumeLocal(v.id,atlasCall);batches.resumeLocal(v.id,atlasCall);assertEquals(3,quota());verify(generation,times(1)).generate(any(),any());assertTrue(v.targets.stream().allMatch(t->t.jobId!=null));assertEquals(1,v.calls.stream().filter(c->c.type().equals("GENERATE")).count());
         batches.generate(v.id,UUID.randomUUID(),new Generate(List.of(ids.getFirst()),1,1024,"FIXED","test","gpt-image-2.5-flare","low"));settled(v.id);assertEquals(4,quota());assertEquals(2,recognized.get());

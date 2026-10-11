@@ -1,7 +1,8 @@
 package com.smartcloset.image;
 
 import java.io.IOException;
-import java.nio.file.*;
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
 import java.time.Instant;
 import java.util.UUID;
 import java.util.concurrent.Semaphore;
@@ -25,49 +26,48 @@ public class StickerService {
     }
 
     public Creation create(UUID id) throws IOException {
-        Path source = segmentations.file(id, "cutout.png");
-        Path output = directory(source);
-        if (complete(output)) return new Creation(read(output), false);
+        String dir = directory(id);
+        if (complete(dir)) return new Creation(read(dir), false);
         if (!capacity.tryAcquire()) throw new ProcessingException(HttpStatus.TOO_MANY_REQUESTS,
                 "PROCESSOR_BUSY", "正在生成另一张贴纸，请稍后重试。");
         try {
-            if (complete(output)) return new Creation(read(output), false);
+            if (complete(dir)) return new Creation(read(dir), false);
             long started = System.nanoTime();
-            var image = ImageIO.read(source.toFile());
+            var image = ImageIO.read(new ByteArrayInputStream(segmentations.read(id, "cutout.png")));
             if (image == null) throw new IOException("Saved cutout could not be decoded");
             var rendered = renderer.render(image);
-            Path staging = Files.createTempDirectory(source.getParent(), ".sticker-");
-            try {
-                ImageIO.write(rendered.image(), "png", staging.resolve("image.png").toFile());
-                var result = new Result(id.toString(), StickerRenderer.STYLE, Instant.now(), StickerRenderer.SIZE,
-                        StickerRenderer.SIZE, rendered.contentBounds(), (System.nanoTime() - started) / 1_000_000,
-                        "/api/segmentations/" + id + "/sticker/image?v=" + StickerRenderer.STYLE);
-                mapper.writerWithDefaultPrettyPrinter().writeValue(staging.resolve("result.json").toFile(), result);
-                Files.move(staging, output, StandardCopyOption.ATOMIC_MOVE);
-                return new Creation(result, true);
-            } finally {
-                if (Files.exists(staging)) {
-                    try (var children = Files.list(staging)) {
-                        for (Path child : children.toList()) Files.deleteIfExists(child);
-                    }
-                    Files.deleteIfExists(staging);
-                }
-            }
+            var png = new ByteArrayOutputStream(); ImageIO.write(rendered.image(), "png", png);
+            // Image first, result.json last: the sticker exists only once both are there.
+            store().put(dir + "/image.png", png.toByteArray(), "image/png");
+            var result = new Result(id.toString(), StickerRenderer.STYLE, Instant.now(), StickerRenderer.SIZE,
+                    StickerRenderer.SIZE, rendered.contentBounds(), (System.nanoTime() - started) / 1_000_000,
+                    "/api/segmentations/" + id + "/sticker/image?v=" + StickerRenderer.STYLE);
+            store().put(dir + "/result.json", mapper.writerWithDefaultPrettyPrinter().writeValueAsBytes(result), "application/json");
+            return new Creation(result, true);
         } finally { capacity.release(); }
     }
 
     public Result get(UUID id) throws IOException { return read(existing(id)); }
 
-    public Path image(UUID id) { return existing(id).resolve("image.png"); }
+    /** Storage key of the sticker image. */
+    public String image(UUID id) throws IOException { return existing(id) + "/image.png"; }
 
-    private Path existing(UUID id) {
-        Path output = directory(segmentations.file(id, "cutout.png"));
-        if (!complete(output)) throw new ProcessingException(HttpStatus.NOT_FOUND,
+    private String existing(UUID id) throws IOException {
+        String dir = directory(id);
+        if (!complete(dir)) throw new ProcessingException(HttpStatus.NOT_FOUND,
                 "STICKER_NOT_FOUND", "尚未生成贴纸，请先调用生成接口。");
-        return output;
+        return dir;
     }
 
-    private Path directory(Path source) { return source.getParent().resolve("sticker-" + StickerRenderer.STYLE); }
-    private boolean complete(Path dir) { return Files.isRegularFile(dir.resolve("result.json")) && Files.isRegularFile(dir.resolve("image.png")); }
-    private Result read(Path dir) throws IOException { return mapper.readValue(dir.resolve("result.json").toFile(), Result.class); }
+    private String directory(UUID id) throws IOException {
+        segmentations.key(id, "cutout.png");
+        return id + "/sticker-" + StickerRenderer.STYLE;
+    }
+    private boolean complete(String dir) throws IOException { return store().exists(dir + "/result.json") && store().exists(dir + "/image.png"); }
+    private Result read(String dir) throws IOException {
+        byte[] bytes = store().get(dir + "/result.json");
+        if (bytes == null) throw new IOException("Sticker result disappeared");
+        return mapper.readValue(bytes, Result.class);
+    }
+    private com.smartcloset.storage.BlobStore store() { return segmentations.store(); }
 }

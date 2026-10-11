@@ -290,7 +290,7 @@ public class WorkflowService implements com.smartcloset.processing.ProcessingHan
     private byte[] initial(Request r, byte[] upload) throws IOException {
         if (r.sourceSegmentationId() != null) {
             String file = r.sourceImage() == Source.CUTOUT ? "cutout.png" : "original.png";
-            upload = Files.readAllBytes(segmentations.file(r.sourceSegmentationId(), file));
+            upload = segmentations.read(r.sourceSegmentationId(), file);
             if (r.sourceImage() == Source.CUTOUT) return upload;
         }
         if (upload == null) return null;
@@ -301,14 +301,14 @@ public class WorkflowService implements com.smartcloset.processing.ProcessingHan
     private void execute(Job original) {
         var results = new ArrayList<>(original.steps());
         String currentUrl = original.inputUrl();
-        Path current = currentUrl == null ? null : files.path(original.id(), "input.png");
+        String current = currentUrl == null ? null : "input.png";
         UUID segmentationId = null;
         int index = 0; String attemptId = null; boolean returned = false;
         try {
             for (; index < original.request().steps().size(); index++) {
                 if (results.get(index).type() == Type.RECOGNIZE && !Set.of(Status.PENDING, Status.RUNNING).contains(results.get(index).status())) continue;
                 if (results.get(index).status() == Status.SUCCEEDED || results.get(index).status() == Status.SKIPPED) {
-                    if (results.get(index).outputUrl() != null) { currentUrl = results.get(index).outputUrl(); current = files.path(original.id(), "step-" + index + ".png"); segmentationId = results.get(index).segmentationId(); }
+                    if (results.get(index).outputUrl() != null) { currentUrl = results.get(index).outputUrl(); current = "step-" + index + ".png"; segmentationId = results.get(index).segmentationId(); }
                     continue;
                 }
                 if (closing) return;
@@ -360,7 +360,7 @@ public class WorkflowService implements com.smartcloset.processing.ProcessingHan
                     case SEGMENT -> {
                         var segmented = segmentations.uploadBytes(verifiedInput(original.id(), current), spec.method(), null, 0);
                         segmentationId = UUID.fromString(segmented.id());
-                        output = Files.readAllBytes(segmentations.file(segmentationId, "cutout.png"));
+                        output = segmentations.read(segmentationId, "cutout.png");
                     }
                     case ENSURE_TRANSPARENCY -> {
                         ensured = transparency.ensure(verifiedInput(original.id(), current), spec.policy(), spec.method());
@@ -381,7 +381,7 @@ public class WorkflowService implements com.smartcloset.processing.ProcessingHan
                 String name = "step-" + index + ".png";
                 var kind = spec.type() == Type.STICKER && ensured != null ? Type.ENSURE_TRANSPARENCY.name() : spec.type().name();
                 var asset = files.write(original.id(), name, kind, output);
-                current = files.path(original.id(), name); String outputUrl = files.url(original.id(), name);
+                current = name; String outputUrl = files.url(original.id(), name);
                 Status stepStatus = ensured != null && ensured.rejected() ? Status.FAILED
                         : ensured != null && ensured.needsReview() ? Status.NEEDS_REVIEW : Status.SUCCEEDED;
                 Failure problem = stepStatus == Status.FAILED ? new Failure("INVALID_TRANSPARENT_IMAGE", "没有可用主体，已保留图片和检测结果。")
@@ -446,7 +446,7 @@ public class WorkflowService implements com.smartcloset.processing.ProcessingHan
         String attempt = null; boolean returned = false;
         try {
             var spec = job.request().steps().get(index);
-            byte[] input = verifiedInput(job.id(), files.path(job.id(), "input.png"));
+            byte[] input = verifiedInput(job.id(), "input.png");
             synchronized (this) {
                 if (get(job.id()).status() == Status.CANCEL_REQUESTED) throw new ProcessingException(HttpStatus.CONFLICT, "CANCELLED", "识别已取消。");
                 attempt = repository.startAttempt(job.id(), index, spec.preparedRecognition());
@@ -465,9 +465,9 @@ public class WorkflowService implements com.smartcloset.processing.ProcessingHan
         }
     }
 
-    private byte[] verifiedInput(UUID id, Path path) throws IOException {
-        if (path == null) throw new IOException("Missing input");
-        var asset = repository.assetByFile(id, path.getFileName().toString());
+    private byte[] verifiedInput(UUID id, String name) throws IOException {
+        if (name == null) throw new IOException("Missing input");
+        var asset = repository.assetByFile(id, name);
         if (asset == null) throw new IOException("Missing input asset");
         return files.readVerified(asset);
     }
@@ -504,6 +504,8 @@ public class WorkflowService implements com.smartcloset.processing.ProcessingHan
 
     private void importLegacy() throws IOException {
         int imported = 0, skipped = 0;
+        // Legacy job.json files predate buckets and were imported on earlier starts; never list a whole bucket for them.
+        if (!(files.store() instanceof com.smartcloset.storage.LocalBlobStore)) return;
         try (var directories = Files.list(files.root())) {
             for (var dir : directories.filter(Files::isDirectory).toList()) {
                 var path = dir.resolve("job.json"); if (!Files.isRegularFile(path)) continue;
@@ -536,8 +538,9 @@ public class WorkflowService implements com.smartcloset.processing.ProcessingHan
     }
     private void importAsset(List<AssetRow> assets, UUID id, String name, String kind, String url) throws IOException {
         if (!files.url(id, name).equals(url)) throw new IOException("Invalid legacy asset URL");
-        if (!Files.isRegularFile(files.path(id, name))) { log.warn("Legacy asset missing: {}/{}", id, name); return; }
-        assets.add(files.describe(id, name, kind, Files.readAllBytes(files.path(id, name))));
+        byte[] bytes = files.read(id, name);
+        if (bytes == null) { log.warn("Legacy asset missing: {}/{}", id, name); return; }
+        assets.add(files.describe(id, name, kind, bytes));
     }
 
     private void recoverInterrupted() {
@@ -584,13 +587,14 @@ public class WorkflowService implements com.smartcloset.processing.ProcessingHan
         }
     }
 
-    public Path file(UUID id, String name) throws IOException {
+    /** Storage key of a task image the caller may see; the database decides, so no storage round trip. */
+    public String file(UUID id, String name) throws IOException {
         get(id);
-        if (name.matches("original\\.(jpg|png)") && Files.isRegularFile(files.path(id,name))) return files.path(id,name);
-        if (!name.matches("input\\.png|step-[0-5]\\.png") || repository.assetByFile(id, name) == null
-                || !Files.isRegularFile(files.path(id, name)))
+        if (name.matches("original\\.(jpg|png)") && repository.assetByFile(id, name) != null) return files.key(id, name);
+        if (name.matches("original\\.(jpg|png)") && files.exists(id, name)) return files.key(id, name);
+        if (!name.matches("input\\.png|step-[0-5]\\.png") || repository.assetByFile(id, name) == null)
             throw new ProcessingException(HttpStatus.NOT_FOUND, "WORKFLOW_IMAGE_NOT_FOUND", "没有找到该步骤的图片。");
-        return files.path(id, name);
+        return files.key(id, name);
     }
     private String fingerprint(Request request, byte[] upload, boolean canonical) {
         try {

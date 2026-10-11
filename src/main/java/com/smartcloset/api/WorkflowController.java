@@ -19,7 +19,9 @@ public class WorkflowController {
     private final GenerationService generation;
     private final ClosetOwnership ownership;
     private final ClosetModelPolicy modelPolicy;
-    public WorkflowController(WorkflowService workflows, GenerationService generation, ClosetOwnership ownership, ClosetModelPolicy modelPolicy) {
+    private final com.smartcloset.storage.StoredMedia media;
+    public WorkflowController(WorkflowService workflows, GenerationService generation, ClosetOwnership ownership, ClosetModelPolicy modelPolicy, com.smartcloset.storage.StoredMedia media) {
+        this.media = media;
         this.workflows = workflows; this.generation = generation; this.ownership = ownership; this.modelPolicy = modelPolicy;
     }
     @GetMapping("/generation/providers")
@@ -67,10 +69,8 @@ public class WorkflowController {
         return workflows.review(id, assetId, request);
     }
     @GetMapping("/workflows/{id}/files/{name}")
-    public ResponseEntity<FileSystemResource> file(@PathVariable UUID id, @PathVariable String name) throws IOException {
+    public ResponseEntity<?> file(@PathVariable UUID id, @PathVariable String name) throws IOException {
         ownership.workflow(id);
-        return ResponseEntity.ok().contentType(name.endsWith(".jpg") ? MediaType.IMAGE_JPEG : MediaType.IMAGE_PNG).header("X-Content-Type-Options", "nosniff")
-                .header(HttpHeaders.CACHE_CONTROL, "private, max-age=3600")
-                .body(new FileSystemResource(workflows.file(id, name)));
+        return media.shared(workflows.file(id, name));
     }
 }

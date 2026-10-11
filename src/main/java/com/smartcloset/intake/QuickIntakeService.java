@@ -96,7 +96,8 @@ String pool=step.type()==Type.RECOGNIZE?"RECOGNITION":step.type()==Type.GENERATE
     @Override public boolean unknownResource(ProcessingStore.Task task){var error=jobs.get(UUID.fromString(task.businessId())).steps().get(task.stage()).error();return error!=null&&Set.of("PROVIDER_TIMEOUT","PROVIDER_CONNECTION_FAILED","PROVIDER_INTERRUPTED").contains(error.code());}
     @Override public String outcome(ProcessingStore.Task task){return jobs.get(UUID.fromString(task.businessId())).steps().get(task.stage()).status().name();}
     @Override public synchronized void retry(ProcessingStore.Task task){if(!task.pool().equals("CPU")){reconcileKnownResult(task);return;}var job=jobs.get(UUID.fromString(task.businessId()));if(garments.get(job.request().garmentId()).status().equals("TRASHED"))throw ProcessingException.invalid("请先恢复衣物。");var steps=new ArrayList<>(job.steps());for(int i=task.stage();i<steps.size();i++)if(steps.get(i).status()!=Status.SUCCEEDED)steps.set(i,result(job,i,Status.PENDING,null,null,null,null));saveActive(updated(job,Status.RUNNING,steps,job.outputUrl(),null),null);}
-    public boolean canReconcileResult(ProcessingStore.Task task){return task.kind().equals("QUICK")&&Set.of("RECOGNITION","GENERATION").contains(task.pool())&&java.nio.file.Files.isRegularFile(files.directory(UUID.fromString(task.businessId())).resolve(task.pool().equals("RECOGNITION")?"quick-quality.json":"quick-generation.json"));}
+    public boolean canReconcileResult(ProcessingStore.Task task){return task.kind().equals("QUICK")&&Set.of("RECOGNITION","GENERATION").contains(task.pool())&&dataExists(UUID.fromString(task.businessId()),task.pool().equals("RECOGNITION")?"quick-quality.json":"quick-generation.json");}
+    private boolean dataExists(UUID id,String name){try{return files.dataExists(id,name);}catch(IOException e){throw new IllegalStateException(e);}}
     private synchronized void reconcileKnownResult(ProcessingStore.Task task){
         if(!canReconcileResult(task))throw ProcessingException.invalid("尚无完整的模型结果可供本地恢复，请明确发起新识别。");
         var job=jobs.get(UUID.fromString(task.businessId()));if(job.status()==Status.CANCELLED||garments.get(job.request().garmentId()).status().equals("TRASHED"))throw ProcessingException.invalid("衣物或处理已删除/取消，不能发布迟到结果。");
@@ -118,7 +119,7 @@ String pool=step.type()==Type.RECOGNIZE?"RECOGNITION":step.type()==Type.GENERATE
                     byte[] source=source(job);
                     for(var method:java.util.List.of(SegmentationEngine.Method.U2NET,SegmentationEngine.Method.GRABCUT))try{
                         var out=segmentation.uploadBytes(source,method,null,0);
-                        byte[] cutout=java.nio.file.Files.readAllBytes(segmentation.file(UUID.fromString(out.id()),"cutout.png"));
+                        byte[] cutout=segmentation.read(UUID.fromString(out.id()),"cutout.png");
                         display=png(stickers.render(ImageIO.read(new ByteArrayInputStream(cutout))).image());
                         base=cutout;break;
                     }catch(ProcessingException e){if(e.code().equals("PROCESSOR_BUSY"))throw e;}

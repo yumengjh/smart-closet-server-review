@@ -39,6 +39,12 @@ public class ApiExceptionHandler {
             return ResponseEntity.status(webError.getStatusCode())
                     .body(new ErrorBody("HTTP_ERROR", "请求路径、方法或内容类型不受支持。"));
         }
+        for (Throwable t = e; t != null; t = t.getCause())
+            if (t instanceof com.smartcloset.storage.StorageException storage) {
+                log.warn("Image storage unavailable: {}", storage.getMessage());
+                return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).header("Retry-After", "5")
+                        .body(new ErrorBody("STORAGE_UNAVAILABLE", "图片存储暂时不可用，请稍后重试。"));
+            }
         log.error("Image request failed", e);
         return ResponseEntity.internalServerError().body(new ErrorBody("PROCESSING_ERROR", "图片处理失败，请检查服务日志。"));
     }
