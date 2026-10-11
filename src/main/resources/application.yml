@@ -36,7 +36,7 @@ spring:
       max-request-size: 51MB
       file-size-threshold: 0
 closet:
-  quick-intake-enabled: ${CLOSET_QUICK_INTAKE_ENABLED:false}
+  quick-intake-enabled: ${CLOSET_QUICK_INTAKE_ENABLED:true}
   # Recommendation mechanisms of 2026-10-10 (design docs/design/2026-10-09-搭配审美…设计.md 第四十一节). Each switch
   # falls back to the P4 behaviour when false: aesthetic group of the judge, exposure balance, outer layers counting
   # for warmth. Rollback = set to false and restart; no data migration involved.

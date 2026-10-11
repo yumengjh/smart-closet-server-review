@@ -10,7 +10,7 @@
 CLOSET_QUICK_INTAKE_ENABLED=true ./scripts/start-with-agent.sh
 ```
 
-添加衣物页的"快速入柜"按钮由 `CLOSET_QUICK_INTAKE_ENABLED` 控制，默认 `false`，后端为 `false` 时按钮不显示。日常运行必须带上该变量。验证：`GET /api/processing/capabilities`（需登录）返回 `quickIntake: true`。
+添加衣物页的"快速入柜"按钮由 `CLOSET_QUICK_INTAKE_ENABLED` 控制，默认 `true`（2026-10-11 起，此前默认 `false`），设为 `false` 时按钮不显示。验证：`GET /api/processing/capabilities`（需登录）返回 `quickIntake: true`。
 
 不设置 `CLOSET_SERVER_JAR` 时后端从当前源码 `mvn spring-boot:run` 启动，运行的是当前分支代码；设置该变量则运行指定的旧包，不含分支改动。
 

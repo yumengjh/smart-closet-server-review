@@ -7,7 +7,7 @@ import org.springframework.web.bind.annotation.*;
 import java.util.*;
 @RestController
 public class ProcessingController {
- @org.springframework.beans.factory.annotation.Value("${closet.quick-intake-enabled:false}") private boolean quickEnabled;
+ @org.springframework.beans.factory.annotation.Value("${closet.quick-intake-enabled:true}") private boolean quickEnabled;
  @GetMapping("/api/processing/capabilities") public Object capabilities(){return Map.of("quickIntake",quickEnabled);}
  private final ProcessingStore store;private final ProcessingExecutor executor;private final com.smartcloset.intake.QuickIntakeService quick;private final com.smartcloset.security.QuotaPolicy quotas;
  public ProcessingController(ProcessingStore store,ProcessingExecutor executor,com.smartcloset.intake.QuickIntakeService quick,com.smartcloset.security.QuotaPolicy quotas){this.store=store;this.executor=executor;this.quick=quick;this.quotas=quotas;}
