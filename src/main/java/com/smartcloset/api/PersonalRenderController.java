@@ -9,8 +9,8 @@ import com.smartcloset.security.ClosetIdentity;
 import tools.jackson.databind.ObjectMapper;
 @RestController
 public class PersonalRenderController {
-    private final WearerProfiles profiles;private final PrivateMedia media;private final PersonalRenders renders;private final RenderCapabilities capabilities;private final ObjectMapper json;private final com.smartcloset.storage.StoredMedia stored;
-    public PersonalRenderController(WearerProfiles profiles,PrivateMedia media,PersonalRenders renders,RenderCapabilities capabilities,ObjectMapper json,com.smartcloset.storage.StoredMedia stored){this.stored=stored;this.profiles=profiles;this.media=media;this.renders=renders;this.capabilities=capabilities;this.json=json;}
+    private final WearerProfiles profiles;private final PrivateMedia media;private final PersonalRenders renders;private final RenderCapabilities capabilities;private final ObjectMapper json;private final com.smartcloset.storage.StoredMedia stored;private final PoseCards poses;
+    public PersonalRenderController(WearerProfiles profiles,PrivateMedia media,PersonalRenders renders,RenderCapabilities capabilities,ObjectMapper json,com.smartcloset.storage.StoredMedia stored,PoseCards poses){this.poses=poses;this.stored=stored;this.profiles=profiles;this.media=media;this.renders=renders;this.capabilities=capabilities;this.json=json;}
     @GetMapping("/api/me/wearer-profile") public Object profile(){return profiles.get(ClosetIdentity.username());}
     @PutMapping("/api/me/wearer-profile") public Object profile(@RequestBody WearerProfiles.Profile request){return profiles.update(ClosetIdentity.username(),request);}
     @GetMapping("/api/me/wearer-profile/render-preview") public Object preview(){return WearerProfiles.snapshot(profiles.get(ClosetIdentity.username()));}
@@ -22,8 +22,11 @@ public class PersonalRenderController {
     }
     public record Submission(boolean found,PersonalRenders.Job job) {}
     @GetMapping("/api/me/image-render-submissions/{key}") public ResponseEntity<Submission> submission(@PathVariable String key){var job=renders.existingJob(ClosetIdentity.username(),key);return ResponseEntity.ok().header("Cache-Control","no-store").body(new Submission(job!=null,job));}
-    public record Revision(long revision) {}
-    @PostMapping("/api/me/person-baselines/{id}/confirm") public Object confirm(@PathVariable String id,@RequestBody Revision request){return renders.activate(ClosetIdentity.username(),id,request.revision());}
+    public record Revision(long revision,Boolean makeDefault) {}
+    /** makeDefault omitted keeps the old behaviour (confirm and make default). */
+    @PostMapping("/api/me/person-baselines/{id}/confirm") public Object confirm(@PathVariable String id,@RequestBody Revision request){return renders.activate(ClosetIdentity.username(),id,request.revision(),!Boolean.FALSE.equals(request.makeDefault()));}
+    public record Rename(String name) {}
+    @PatchMapping("/api/me/person-baselines/{id}") public Object rename(@PathVariable String id,@RequestBody Rename request){return renders.rename(ClosetIdentity.username(),id,request.name());}
     @DeleteMapping("/api/me/person-baselines/{id}") public ResponseEntity<Void> deleteBaseline(@PathVariable String id,@RequestBody Revision request){renders.deleteBaseline(ClosetIdentity.username(),id,request.revision());return ResponseEntity.noContent().build();}
     @GetMapping("/api/me/reference-photos") public Object photos(){return media.list(ClosetIdentity.username(),"PHOTO");}
     @GetMapping("/api/me/private-media/{id}") public ResponseEntity<?> image(@PathVariable UUID id)throws IOException{
@@ -43,6 +46,12 @@ public class PersonalRenderController {
     @GetMapping("/api/ootd/jobs/{id}") public Object job(@PathVariable String id){renders.sync();return ootd(id);}
     @PostMapping("/api/ootd/jobs/{id}/cancel") public Object cancel(@PathVariable String id){ootd(id);renders.cancel(ClosetIdentity.username(),id);return renders.job(ClosetIdentity.username(),id);}
     @DeleteMapping("/api/ootd/jobs/{id}") public Object delete(@PathVariable String id){ootd(id);return renders.delete(ClosetIdentity.username(),id);}
+    @PostMapping("/api/ootd/jobs/{id}/adjustments") public Object adjust(@RequestHeader("Idempotency-Key") String key,@PathVariable String id,@RequestBody PersonalRenders.Adjustment request){ootd(id);return renders.adjust(ClosetIdentity.username(),key,id,request);}
+    @GetMapping("/api/ootd/poses") public Object poses(){return poses.catalog(ClosetIdentity.username());}
+    @PostMapping(value="/api/ootd/poses/extract",consumes=MediaType.MULTIPART_FORM_DATA_VALUE) public Object extractPose(@RequestPart("file") MultipartFile file)throws IOException{return poses.extract(ClosetIdentity.username(),file.getBytes());}
+    @PostMapping("/api/ootd/poses") public Object createPose(@RequestBody PoseCards.TextRequest request){return poses.createFromText(ClosetIdentity.username(),request);}
+    @PatchMapping("/api/ootd/poses/{id}") public Object renamePose(@PathVariable String id,@RequestBody Rename request){return poses.rename(ClosetIdentity.username(),id,request.name());}
+    @DeleteMapping("/api/ootd/poses/{id}") public ResponseEntity<Void> deletePose(@PathVariable String id){poses.delete(ClosetIdentity.username(),id);return ResponseEntity.noContent().build();}
     public record Feedback(String content) {}
     @PutMapping("/api/ootd/jobs/{id}/feedback") public Object feedback(@PathVariable String id,@RequestBody Feedback request){ootd(id);return renders.feedback(ClosetIdentity.username(),id,request.content());}
 }

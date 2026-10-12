@@ -1,5 +1,7 @@
 # 平台级鱼搭、个人资料与 OOTD 接口
 
+> 2026-10-12：新增多模特命名、OOTD 动作（自动/预设/动作卡）与身材调节，见第 7 节与[设计](design/2026-10-12-多模特、OOTD动作与身材调节设计.md)。
+
 更新：2026-10-07。当前已按[真实上游验收](reports/2026-10-07-照片入口补齐与真实AI启用验收.md)开放 yumg 的人物与 OOTD 用途。设计见[完整设计](design/2026-10-06-平台级鱼搭助手与个人OOTD设计.md)，交付与验证边界见[实施验收](reports/2026-10-07-平台级鱼搭与个人OOTD实施验收.md)。
 
 新增接口沿用登录会话、首次改密和 CSRF。客户端通过 `/api/auth/csrf` 获取令牌，写请求使用现有 `X-XSRF-TOKEN` 和会话 Cookie；跨域仍遵守当前允许源与凭据设置。账号归属来自登录身份，不能在请求中指定其他账号。所有示例 ID、版本和供应商名称均须替换为当前账号实际返回值。
@@ -134,3 +136,18 @@ GET `/api/render-capabilities` 返回用途能力，无上游密钥。默认无�
 私有媒体位于专用存储域，删除首先记录代次和撤销访问，再清理文件/回执/副本；失败重试，不提前声称删除完成。任务只检查实际直接依赖：删除照片A阻止用A的在途人物，不阻止只用已生成B的OOTD。私人媒体不默认进入普通资源备份；旧数据库恢复必须保留并应用最新删除清单。
 
 2026-10-07已按用户授权[部署到8080/8091](reports/2026-10-07-8080平台级鱼搭部署记录.md)。其他环境部署前按[实施报告部署与回退说明](reports/2026-10-07-平台级鱼搭与个人OOTD实施验收.md#10-部署与回退操作说明)备份、同步Spring/Node、使用唯一版本JAR并核验迁移与权限。真实模型用途未验证保持关闭；天气仅有扩展协议，真实天气接入后续独立实施。
+
+## 7. 多模特、动作与身材调节（2026-10-12）
+
+| 方法与路径 | 用途 |
+| --- | --- |
+| PATCH `/api/me/person-baselines/{id}` | `{ "name": "长发的我" }`，1–20 字；不改 revision |
+| POST `/api/me/person-baselines/{id}/confirm` | 新增可选 `makeDefault`（默认 true）；false 只确认、不换默认 |
+| POST `/api/me/person-baselines`、`…/upload-and-generate` | 请求可带 `name`，省略时为「模特 N」 |
+| GET `/api/ootd/poses` | 预设动作、我的动作卡、今日提取次数与上限 |
+| POST `/api/ootd/poses/extract` | multipart `file`；同步识图提取动作卡，原图不保存；每天 20 次 |
+| POST `/api/ootd/poses` | `{ name, description, tags }` 文字新建 |
+| PATCH / DELETE `/api/ootd/poses/{id}` | 改名、删除 |
+| POST `/api/ootd/jobs/{id}/adjustments` | `Idempotency-Key`；`{ build, shoulders, waist, hips, legs }` 各 −2..2；新图，原图保留，1 个图像额度 |
+
+准备请求新增可选 `pose`：`{ "mode": "AUTO" }`（默认）、`{ "mode": "PRESET", "id": "hand-on-hip" }`、`{ "mode": "CUSTOM", "id": "动作卡ID" }`；准备响应返回解析后的 `pose`。任务新增 `parentJobId`（身材调节的原图）与 `summary`（模特名、动作名、调整值，仅展示）。

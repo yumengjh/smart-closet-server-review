@@ -110,7 +110,7 @@ public class RecognitionService {
             fields.put("messages", List.of(Map.of("role", "system", "content", r.prompt()), Map.of("role", "user", "content", List.of(
                 Map.of("type", "text", "text", instructions),
                 Map.of("type", "image_url", "image_url", Map.of("url", "data:image/png;base64," + encoded))))));
-            fields.put("response_format", Map.of("type", "json_schema", "json_schema", Map.of("name", Objects.toString(r.schemaVersion(), "").startsWith("ootd-") ? "ootd_sample" : "garment_metadata", "strict", true, "schema", r.schema())));
+            fields.put("response_format", Map.of("type", "json_schema", "json_schema", Map.of("name", Objects.toString(r.schemaVersion(), "").startsWith("ootd-") ? "ootd_sample" : Objects.toString(r.schemaVersion(), "").startsWith("pose-") ? "pose_card" : "garment_metadata", "strict", true, "schema", r.schema())));
         } else {
             path = "/models/" + r.model().replaceFirst("^models/", "") + ":generateContent";
             fields.put("systemInstruction", Map.of("parts", List.of(Map.of("text", r.prompt()))));
