@@ -12,7 +12,23 @@ public class ProcessingController {
  private final ProcessingStore store;private final ProcessingExecutor executor;private final com.smartcloset.intake.QuickIntakeService quick;private final com.smartcloset.security.QuotaPolicy quotas;
  public ProcessingController(ProcessingStore store,ProcessingExecutor executor,com.smartcloset.intake.QuickIntakeService quick,com.smartcloset.security.QuotaPolicy quotas){this.store=store;this.executor=executor;this.quick=quick;this.quotas=quotas;}
  private ProcessingStore.Task own(String id){var task=store.get(id);if(!Objects.equals(task.owner(),ClosetIdentity.username()))throw new ProcessingException(HttpStatus.NOT_FOUND,"TASK_NOT_FOUND","任务不存在。");return task;}
- @GetMapping("/api/processing/tasks") public Object tasks(@RequestParam(defaultValue="1") int page,@RequestParam(defaultValue="100") int size){return Map.of("items",store.list(ClosetIdentity.username(),page,size));}
+ @GetMapping("/api/processing/tasks") public Object tasks(@RequestParam(defaultValue="1") int page,@RequestParam(defaultValue="100") int size){return Map.of("items",store.list(ClosetIdentity.username(),page,size).stream().map(this::view).toList());}
+ /**
+  * The user's queue also says which garment a step belongs to (so the page can open it), whether "check returned result"
+  * can actually work, and whether a newer job for the same garment already replaced a failed one (then it is history).
+  */
+ private Map<String,Object> view(ProcessingStore.Task t){
+  var out=new LinkedHashMap<String,Object>();out.put("id",t.id());out.put("kind",t.kind());out.put("businessId",t.businessId());out.put("stage",t.stage());out.put("owner",t.owner());out.put("pool",t.pool());out.put("account",t.account());out.put("status",t.status());out.put("createdAt",t.createdAt());out.put("waitReason",t.waitReason());out.put("error",t.error());
+  String garment=null;boolean superseded=false;
+  if(Set.of("WORKFLOW","QUICK").contains(t.kind())){
+   var rows=store.db().query("SELECT garment_id,created_at_ms FROM workflow_job WHERE id=?",(r,n)->new Object[]{r.getString(1),r.getLong(2)},t.businessId());
+   if(!rows.isEmpty()&&rows.getFirst()[0]!=null){garment=(String)rows.getFirst()[0];
+    if(Set.of("FAILED","UNKNOWN").contains(t.status()))superseded=store.db().queryForObject("SELECT COUNT(*) FROM workflow_job WHERE garment_id=? AND created_at_ms>? AND id<>?",Integer.class,garment,rows.getFirst()[1],t.businessId())>0;}
+  }
+  out.put("garmentId",garment);out.put("superseded",superseded);
+  out.put("reconcilable",Set.of("FAILED","UNKNOWN").contains(t.status())&&(t.pool().equals("CPU")||quick.canReconcileResult(t)));
+  return out;
+ }
  @GetMapping("/api/processing/tasks/{id}") public Object task(@PathVariable String id){var task=own(id);return Map.of("task",task,"attempts",store.db().queryForList("SELECT attempt_no,status,dispatched,quota_date,quota_units,started_at_ms,finished_at_ms,usage_json,error_message FROM execution_attempt WHERE task_id=? ORDER BY attempt_no",id),"input",store.db().queryForList("SELECT dependency_key,input_version FROM execution_task WHERE id=?",id));}
  @PostMapping("/api/processing/tasks/{id}/cancel") public Object cancel(@PathVariable String id){own(id);executor.cancel(id);return own(id);}
  @PostMapping("/api/processing/tasks/{id}/retry") public Object retry(@PathVariable String id){var task=own(id);if((!task.pool().equals("CPU")&&!quick.canReconcileResult(task))||!Set.of("FAILED","UNKNOWN").contains(task.status()))throw ProcessingException.invalid("仅支持安全的本地阶段恢复；云端请从衣物详情明确发起新任务。");executor.retry(id);return own(id);}

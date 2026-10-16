@@ -44,12 +44,12 @@ public class NotificationService {
     }
 
     public List<Notification> list(String owner, int limit) {
-        return db.query("SELECT id,kind,title,body,href,payload_json,created_at_ms,read_at_ms FROM user_notification WHERE owner_username=? ORDER BY created_at_ms DESC, id LIMIT ?",
+        return db.query("SELECT id,kind,title,body,href,payload_json,created_at_ms,read_at_ms FROM user_notification WHERE owner_username=? AND dismissed_at_ms IS NULL ORDER BY created_at_ms DESC, id LIMIT ?",
             (r, i) -> new Notification(r.getString(1), owner, r.getString(2), r.getString(3), r.getString(4), r.getString(5),
                 r.getString(6) == null ? Map.of() : json.readValue(r.getString(6), Map.class), r.getLong(7), (Long) r.getObject(8)), owner, Math.max(1, Math.min(100, limit)));
     }
 
-    public int unread(String owner) { return db.queryForObject("SELECT COUNT(*) FROM user_notification WHERE owner_username=? AND read_at_ms IS NULL", Integer.class, owner); }
+    public int unread(String owner) { return db.queryForObject("SELECT COUNT(*) FROM user_notification WHERE owner_username=? AND read_at_ms IS NULL AND dismissed_at_ms IS NULL", Integer.class, owner); }
 
     /** Marks one notification read; false when it is not this user's. */
     public boolean read(String owner, String id) {
@@ -57,6 +57,17 @@ public class NotificationService {
     }
 
     public int readAll(String owner) { return db.update("UPDATE user_notification SET read_at_ms=? WHERE owner_username=? AND read_at_ms IS NULL", System.currentTimeMillis(), owner); }
+
+    /** Hides one notification (also marks it read); false when it is not this user's. The row stays for its dedupe key. */
+    public boolean dismiss(String owner, String id) {
+        long now = System.currentTimeMillis();
+        return db.update("UPDATE user_notification SET dismissed_at_ms=COALESCE(dismissed_at_ms,?), read_at_ms=COALESCE(read_at_ms,?) WHERE owner_username=? AND id=?", now, now, owner, id) > 0;
+    }
+
+    public int dismissAll(String owner) {
+        long now = System.currentTimeMillis();
+        return db.update("UPDATE user_notification SET dismissed_at_ms=?, read_at_ms=COALESCE(read_at_ms,?) WHERE owner_username=? AND dismissed_at_ms IS NULL", now, now, owner);
+    }
 
     private static String cut(String s, int max) { return s == null ? "" : s.length() <= max ? s : s.substring(0, max - 1) + "…"; }
 }

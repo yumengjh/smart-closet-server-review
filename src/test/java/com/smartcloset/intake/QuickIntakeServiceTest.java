@@ -107,5 +107,18 @@ class QuickIntakeServiceTest {
   assertTrue(restored.task().steps().subList(2,4).stream().allMatch(step->step.status()==com.smartcloset.workflow.Workflow.Status.SKIPPED));
   assertEquals(0,store.db().queryForObject("SELECT COUNT(*) FROM execution_attempt a JOIN execution_task t ON a.task_id=t.id WHERE t.business_id=? AND a.dispatched=1",Integer.class,job.id().toString()));
  }
+ @Autowired com.smartcloset.api.ProcessingController processing;
+ /** The task page opens the garment of a failed cloud step, offers "use returned result" only when it can work, and drops a failure once a redo exists. */
+ @Test @SuppressWarnings("unchecked") void queueViewLinksGarmentAndKnowsWhenAFailureWasRedone()throws Exception{
+  var view=quick.create(UUID.randomUUID(),new QuickIntakeService.Options("UPLOAD_READY",null,null,false),photo());String id=view.intakeId().toString();
+  store.enqueue("QUICK",id,2,owner,"GENERATION",null,20);store.db().update("UPDATE execution_task SET status='FAILED',error_message='服务商不接受当前请求（HTTP 400）' WHERE business_id=? AND stage=2",id);
+  java.util.function.Supplier<Map<String,Object>> row=()->((java.util.List<Map<String,Object>>)((Map<String,Object>)processing.tasks(1,100)).get("items")).stream().filter(m->id.equals(m.get("businessId"))&&Integer.valueOf(2).equals(m.get("stage"))).findFirst().orElseThrow();
+  assertEquals(view.garmentId().toString(),row.get().get("garmentId"));
+  assertEquals(false,row.get().get("reconcilable"),"no returned result kept: the server would refuse a check");
+  assertEquals(false,row.get().get("superseded"));
+  var redo=quick.create(UUID.randomUUID(),new QuickIntakeService.Options("UPLOAD_READY",null,null,false),photo());
+  store.db().update("UPDATE workflow_job SET garment_id=?,created_at_ms=created_at_ms+60000 WHERE id=?",view.garmentId().toString(),redo.intakeId().toString());
+  assertEquals(true,row.get().get("superseded"));
+ }
  @Test void malformedLocationNeverCreatesWorkflow()throws Exception{int before=store.db().queryForObject("SELECT COUNT(*) FROM workflow_job",Integer.class);assertThrows(ProcessingException.class,()->quick.create(UUID.randomUUID(),new QuickIntakeService.Options("BASE_READY",null,new QuickIntakeService.Hint("BOX",.8,.2,.4,.4),false),photo()));assertEquals(before,store.db().queryForObject("SELECT COUNT(*) FROM workflow_job",Integer.class));}
 }

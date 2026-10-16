@@ -171,6 +171,15 @@ class ImageSearchApiTest {
         assertEquals(404, other.send("POST", "/api/notifications/" + nid + "/read", null).statusCode());
         assertEquals(0, other.ok("GET", "/api/notifications", null).path("items").size());
         assertEquals(0, me.ok("POST", "/api/notifications/read-all", null).path("unread").asInt());
+        // Deleting hides a notice (one or all); someone else cannot delete it.
+        int shown = me.ok("GET", "/api/notifications", null).path("items").size();
+        assertEquals(404, other.send("DELETE", "/api/notifications/" + nid, null).statusCode());
+        me.ok("DELETE", "/api/notifications/" + nid, null);
+        var afterDelete = me.ok("GET", "/api/notifications", null);
+        assertEquals(shown - 1, afterDelete.path("items").size());
+        for (var i : afterDelete.path("items")) assertNotEquals(nid, i.path("id").asText());
+        me.ok("DELETE", "/api/notifications", null);
+        assertEquals(0, me.ok("GET", "/api/notifications", null).path("items").size());
 
         // Super search with a picture: model-based look first, same response shape as the text search.
         var pic = me.multipart("/api/garments/search", navyTee, Map.of());

@@ -34,6 +34,20 @@ public class NotificationController {
         return Map.of("unread", notifications.unread(owner));
     }
 
+    @DeleteMapping("/{id}")
+    public Map<String, Object> delete(@PathVariable UUID id) {
+        String owner = ClosetIdentity.username();
+        if (!notifications.dismiss(owner, id.toString())) throw new ProcessingException(HttpStatus.NOT_FOUND, "NOTIFICATION_NOT_FOUND", "没有找到这条通知。");
+        return Map.of("unread", notifications.unread(owner));
+    }
+
+    @DeleteMapping
+    public Map<String, Object> deleteAll() {
+        String owner = ClosetIdentity.username();
+        notifications.dismissAll(owner);
+        return Map.of("unread", notifications.unread(owner));
+    }
+
     static Map<String, Object> view(NotificationService.Notification n) {
         var out = new LinkedHashMap<String, Object>();
         out.put("id", n.id()); out.put("kind", n.kind()); out.put("title", n.title()); out.put("body", n.body()); out.put("href", n.href());
