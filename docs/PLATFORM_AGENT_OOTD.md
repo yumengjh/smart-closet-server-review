@@ -74,6 +74,7 @@ selectedGarmentIds 省略时检查全部真实衣物，传空数组表示没有�
 | POST `/api/ootd/preparations` | 已保存搭配与确认人物的免费检查、冻结与10分钟准备 |
 | POST `/api/ootd/jobs` | `Idempotency-Key`，`{ "preparationId": "准备ID" }`，确认后提交单张 |
 | GET `/api/ootd/jobs` / GET `/api/ootd/jobs/{id}` | 本人持久结果与安全状态 |
+| POST `/api/ootd/jobs/{id}/retry` | 需 `Idempotency-Key`；只对没有生成出图片的任务（UNKNOWN / FAILED / CANCELLED）可用，沿用原来的冻结输入再提交一次并再用 1 个图像额度；新任务 summary 带 `retryOf`；从不自动调用 |
 | POST `/api/ootd/jobs/{id}/cancel` | 停止本平台后续发布，UNKNOWN 也可停止 |
 | DELETE `/api/ootd/jobs/{id}` | 永久删除该 OOTD，不进入回收站 |
 | PUT `/api/ootd/jobs/{id}/feedback` | `{ "content": "衣物花纹变化" }`，不会自动重生 |

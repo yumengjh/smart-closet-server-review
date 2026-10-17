@@ -64,7 +64,7 @@ public class ProcessingStore {
     public long tomorrow(){return LocalDate.now(ZoneId.of("Asia/Shanghai")).plusDays(1).atStartOfDay(ZoneId.of("Asia/Shanghai")).toInstant().toEpochMilli();}
     public void recover(){
         var rows=db.query("SELECT a.id,a.task_id,a.dispatched FROM execution_attempt a WHERE a.finished_at_ms IS NULL",(r,n)->List.of(r.getString(1),r.getString(2),r.getInt(3)));
-        for(var r:rows){boolean sent=(int)r.get(2)==1;finishAttempt((String)r.get(0),sent?"UNKNOWN":"INTERRUPTED","进程中断");db.update("UPDATE execution_task SET status=?,claim_token=NULL,wait_reason=?,next_run_at_ms=? WHERE id=? AND status IN ('RUNNING','CANCEL_REQUESTED')",sent?"UNKNOWN":"QUEUED",sent?"已发送，结果不确定，不自动重发":"本地或未发送任务恢复",System.currentTimeMillis(),r.get(1));}
+        for(var r:rows){boolean sent=(int)r.get(2)==1;finishAttempt((String)r.get(0),sent?"UNKNOWN":"INTERRUPTED","进程中断");db.update("UPDATE execution_task SET status=?,claim_token=NULL,wait_reason=?,error_message=CASE WHEN ? THEN ? ELSE error_message END,next_run_at_ms=? WHERE id=? AND status IN ('RUNNING','CANCEL_REQUESTED')",sent?"UNKNOWN":"QUEUED",sent?"已发送，结果不确定，不自动重发":"本地或未发送任务恢复",sent,"服务重启打断了这次请求，上游可能已经生成但没有收到结果；不会自动重发，请确认后手动重新生成。",System.currentTimeMillis(),r.get(1));}
         db.update("UPDATE execution_task SET status='QUEUED',claim_token=NULL WHERE status='RUNNING'");
         db.update("UPDATE execution_task e SET status='SUCCEEDED' WHERE e.status='UNKNOWN' AND e.kind IN ('WORKFLOW','QUICK') AND EXISTS(SELECT 1 FROM workflow_step s WHERE s.job_id=e.business_id AND s.step_no=e.stage AND s.status='SUCCEEDED')");
         db.update("UPDATE execution_task SET status='CANCELLED',claim_token=NULL WHERE status='CANCEL_REQUESTED'");

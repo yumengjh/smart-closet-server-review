@@ -91,6 +91,21 @@ public class PersonalRenders {
         String baseline=db.queryForObject("SELECT baseline_id FROM outfit_plan WHERE id=?",String.class,preparationId);long baselineRevision=db.queryForObject("SELECT baseline_revision FROM outfit_plan WHERE id=?",Long.class,preparationId);var b=baseline(owner,baseline);if(!b.status().equals("CONFIRMED")||b.revision()!=baselineRevision)throw conflict("人物已变化，请重新准备。");
         var frozen=json.readValue(db.queryForObject("SELECT input_json FROM outfit_plan WHERE id=?",String.class,preparationId),Frozen.class);if(frozen.profile().path("profileRevision").asLong()!=profiles.get(owner).revision())throw conflict("资料已变化，请重新核对本次输入。");validate(owner,frozen);quota(owner);var summary=json.createObjectNode().put("kind","OOTD").put("model",b.name());if(frozen.pose()!=null&&!frozen.pose().isNull())summary.put("pose",frozen.pose().path("name").asText());return insert(owner,key,"OOTD",baseline,preparationId,frozen,null,summary);
     });}
+    /**
+     * Manual re-submission of an OOTD that ended without a picture (result unknown, failed or cancelled). The frozen input is
+     * reused and one new image quota unit is spent; the old job stays as a record. Never automatic: an unknown result may
+     * already have been generated and charged upstream.
+     */
+    public Job retry(String owner,String key,String sourceId){return tx.execute(t -> {lock(owner);var prior=existing(owner,key);if(prior!=null){if(!prior.purpose().equals("OOTD"))throw conflict("幂等标识已用于另一用途。");return prior;}
+        var source=job(owner,sourceId);
+        if(!source.purpose().equals("OOTD")||source.mediaUrl()!=null||!Set.of("UNKNOWN","FAILED","CANCELLED").contains(source.status()))throw conflict("只有没有生成出图片的 OOTD 任务可以重新生成。");
+        Frozen frozen;try{frozen=input(sourceId);}catch(RuntimeException e){throw conflict("原任务的生成参数已清理，请回到上方重新准备。");}
+        if(frozen.generation()==null)throw conflict("原任务的生成参数已清理，请回到上方重新准备。");
+        if(source.baselineId()!=null){var b=baseline(owner,source.baselineId());if(!b.status().equals("CONFIRMED"))throw conflict("这个模特已变化，请回到上方重新准备。");}
+        validate(owner,frozen);quota(owner);
+        var summary=source.summary()!=null&&source.summary().isObject()?((tools.jackson.databind.node.ObjectNode)source.summary()).deepCopy():json.createObjectNode().put("kind","OOTD");summary.put("retryOf",sourceId);
+        return insert(owner,key,"OOTD",source.baselineId(),null,frozen,null,summary);
+    });}
     private Job insert(String owner,String key,String purpose,String baseline,String plan,Frozen input,String parent,JsonNode summary){String id=UUID.randomUUID().toString();long now=System.currentTimeMillis();db.update("INSERT INTO image_render_job(id,owner_username,purpose,baseline_id,plan_id,input_json,status,idempotency_key,created_at_ms,updated_at_ms,parent_job_id,summary_json) VALUES(?,?,?,?,?,?,'QUEUED',?,?,?,?,?)",id,owner,purpose,baseline,plan,json.writeValueAsString(input),key,now,now,parent,summary==null?null:json.writeValueAsString(summary));for(var r:input.references())if(r.mediaId()!=null)db.update("INSERT INTO render_media_dependency VALUES(?,?,?)",id,r.mediaId(),r.deletionEpoch());return job(owner,id);}
     public Frozen input(String id){return json.readValue(db.queryForObject("SELECT input_json FROM image_render_job WHERE id=?",String.class,id),Frozen.class);}
     private void validate(String owner,Frozen input){if(input.personalization()!=null&&!input.personalization().isNull()&&!input.personalization().equals(json.readTree(json.writeValueAsBytes(memories.modelInput(owner,Set.of(input.purpose()))))))throw conflict("记忆或用途授权已经改变，请重新核对输入。");var c=capabilities.require(input.generation().provider(),input.generation().model(),input.purpose(),input.references().size());if(c.version()!=input.capabilityVersion()||!generation.revision(c.provider()).equals(input.providerRevision()))throw conflict("模型能力配置已变化，请重新准备。");

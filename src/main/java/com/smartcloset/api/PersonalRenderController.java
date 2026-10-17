@@ -46,6 +46,7 @@ public class PersonalRenderController {
     @GetMapping("/api/ootd/jobs/{id}") public Object job(@PathVariable String id){renders.sync();return ootd(id);}
     @PostMapping("/api/ootd/jobs/{id}/cancel") public Object cancel(@PathVariable String id){ootd(id);renders.cancel(ClosetIdentity.username(),id);return renders.job(ClosetIdentity.username(),id);}
     @DeleteMapping("/api/ootd/jobs/{id}") public Object delete(@PathVariable String id){ootd(id);return renders.delete(ClosetIdentity.username(),id);}
+    @PostMapping("/api/ootd/jobs/{id}/retry") public Object retry(@RequestHeader("Idempotency-Key") String key,@PathVariable String id){ootd(id);return renders.retry(ClosetIdentity.username(),key,id);}
     @PostMapping("/api/ootd/jobs/{id}/adjustments") public Object adjust(@RequestHeader("Idempotency-Key") String key,@PathVariable String id,@RequestBody PersonalRenders.Adjustment request){ootd(id);return renders.adjust(ClosetIdentity.username(),key,id,request);}
     @GetMapping("/api/ootd/poses") public Object poses(){return poses.catalog(ClosetIdentity.username());}
     @PostMapping(value="/api/ootd/poses/extract",consumes=MediaType.MULTIPART_FORM_DATA_VALUE) public Object extractPose(@RequestPart("file") MultipartFile file)throws IOException{return poses.extract(ClosetIdentity.username(),file.getBytes());}

@@ -43,9 +43,11 @@ public class PoseCards {
     private final ObjectMapper json;
     private final PoseExtractor extractor;
     private final List<Pose> presets;
+    private final boolean minorCheck;
 
-    public PoseCards(JdbcTemplate db, ObjectMapper json, PoseExtractor extractor) {
-        this.db = db; this.json = json; this.extractor = extractor;
+    public PoseCards(JdbcTemplate db, ObjectMapper json, PoseExtractor extractor,
+                     @org.springframework.beans.factory.annotation.Value("${closet.ootd.pose-minor-check-enabled:false}") boolean minorCheck) {
+        this.db = db; this.json = json; this.extractor = extractor; this.minorCheck = minorCheck;
         var raw = json.readValue(load("/ootd/pose-presets.json"), new TypeReference<List<Map<String, Object>>>() {});
         this.presets = raw.stream().map(p -> new Pose((String) p.get("id"), (String) p.get("name"), "PRESET", (String) p.get("description"),
             json.convertValue(p.get("tags"), new TypeReference<List<String>>() {}), keypoints(json.valueToTree(p.get("keypoints"))),
@@ -53,6 +55,11 @@ public class PoseCards {
     }
 
     public static String prompt() { return PROMPT; }
+
+    /** Without the minor check the prompt no longer offers MINOR_LIKELY as a reason to refuse. */
+    public static String prompt(boolean minorCheck) {
+        return minorCheck ? PROMPT : PROMPT.lines().filter(line -> !line.contains("MINOR_LIKELY")).collect(java.util.stream.Collectors.joining("\n")) + "\n";
+    }
 
     public List<Pose> presets() { return presets; }
 
@@ -129,10 +136,12 @@ public class PoseCards {
     Pose normalize(JsonNode raw) {
         if (raw == null || !raw.isObject()) throw failure("POSE_INVALID_OUTPUT", "模型没有返回有效的动作结果，请换一张图片再试。");
         String reason = raw.path("rejectReason").asText("NONE");
+        // The minor check is off by default: a model that still flags a picture only counts if it also refused it outright.
+        if (!minorCheck && "MINOR_LIKELY".equals(reason) && raw.path("accepted").asBoolean(false)) reason = "NONE";
         if (!raw.path("accepted").asBoolean(false) || !"NONE".equals(reason)) {
             String message = switch (reason) {
                 case "NO_PERSON" -> "没有看清图片里的人物动作，请换一张人物更完整、更清晰的图片。";
-                case "MINOR_LIKELY" -> "图片中的人物可能未成年，不能用于提取动作。";
+                case "MINOR_LIKELY" -> minorCheck ? "图片中的人物可能未成年，不能用于提取动作。" : "这张图片暂时无法提取动作，请换一张人物完整、清晰的图片。";
                 case "NUDITY" -> "这张图片不适合作为穿搭动作参考，请换一张。";
                 default -> "这张图片不适合提取动作，请换一张人物完整、清晰的图片。";
             };

@@ -28,7 +28,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
 
 /** Issue #42: several named models, OOTD poses (auto / preset / extracted card) and body adjustments of a finished OOTD. */
-@SpringBootTest(properties = {"spring.config.import=optional:file:./target/no-local-secrets.yml", "closet.model-path=target/absent-person-model.onnx",
+@SpringBootTest(properties = {"spring.config.import=optional:file:./target/no-local-secrets.yml", "closet.model-path=target/absent-person-model.onnx", "closet.ootd.pose-minor-check-enabled=true",
     "generation.providers.fixture.protocol=OPENAI_IMAGES", "generation.providers.fixture.api-key=fake-local-test", "generation.providers.fixture.default-model=fixture-image"})
 class ModelsPosesAdjustmentsTest {
     @TempDir static Path storage;
@@ -165,6 +165,27 @@ class ModelsPosesAdjustmentsTest {
         assertThrows(ProcessingException.class, () -> renders.adjust(owner, "after-delete", done.id(), new PersonalRenders.Adjustment(null, null, 1, 0, 0, 0, 0)));
     }
 
+    @Test void interruptedOotdCanBeResubmittedManuallyOnce() throws Exception {
+        String owner = owner(); profiles.update(owner, new WearerProfiles.Profile(0, "MALE", null, null, null, Map.of(), Map.of(), null)); verified("BASELINE"); verified("OOTD");
+        var person = model(owner, "默认", true);
+        UUID top = garment(owner, "衬衫"), bottom = garment(owner, "长裤"); var saved = outfit(owner, top, bottom);
+        var prepared = renders.prepare(owner, new PersonalRenders.PreparationRequest(saved.id(), saved.revision(), UUID.fromString(person.id()), person.revision(), List.of(top, bottom), null, false, "fixture", "fixture-image", false, new PoseCards.Choice("PRESET", "hand-on-hip")));
+        var first = renders.submitOotd(owner, "interrupted-ootd", prepared.id());
+        assertEquals("SUCCEEDED", completed(owner, first.id()).status());
+        assertThrows(ProcessingException.class, () -> renders.retry(owner, "retry-finished", first.id()), "A finished picture is never resubmitted");
+
+        // The process was interrupted after dispatch: the job has no picture and its result is unknown.
+        db.update("UPDATE image_render_job SET status='UNKNOWN',media_id=NULL WHERE id=?", first.id());
+        var again = renders.retry(owner, "retry-1", first.id());
+        assertNotEquals(first.id(), again.id());
+        assertEquals(first.id(), again.summary().path("retryOf").asText());
+        assertEquals("单手叉腰", again.summary().path("pose").asText(), "The retry keeps model and pose");
+        assertEquals(renders.input(first.id()).generation().prompt(), renders.input(again.id()).generation().prompt());
+        assertEquals(again.id(), renders.retry(owner, "retry-1", first.id()).id(), "The same key returns the same job");
+        assertEquals("SUCCEEDED", completed(owner, again.id()).status());
+        assertThrows(ProcessingException.class, () -> renders.retry(owner(), "retry-other", first.id()), "Another account cannot resubmit it");
+    }
+
     @Test void extractedPoseKeepsOnlyDescriptionAndJoints() {
         String owner = owner();
         when(extractor.extract(any())).thenReturn(new PoseExtractor.Extraction(json.readTree("""
@@ -216,5 +237,7 @@ class ModelsPosesAdjustmentsTest {
         assertFalse(schema.path("additionalProperties").asBoolean(true));
         assertEquals(schema.path("properties").size(), schema.path("required").size());
         assertTrue(PoseCards.prompt().contains("禁止描述"));
+        assertFalse(PoseCards.prompt(false).contains("MINOR_LIKELY"), "Minor check off: the prompt no longer offers that refusal");
+        assertTrue(PoseCards.prompt(true).contains("MINOR_LIKELY"));
     }
 }
