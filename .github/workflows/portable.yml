@@ -1,0 +1,344 @@
+name: Portable package
+
+# Builds the portable package (docs/PORTABLE_PACKAGE.md): one archive per platform with a trimmed Java runtime, Node,
+# the server (frontend included), the agent, every local model and a launcher menu. Each archive is extracted and
+# smoke-tested on its own platform. Pushing a tag v* also attaches the archives to that tag's GitHub release.
+# Needs the secret FRONTEND_DEPLOY_KEY: a read-only deploy key of the private frontend repository yumengjh/smart-closet.
+on:
+  push:
+    tags: ["v*"]
+    branches: ["**"]
+    paths:
+      - "portable/**"
+      - ".github/workflows/portable.yml"
+      - "src/main/java/com/smartcloset/portable/**"
+  workflow_dispatch:
+    inputs:
+      platforms:
+        description: "平台，逗号分隔：linux-x64,linux-arm64,macos-arm64,macos-x64,windows-x64，或 all"
+        default: all
+      frontend_ref:
+        description: "前端仓库 smart-closet 的分支、标签或提交"
+        default: main
+      server_tests:
+        description: "同时运行服务端完整测试（mvn verify）"
+        type: boolean
+        default: true
+      release:
+        description: "把压缩包发布到预发布版本 portable-latest（标签 v* 推送时总会发布到对应版本）"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: portable-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: "24"
+  JAVA_VERSION: "21"
+
+jobs:
+  prepare:
+    name: Plan
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.plan.outputs.version }}
+      matrix: ${{ steps.plan.outputs.matrix }}
+      models_key: ${{ steps.plan.outputs.models_key }}
+    steps:
+      - uses: actions/checkout@v5
+      - id: plan
+        env:
+          PLATFORMS: ${{ inputs.platforms || 'all' }}
+          MODELS_KEY: portable-models-v1-${{ hashFiles('scripts/download-model.sh', 'scripts/download-embedding-model.sh', 'scripts/export_image_model.py', 'scripts/export-image-model.sh') }}
+        run: |
+          set -euo pipefail
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then version="${GITHUB_REF_NAME#v}"; else version="0.0.0-dev.${GITHUB_SHA:0:7}"; fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "models_key=$MODELS_KEY" >> "$GITHUB_OUTPUT"
+          # native = JavaCPP classifier (pom.xml native.platform); archive = what the platform opens by double-click;
+          # maven = extra build flags (ONNX Runtime 1.24+ has no macOS x64 library, so that package stays on 1.23.2).
+          all='[
+            {"platform":"linux-x64","os":"ubuntu-24.04","native":"linux-x86_64","archive":"tar.gz"},
+            {"platform":"linux-arm64","os":"ubuntu-24.04-arm","native":"linux-arm64","archive":"tar.gz"},
+            {"platform":"macos-arm64","os":"macos-15","native":"macosx-arm64","archive":"zip"},
+            {"platform":"macos-x64","os":"macos-15-intel","native":"macosx-x86_64","archive":"zip","maven":"-Donnxruntime.version=1.23.2"},
+            {"platform":"windows-x64","os":"windows-2022","native":"windows-x86_64","archive":"zip"}
+          ]'
+          if [ "$PLATFORMS" = all ]; then selected="$all"
+          else selected=$(jq -c --arg p "$PLATFORMS" '($p | split(",") | map(gsub("\\s";""))) as $want | map(select(.platform as $x | $want | index($x)))' <<< "$all"); fi
+          [ "$(jq length <<< "$selected")" -gt 0 ] || { echo "::error::没有匹配的平台：$PLATFORMS"; exit 1; }
+          echo "matrix=$(jq -c '{include: .}' <<< "$selected")" >> "$GITHUB_OUTPUT"
+          echo "### 便携包 $version" >> "$GITHUB_STEP_SUMMARY"
+          echo "平台：$(jq -r 'map(.platform) | join(", ")' <<< "$selected")" >> "$GITHUB_STEP_SUMMARY"
+
+  frontend:
+    name: Build frontend
+    needs: prepare
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          path: server
+      - name: Check frontend access
+        env:
+          KEY: ${{ secrets.FRONTEND_DEPLOY_KEY }}
+        run: '[ -n "$KEY" ] || { echo "::error::缺少 secret FRONTEND_DEPLOY_KEY（私有前端仓库 yumengjh/smart-closet 的只读 deploy key）"; exit 1; }'
+      - uses: actions/checkout@v5
+        with:
+          repository: yumengjh/smart-closet
+          ref: ${{ inputs.frontend_ref || 'main' }}
+          ssh-key: ${{ secrets.FRONTEND_DEPLOY_KEY }}
+          path: web
+      - uses: actions/setup-node@v5
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - name: Test and build into the server's static resources
+        working-directory: web
+        env:
+          CLOSET_SERVER_DIR: ${{ github.workspace }}/server
+          CLOSET_APP_VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          npm ci
+          npm test
+          npm run build:server
+          echo "前端提交：$(git rev-parse --short HEAD)" >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: frontend
+          retention-days: 1
+          path: |
+            server/src/main/resources/static
+            server/src/main/resources/person-stickers
+
+  agent:
+    name: Build agent runtime
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: agent-runtime/package-lock.json
+      - name: Test, build and keep production dependencies only
+        working-directory: agent-runtime
+        run: |
+          set -euo pipefail
+          npm ci && npm test && npm run build
+          # Production dependencies are plain JavaScript, so one build serves every platform.
+          mkdir -p ../agent-bundle && cp -r dist package.json package-lock.json ../agent-bundle/
+          (cd ../agent-bundle && npm ci --omit=dev --ignore-scripts && rm package-lock.json)
+          tar -czf ../agent-bundle.tgz -C ../agent-bundle .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: agent
+          retention-days: 1
+          compression-level: 0
+          path: agent-bundle.tgz
+
+  models:
+    name: Prepare models
+    needs: prepare
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v5
+      - name: Restore portable models
+        id: cached
+        uses: actions/cache/restore@v4
+        with:
+          path: .portable-models
+          key: ${{ needs.prepare.outputs.models_key }}
+          enableCrossOsArchive: true
+          lookup-only: true
+      - name: Download matting and text embedding models
+        if: steps.cached.outputs.cache-hit != 'true'
+        run: bash scripts/download-model.sh && bash scripts/download-embedding-model.sh
+      # Same key as deploy.yml, so an export already made for deployment is reused.
+      - name: Restore exported image-text model
+        if: steps.cached.outputs.cache-hit != 'true'
+        id: clip
+        uses: actions/cache/restore@v4
+        with:
+          path: .image-model
+          key: image-model-${{ hashFiles('scripts/export_image_model.py', 'scripts/export-image-model.sh') }}
+      - uses: astral-sh/setup-uv@v6
+        if: steps.cached.outputs.cache-hit != 'true' && steps.clip.outputs.cache-hit != 'true'
+      - name: Export image-text model (about 6 minutes)
+        if: steps.cached.outputs.cache-hit != 'true' && steps.clip.outputs.cache-hit != 'true'
+        run: |
+          set -euo pipefail
+          bash scripts/export-image-model.sh huggingface
+          mkdir -p .image-model
+          cp models/image-model-int8.onnx models/image-model-fp32.onnx models/image-text-model-int8.onnx \
+             models/image-text-model-fp32.onnx models/image-text-vocab.txt models/image-model-manifest.json .image-model/
+      - name: Collect the bundled models
+        if: steps.cached.outputs.cache-hit != 'true'
+        run: |
+          set -euo pipefail
+          mkdir -p .portable-models
+          cp models/u2net.onnx models/embedding-fp32.onnx models/embedding-int8.onnx models/embedding-vocab.txt .portable-models/
+          cp .image-model/image-model-int8.onnx .image-model/image-text-model-int8.onnx .image-model/image-text-vocab.txt \
+             .image-model/image-model-manifest.json .portable-models/
+          ls -l .portable-models
+      - name: Save portable models
+        if: steps.cached.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: .portable-models
+          key: ${{ needs.prepare.outputs.models_key }}
+          enableCrossOsArchive: true
+
+  server-tests:
+    name: Server tests
+    if: github.event_name != 'workflow_dispatch' || inputs.server_tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: ${{ env.JAVA_VERSION }}
+          cache: maven
+      - run: mvn -B verify
+
+  package:
+    name: Package ${{ matrix.platform }}
+    needs: [prepare, frontend, agent, models]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.prepare.outputs.matrix) }}
+    defaults:
+      run:
+        shell: bash
+    env:
+      PKG: yuda-portable-${{ needs.prepare.outputs.version }}-${{ matrix.platform }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: ${{ env.JAVA_VERSION }}
+          cache: maven
+      # The Node that runs assemble.mjs is the one copied into the package.
+      - uses: actions/setup-node@v5
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: frontend
+          path: src/main/resources
+      - uses: actions/download-artifact@v4
+        with:
+          name: agent
+          path: .build
+      - name: Restore models
+        uses: actions/cache/restore@v4
+        with:
+          path: .portable-models
+          key: ${{ needs.prepare.outputs.models_key }}
+          enableCrossOsArchive: true
+          fail-on-cache-miss: true
+      - name: Build server jar for ${{ matrix.native }}
+        run: |
+          set -euo pipefail
+          test -f src/main/resources/static/index.html || { echo "::error::frontend missing from static resources"; exit 1; }
+          mvn -B -q -DskipTests -Dnative.platform=${{ matrix.native }} ${{ matrix.maven }} package
+          ls -l target/*.jar
+      - name: Assemble package
+        run: |
+          set -euo pipefail
+          mkdir -p .build/agent && tar -xzf .build/agent-bundle.tgz -C .build/agent
+          node portable/ci/assemble.mjs --platform ${{ matrix.platform }} --version ${{ needs.prepare.outputs.version }} \
+            --commit "$GITHUB_SHA" --jar "$(ls target/*.jar | head -1)" --agent .build/agent --models .portable-models \
+            --out "dist/$PKG"
+      - name: Archive
+        run: |
+          set -euo pipefail
+          cd dist
+          case "${{ matrix.archive }}-$RUNNER_OS" in
+            tar.gz-*) tar -czf "$PKG.tar.gz" "$PKG" ;;
+            zip-macOS) ditto -c -k --sequesterRsrc --keepParent "$PKG" "$PKG.zip" ;;
+            zip-Windows) 7z a -tzip -mx=5 -bso0 "$PKG.zip" "$PKG" ;;
+          esac
+          rm -rf "$PKG"
+          ls -l
+      # The test runs on what a user downloads: the archive extracted afresh, with the package's own Node.
+      - name: Extract and smoke test
+        run: |
+          set -euo pipefail
+          mkdir -p smoke && cd smoke
+          case "${{ matrix.archive }}-$RUNNER_OS" in
+            tar.gz-*) tar -xzf "../dist/$PKG.tar.gz" ;;
+            zip-macOS) ditto -x -k "../dist/$PKG.zip" . ;;
+            zip-Windows) 7z x -bso0 "../dist/$PKG.zip" ;;
+          esac
+          node_bin="$PKG/runtime/node/bin/node"; [ "$RUNNER_OS" = Windows ] && node_bin="$PKG/runtime/node/node.exe"
+          "$node_bin" ../portable/ci/smoke.mjs "$PKG" 2>&1 | tee ../smoke.log
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo "### ${{ matrix.platform }}"
+            ls -l dist 2>/dev/null | awk 'NR>1 {printf "- %s：%.0f MB\n", $NF, $5/1048576}'
+            if [ -f smoke.log ]; then echo '<details><summary>冒烟测试</summary>'; echo; echo '```'; tail -n 120 smoke.log; echo '```'; echo '</details>'; fi
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: logs-${{ matrix.platform }}
+          retention-days: 7
+          path: |
+            smoke/*/logs
+            smoke/*/config
+            smoke.log
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.PKG }}
+          retention-days: 5
+          compression-level: 0
+          path: dist/${{ env.PKG }}.*
+
+  release:
+    name: Publish release assets
+    needs: [prepare, package, server-tests]
+    if: >-
+      always() && needs.package.result == 'success' && needs.server-tests.result != 'failure' &&
+      (startsWith(github.ref, 'refs/tags/v') || inputs.release)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: yuda-portable-*
+          path: assets
+          merge-multiple: true
+      - name: Upload to release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          set -euo pipefail
+          cd assets && sha256sum yuda-portable-* > SHA256SUMS.txt && cat SHA256SUMS.txt
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then tag="$GITHUB_REF_NAME"; flags=(); else tag=portable-latest; flags=(--prerelease); fi
+          notes="鱼搭便携版 $VERSION（提交 ${GITHUB_SHA:0:7}）。解压后运行 start.bat / start.command / start.sh，说明见包内 README.txt。"
+          # portable-latest always holds exactly one build: recreated (with its tag) on this commit.
+          if [ "$tag" = portable-latest ]; then gh release delete "$tag" -R "$GITHUB_REPOSITORY" --cleanup-tag -y 2>/dev/null || true; fi
+          if ! gh release view "$tag" -R "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release create "$tag" -R "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "鱼搭便携版 $VERSION" --notes "$notes" "${flags[@]}"
+          fi
+          gh release upload "$tag" -R "$GITHUB_REPOSITORY" --clobber yuda-portable-* SHA256SUMS.txt
+          echo "已发布到 release $tag" >> "$GITHUB_STEP_SUMMARY"
