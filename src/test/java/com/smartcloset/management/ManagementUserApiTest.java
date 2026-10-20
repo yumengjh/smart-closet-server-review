@@ -30,7 +30,8 @@ import tools.jackson.databind.json.JsonMapper;
         "spring.config.import=optional:file:./target/no-local-secrets.yml", "closet.model-path=target/absent.onnx",
         "closet.management.enabled=true", "closet.management.auth.keys[0].id=primary",
         "closet.management.auth.keys[0].secret=management-test-secret-0123456789abcdef",
-        "closet.management.auth.keys[1].id=next", "closet.management.auth.keys[1].secret=rotated-management-secret-0123456789"})
+        "closet.management.auth.keys[1].id=next", "closet.management.auth.keys[1].secret=rotated-management-secret-0123456789",
+        "closet.account.register-per-address-hourly=1000"})
 class ManagementUserApiTest {
     static final String SECRET = "management-test-secret-0123456789abcdef";
     static final String PASSWORD = "InitialTestPassword123!";
@@ -224,5 +225,135 @@ class ManagementUserApiTest {
         var signed = api.send("GET", "/api/manage/v1/users", null);
         assertTrue(signed.headers().allValues("Set-Cookie").isEmpty(), signed.headers().toString());
         assertTrue(signed.headers().firstValue("X-Request-Id").orElse("").startsWith("req-"));
+    }
+
+    @Test void accountFieldsInvitesAndEventsFollowTheContract() throws Exception {
+        String name = "m-" + UUID.randomUUID().toString().substring(0, 8);
+        var created = api.send("POST", "/api/manage/v1/users", json.writeValueAsString(Map.of("username", name, "role", "USER", "displayName", "管理创建")), UUID.randomUUID().toString(), "ops-alice");
+        assertEquals(201, created.statusCode(), created.body());
+        problem(api.send("POST", "/api/manage/v1/users", json.writeValueAsString(Map.of("username", name.toUpperCase(), "role", "USER"))), 409, "USER_ALREADY_EXISTS");
+        var listed = body(api.send("GET", "/api/manage/v1/users?q=" + java.net.URLEncoder.encode("管理创", java.nio.charset.StandardCharsets.UTF_8), null)).path("items");
+        assertEquals(1, listed.size());
+        assertEquals("管理创建", listed.get(0).path("displayName").asText());
+        assertEquals("ADMIN", listed.get(0).path("registeredVia").asText());
+        assertTrue(listed.get(0).has("lastLoginAtMs") && listed.get(0).has("deactivatedAtMs"));
+        var detail = body(api.send("GET", "/api/manage/v1/users/" + name, null));
+        assertEquals("管理创建", detail.path("displayName").asText());
+
+        assertEquals(200, api.send("PATCH", "/api/manage/v1/users/" + name + "/status", "{\"enabled\":false}").statusCode());
+        var events = body(api.send("GET", "/api/manage/v1/users/" + name + "/events", null));
+        assertEquals("MANAGE_USER_DISABLED", events.get(0).path("action").asText());
+        assertEquals("MANAGE_USER_CREATED", events.get(1).path("action").asText());
+        assertEquals("manage:primary:ops-alice", events.get(1).path("actor").asText());
+        problem(api.send("GET", "/api/manage/v1/users/nobody-here/events", null), 404, "USER_NOT_FOUND");
+
+        var registration = body(api.send("GET", "/api/manage/v1/registration", null));
+        assertEquals("INVITE", registration.path("mode").asText());
+        var invite = api.send("POST", "/api/manage/v1/invites", "{\"note\":\"渠道\",\"maxUses\":3}", UUID.randomUUID().toString(), "ops-alice");
+        assertEquals(201, invite.statusCode(), invite.body());
+        assertEquals("manage:primary:ops-alice", body(invite).path("createdBy").asText());
+        assertEquals("ACTIVE", body(invite).path("status").asText());
+        String code = body(invite).path("code").asText(), id = body(invite).path("id").asText();
+        assertTrue(code.matches("[A-Z2-9]{4}-[A-Z2-9]{4}-[A-Z2-9]{4}"));
+        var invites = api.send("GET", "/api/manage/v1/invites", null);
+        assertFalse(invites.body().contains(code));
+        assertTrue(invites.body().contains(id));
+        assertEquals(registration.path("activeInviteCount").asInt() + 1, body(api.send("GET", "/api/manage/v1/registration", null)).path("activeInviteCount").asInt());
+        problem(api.send("POST", "/api/manage/v1/invites", "{\"maxUses\":0}"), 400, "VALIDATION_FAILED");
+        problem(api.send("POST", "/api/manage/v1/invites", "{\"uses\":1}"), 400, "MALFORMED_JSON");
+        assertEquals(204, api.send("DELETE", "/api/manage/v1/invites/" + id, null).statusCode());
+        problem(api.send("DELETE", "/api/manage/v1/invites/" + UUID.randomUUID(), null), 404, "INVITE_NOT_FOUND");
+        assertEquals(1, jdbc.queryForObject("SELECT COUNT(*) FROM management_operation_log WHERE action='INVITE_REVOKED' AND detail=?", Integer.class, "inviteId=" + id));
+    }
+
+    HttpResponse<String> register(String username, String inviteCode) throws Exception {
+        var client = HttpClient.newBuilder().cookieHandler(new CookieManager(null, CookiePolicy.ACCEPT_ALL)).build();
+        var csrf = client.send(HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + port + "/api/auth/csrf")).build(), HttpResponse.BodyHandlers.ofString());
+        var body = new java.util.HashMap<String, Object>(Map.of("username", username, "password", PASSWORD));
+        if (inviteCode != null) body.put("inviteCode", inviteCode);
+        return client.send(HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + port + "/api/auth/register"))
+                .header("Content-Type", "application/json").header("X-XSRF-TOKEN", json.readTree(csrf.body()).path("token").asText())
+                .POST(HttpRequest.BodyPublishers.ofString(json.writeValueAsString(body))).build(), HttpResponse.BodyHandlers.ofString());
+    }
+
+    @Test void fullAccountControlFromTheManagementPlatform() throws Exception {
+        // Registration mode override takes effect immediately and can be reset to the deployment default.
+        var closed = body(api.send("PUT", "/api/manage/v1/registration", "{\"mode\":\"CLOSED\"}", UUID.randomUUID().toString(), "ops-bob"));
+        assertEquals("CLOSED", closed.path("mode").asText());
+        assertEquals("INVITE", closed.path("configuredMode").asText());
+        assertTrue(closed.path("overridden").asBoolean());
+        assertEquals("manage:primary:ops-bob", closed.path("updatedBy").asText());
+        assertEquals(403, register("r-" + UUID.randomUUID().toString().substring(0, 8), null).statusCode());
+        assertEquals("OPEN", body(api.send("PUT", "/api/manage/v1/registration", "{\"mode\":\"OPEN\"}")).path("mode").asText());
+        String open = "r-" + UUID.randomUUID().toString().substring(0, 8);
+        assertEquals(200, register(open, null).statusCode());
+        problem(api.send("PUT", "/api/manage/v1/registration", "{\"mode\":\"SOMETIMES\"}"), 400, "VALIDATION_FAILED");
+        var reset = body(api.send("PUT", "/api/manage/v1/registration", "{\"mode\":null}"));
+        assertEquals("INVITE", reset.path("mode").asText());
+        assertFalse(reset.path("overridden").asBoolean());
+
+        // Invites: detail lists who registered, update capacity and deadline, paged list filters by status.
+        var invite = body(api.send("POST", "/api/manage/v1/invites", "{\"maxUses\":1}"));
+        String id = invite.path("id").asText();
+        String invited = "r-" + UUID.randomUUID().toString().substring(0, 8);
+        assertEquals(200, register(invited, invite.path("code").asText()).statusCode());
+        var detail = body(api.send("GET", "/api/manage/v1/invites/" + id, null));
+        assertEquals("USED_UP", detail.path("invite").path("status").asText());
+        assertEquals(invited, detail.path("registeredUsers").get(0).path("username").asText());
+        problem(api.send("PATCH", "/api/manage/v1/invites/" + id, "{\"maxUses\":0}"), 400, "VALIDATION_FAILED");
+        problem(api.send("PATCH", "/api/manage/v1/invites/" + id, "{}"), 400, "VALIDATION_FAILED");
+        long deadline = System.currentTimeMillis() + 30L * 24 * 60 * 60 * 1000;
+        var updated = body(api.send("PATCH", "/api/manage/v1/invites/" + id, "{\"maxUses\":2,\"expiresAtMs\":" + deadline + ",\"note\":\"加一位\"}"));
+        assertEquals("ACTIVE", updated.path("status").asText());
+        assertEquals(deadline, updated.path("expiresAtMs").asLong());
+        assertEquals("加一位", updated.path("note").asText());
+        assertEquals(200, register("r-" + UUID.randomUUID().toString().substring(0, 8), invite.path("code").asText()).statusCode());
+        var usedUp = body(api.send("GET", "/api/manage/v1/invites?status=USED_UP&size=100", null));
+        assertTrue(usedUp.path("total").asInt() >= 1);
+        usedUp.path("items").forEach(i -> assertEquals("USED_UP", i.path("status").asText()));
+        assertEquals(204, api.send("DELETE", "/api/manage/v1/invites/" + id, null).statusCode());
+        problem(api.send("PATCH", "/api/manage/v1/invites/" + id, "{\"maxUses\":3}"), 409, "INVITE_REVOKED");
+        problem(api.send("GET", "/api/manage/v1/invites/" + UUID.randomUUID(), null), 404, "INVITE_NOT_FOUND");
+
+        // User filters, detail invite link, profile edit.
+        var viaInvite = body(api.send("GET", "/api/manage/v1/users?registeredVia=INVITE&size=100&sort=lastLoginAt", null)).path("items");
+        assertTrue(viaInvite.toString().contains(invited));
+        viaInvite.forEach(u -> assertEquals("INVITE", u.path("registeredVia").asText()));
+        assertEquals(id, body(api.send("GET", "/api/manage/v1/users/" + invited, null)).path("inviteId").asText());
+        assertEquals("客服改名", body(api.send("PATCH", "/api/manage/v1/users/" + invited + "/profile", "{\"displayName\":\"客服改名\"}")).path("displayName").asText());
+        assertTrue(body(api.send("PATCH", "/api/manage/v1/users/" + invited + "/profile", "{\"displayName\":\"\"}")).path("displayName").isNull());
+        problem(api.send("PATCH", "/api/manage/v1/users/" + invited + "/profile", "{}"), 400, "VALIDATION_FAILED");
+
+        // Single session sign-out.
+        var first = signIn(invited, PASSWORD); var second = signIn(invited, PASSWORD);
+        var sessions = body(api.send("GET", "/api/manage/v1/users/" + invited + "/sessions", null));
+        assertEquals(3, sessions.size(), "registration signs in too");
+        assertEquals(204, api.send("DELETE", "/api/manage/v1/users/" + invited + "/sessions/" + sessions.get(0).path("sessionRef").asText(), null).statusCode());
+        assertEquals(2, body(api.send("GET", "/api/manage/v1/users/" + invited + "/sessions", null)).size());
+        problem(api.send("DELETE", "/api/manage/v1/users/" + invited + "/sessions/0123456789abcdef", null), 404, "SESSION_NOT_FOUND");
+        assertNotNull(first); assertNotNull(second);
+
+        // Login lock: five failures lock the username, the platform can unlock.
+        var client = HttpClient.newBuilder().cookieHandler(new CookieManager(null, CookiePolicy.ACCEPT_ALL)).build();
+        String token = json.readTree(client.send(HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + port + "/api/auth/csrf")).build(), HttpResponse.BodyHandlers.ofString()).body()).path("token").asText();
+        for (int i = 0; i < 5; i++) client.send(HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + port + "/api/auth/login"))
+                .header("Content-Type", "application/json").header("X-XSRF-TOKEN", token)
+                .POST(HttpRequest.BodyPublishers.ofString(json.writeValueAsString(Map.of("username", open, "password", "WrongPassword123!")))).build(), HttpResponse.BodyHandlers.ofString());
+        var lock = body(api.send("GET", "/api/manage/v1/users/" + open + "/login-lock", null));
+        assertTrue(lock.path("locked").asBoolean());
+        assertEquals(5, lock.path("recentFailures").asInt());
+        assertTrue(body(api.send("GET", "/api/manage/v1/users/" + open, null)).path("loginLock").path("locked").asBoolean());
+        assertFalse(body(api.send("DELETE", "/api/manage/v1/users/" + open + "/login-lock", null)).path("locked").asBoolean());
+        signIn(open, PASSWORD);
+
+        // Site-wide audit feed.
+        var feed = body(api.send("GET", "/api/manage/v1/account-events?username=" + open + "&size=100", null));
+        var actions = new java.util.HashSet<String>(); feed.path("items").forEach(e -> actions.add(e.path("action").asText()));
+        assertTrue(actions.containsAll(java.util.Set.of("REGISTERED", "MANAGE_LOGIN_UNLOCKED", "LOGIN_SUCCEEDED")), actions.toString());
+        feed.path("items").forEach(e -> assertEquals(open, e.path("username").asText()));
+        var unlocks = body(api.send("GET", "/api/manage/v1/account-events?action=MANAGE_LOGIN_UNLOCKED", null));
+        assertTrue(unlocks.path("total").asInt() >= 1);
+        problem(api.send("GET", "/api/manage/v1/account-events?action=bad-action", null), 400, "VALIDATION_FAILED");
+        assertEquals(1, jdbc.queryForObject("SELECT COUNT(*) FROM management_operation_log WHERE action='USER_LOGIN_UNLOCKED' AND target_username=?", Integer.class, open));
     }
 }

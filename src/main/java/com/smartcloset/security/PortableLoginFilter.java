@@ -26,8 +26,11 @@ final class PortableLoginFilter extends OncePerRequestFilter {
                 session.invalidate(); SecurityContextHolder.clearContext();
                 boolean loginEntry = path.equals("/api/auth/csrf") || path.equals("/api/auth/login") || path.equals("/api/auth/portable-login");
                 if (path.startsWith("/api/") && !loginEntry) { deny(response, 401, "登录授权已撤销或到期，请重新登录。"); return; }
-            } else if (path.equals("/api/auth/password") || path.startsWith("/api/auth/portable-links")) {
+            } else if (path.equals("/api/auth/password") || path.startsWith("/api/auth/portable-links")
+                    || path.startsWith("/api/auth/sessions") || path.equals("/api/auth/deactivate")) {
                 deny(response, 403, "链接登录不能修改密码或管理登录授权，请使用账号密码登录。"); return;
+            } else if (!"GET".equals(request.getMethod()) && (path.startsWith("/api/admin/users") || path.startsWith("/api/admin/invites"))) {
+                deny(response, 403, "链接登录不能管理账号，请使用账号密码登录。"); return;
             }
         }
         chain.doFilter(request, response);

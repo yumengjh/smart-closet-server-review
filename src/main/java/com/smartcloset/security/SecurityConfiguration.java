@@ -30,7 +30,7 @@ import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
 @Configuration
-@EnableConfigurationProperties(ClosetCorsProperties.class)
+@EnableConfigurationProperties({ClosetCorsProperties.class, AccountProperties.class})
 public class SecurityConfiguration {
     @Bean CorsConfigurationSource corsConfigurationSource(ClosetCorsProperties properties) {
         var source = new UrlBasedCorsConfigurationSource();
@@ -101,7 +101,8 @@ public class SecurityConfiguration {
                     .dispatcherTypeMatchers(jakarta.servlet.DispatcherType.ASYNC).permitAll()
                     .requestMatchers(HttpMethod.POST, "/api/agent/internal/tool", "/api/agent/internal/permits").permitAll()
                     .requestMatchers(HttpMethod.GET, "/api/auth/csrf").permitAll()
-                    .requestMatchers(HttpMethod.POST, "/api/auth/login").permitAll()
+                    .requestMatchers(HttpMethod.POST, "/api/auth/login", "/api/auth/register").permitAll()
+                    .requestMatchers(HttpMethod.GET, "/api/auth/registration").permitAll()
                     .requestMatchers(HttpMethod.POST, "/api/auth/portable-login").permitAll()
                     .requestMatchers(HttpMethod.GET, "/api/health").permitAll()
                     .requestMatchers("/workflow/**", "/studio/**").access((authentication, context) -> {

@@ -15,7 +15,7 @@
 
 | 模块 | 能力 | 文档 |
 | --- | --- | --- |
-| 账号 | 受邀账号、首次登录强制改密、会话存数据库（默认 7 天）、CSRF；每账号每日 AI 额度（图片 20 次、助手 30 次，可按用户调整）；跨设备的一次性[便携登录链接](docs/PORTABLE_LOGIN.md) | [产品接口](docs/CLOSET_PRODUCT.md) |
+| 账号 | 邀请码 / 开放 / 关闭三种注册模式（`CLOSET_REGISTRATION`）、昵称与登录设备管理、退出其他设备、自助注销、登录失败限流；管理员在“我的 → 用户管理”管理用户与邀请码；管理员创建的账号首次登录强制改密、会话存数据库（默认 7 天）、CSRF；每账号每日 AI 额度（图片 20 次、助手 30 次，可按用户调整）；跨设备的一次性[便携登录链接](docs/PORTABLE_LOGIN.md) | [产品接口](docs/CLOSET_PRODUCT.md) |
 | 录入 | 快速入柜（默认开启）、单件与合图批量录入、识别品类/颜色/图案/结构/材质线索、本地抠图（U²-Net / GrabCut）与抠图质量本地检查、可选的生成式 AI 整理图片；处理中心统一显示任务、提醒与重试 | [识别](docs/RECOGNITION.md) · [图片工作流](docs/IMAGE_WORKFLOWS.md) · [快速入柜设计](docs/design/2026-10-05-快速入柜与统一任务执行架构.md) |
 | 衣柜 | 分页与排序、人工编辑字段、回收站、本地 CIELAB 精确取色 | [产品接口](docs/CLOSET_PRODUCT.md) |
 | 搜索与查重 | 本地文本向量（bge-small-zh）与字段混合的语义搜索；本地图文模型（Chinese-CLIP）支持文字找图、以图搜图与超级搜索；相似衣物提示与入柜重复提醒；未识别衣物按图片判断品类与主色 | [图像搜索测试](docs/IMAGE_SEARCH_TESTING.md) · [相似衣物设计](docs/design/2026-10-09-相似衣物提示与以图搜图设计.md) |
@@ -132,6 +132,7 @@ docker compose --env-file "$HOME/smart-closet-server.env" up -d
 | `CLOSET_EMBEDDING_MODEL_PATH` | `./models/embedding-fp32.onnx` | 文本向量模型（内存紧张可换 int8） |
 | `CLOSET_IMAGE_MODEL_PATH` / `CLOSET_IMAGE_TEXT_MODEL_PATH` | `./models/image-*-int8.onnx` | 图文模型图像塔 / 文本塔 |
 | `CLOSET_QUICK_INTAKE_ENABLED` | `true` | 快速入柜 |
+| `CLOSET_REGISTRATION` | `INVITE` | 自助注册：`CLOSED` 关闭 / `INVITE` 凭邀请码 / `OPEN` 开放，见[账号设计](docs/design/2026-10-19-用户账号：注册、资料与管理设计.md) |
 | `CLOSET_CORS_ALLOWED_ORIGINS` / `CLOSET_COOKIE_SECURE` | 空 | 前后端跨域部署时的前端 Origin 与 Cookie Secure |
 | `CLOSET_MANAGEMENT_ENABLED` | `false` | 管理接口 |
 | `CLOSET_RECOMMEND_*` | `true` | 推荐机制开关（审美组、均衡、外套计暖、搭法、风格画像），关闭后回到 P4 行为 |

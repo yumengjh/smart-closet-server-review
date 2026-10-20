@@ -1,18 +1,32 @@
 # 管理接口接入指南
 
-鱼搭提供一组中立的服务端管理接口（`/api/manage/v1`），让任意后台平台管理业务用户、查看衣柜洞察；1.1 起还提供运维状态、推荐与模型 KPI、大屏快照、数仓数据出口和模板审核（第 9~14 节）。本文面向接入方：如何开启、如何签名、每个接口怎么调、出错怎么查。
+鱼搭提供一组中立的服务端管理接口（`/api/manage/v1`），让任意后台平台管理业务用户、查看衣柜洞察；1.1 起还提供运维状态、推荐与模型 KPI、大屏快照、数仓数据出口和模板审核（第 9~14 节）；1.2 增加注册模式、邀请码、账号事件与用户资料字段（第 5、15 节）。本文面向接入方：如何开启、如何签名、每个接口怎么调、出错怎么查。
 
 | 资料 | 用途 |
 |---|---|
 | [`management-api.yaml`](management-api.yaml) | OpenAPI 3.1 契约，唯一事实源；可导入 Swagger Editor、Apifox、Postman 或生成客户端 |
 | [设计文档](design/2026-10-07-管理平台接入与可插拔管理接口设计.md) | 设计取舍、数据口径、实现记录 |
 | [二期设计](design/2026-10-09-管理接口二期：运维、KPI与大屏数据设计.md) | 运维、KPI、大屏、数仓出口与模板审核的口径与决策（M1~M10） |
+| [账号设计](design/2026-10-19-用户账号：注册、资料与管理设计.md) | 注册、邀请码、昵称、登录设备、自助注销与账号事件（1.2） |
 | [`scripts/manage-curl.sh`](../scripts/manage-curl.sh) | 命令行签名调用工具 |
 | [部署拓扑](DEPLOYMENT_TOPOLOGY.md) | 与管理平台一起部署时的服务、端口与密钥关系 |
 
 契约由 `ManagementContractTest` 守护：实现的路由与 yaml 必须一一对应，多一个或少一个都会测试失败。
 
 ## 1. 定位与边界
+
+> **两个账号管理入口。** 鱼搭有两组账号管理接口，改的是同一份数据、走同一套核心规则（最后一个管理员保护、改角色或停用即退出会话、临时密码只出现一次）：
+>
+> | | 鱼搭内管理页 | 本接口 |
+> | --- | --- | --- |
+> | 路径 | `/api/admin/users`、`/api/admin/invites`、`/api/admin/registration` | `/api/manage/v1/*` |
+> | 调用方 | 鱼搭网页“我的 → 用户管理” | 后台管理平台的服务端 |
+> | 认证 | 登录会话 + `ADMIN` 角色 + CSRF | HMAC 签名，无 Cookie、无 CORS |
+> | 默认 | 始终可用 | 默认关闭 |
+> | 范围 | 常用操作 | 完整账号控制（第 5、15 节） |
+> | 账号事件动作 | `ADMIN_*` | `MANAGE_*`，另记管理操作日志 |
+>
+> 后台管理平台是正式入口，新的账号管理能力先加在本接口；鱼搭内管理页供未接入后台的部署（如便携版）使用。鱼搭内接口说明见[账号设计](design/2026-10-19-用户账号：注册、资料与管理设计.md)第七节。
 
 - **默认关闭。** 未开启时管理模块不注册任何 Bean 与路由，鱼搭行为与未引入该模块时完全一致。
 - **服务对服务。** 只接受 HMAC 签名请求；不使用 Cookie、不创建会话、不开放 CORS，浏览器无法直接调用。
@@ -209,10 +223,12 @@ scripts/manage-curl.sh PATCH /api/manage/v1/users/alice/status '{"enabled":false
 
 | 参数 | 说明 |
 |---|---|
-| `q` | 用户名包含（忽略大小写），≤80 字符 |
+| `q` | 用户名或昵称包含（忽略大小写），≤80 字符 |
 | `status` | `ENABLED` / `DISABLED` |
 | `role` | `USER` / `ADMIN` |
-| `sort` | `createdAt`（默认）/ `username` / `lastActiveAt` |
+| `registeredVia` | `ADMIN` / `INVITE` / `OPEN`（1.2） |
+| `deactivated` | `true` 只看自助注销的账号，`false` 排除（1.2） |
+| `sort` | `createdAt`（默认）/ `username` / `lastActiveAt` / `lastLoginAt`（1.2） |
 | `order` | `desc`（默认）/ `asc` |
 | `page`, `size` | 见通用约定 |
 
@@ -221,7 +237,8 @@ scripts/manage-curl.sh PATCH /api/manage/v1/users/alice/status '{"enabled":false
   "items": [{
     "username": "carol", "role": "USER", "enabled": true, "mustChangePassword": true,
     "createdAtMs": 1791380686514, "lastActiveAtMs": null,
-    "activeSessionCount": 0, "garmentCount": 25, "outfitCount": 6
+    "activeSessionCount": 0, "garmentCount": 25, "outfitCount": 6,
+    "displayName": "卡罗", "registeredVia": "INVITE", "lastLoginAtMs": 1791380699000, "deactivatedAtMs": null
   }],
   "total": 6, "page": 1, "size": 20
 }
@@ -229,6 +246,7 @@ scripts/manage-curl.sh PATCH /api/manage/v1/users/alice/status '{"enabled":false
 
 - `lastActiveAtMs`：该用户未过期会话中最近一次访问时间。会话过期被清理后会丢失，因此是近似值，界面应标注“最近会话活跃”。
 - `garmentCount` 只统计已入柜（`ACTIVE`）的衣物。
+- 1.2 新增：`displayName` 昵称（未设置为 `null`）；`registeredVia` 账号来源 `ADMIN`（鱼搭管理员或管理接口创建）/ `INVITE`（凭邀请码注册）/ `OPEN`（开放注册）；`lastLoginAtMs` 最近一次密码登录或注册时间（不随会话清理丢失）；`deactivatedAtMs` 用户自助注销时间，此时 `enabled=false`，重新启用后清空。
 
 ### `GET /users/{username}` 用户详情
 
@@ -247,7 +265,11 @@ scripts/manage-curl.sh PATCH /api/manage/v1/users/alice/status '{"enabled":false
 }
 ```
 
-`garments` 的键是数据库中实际出现的衣物状态，不固定。
+`garments` 的键是数据库中实际出现的衣物状态，不固定。详情同样包含 1.2 的 `displayName`、`registeredVia`、`lastLoginAtMs`、`deactivatedAtMs`，以及 `inviteId`（注册所用邀请码）和 `loginLock`（见下方登录锁定）。
+
+### `PATCH /users/{username}/profile` 修改资料（1.2）
+
+`{"displayName":"新昵称"}`，字段必填，空串清除。返回 `{username, displayName}`。
 
 ### `POST /users` 创建用户
 
@@ -255,7 +277,7 @@ scripts/manage-curl.sh PATCH /api/manage/v1/users/alice/status '{"enabled":false
 { "username": "bob", "role": "USER" }
 ```
 
-`password` 可选（12–200 字符）；不传则生成临时密码。返回 `201`，带 `Location` 头：
+`password` 可选（12–200 字符）；不传则生成临时密码。`displayName` 可选（≤40 字符）。用户名与已有账号仅大小写不同也视为已存在（409）。返回 `201`，带 `Location` 头：
 
 ```json
 { "username": "bob", "temporaryPassword": "EJiwdqxhvZ7mu7zeQaBn" }
@@ -303,6 +325,12 @@ GET 返回未过期会话，不暴露可用于登录的会话 ID：
 
 `sessionRef` 是 SHA-256(会话主键) 的前 16 位，仅用于区分会话；`portable` 表示该会话由便携登录链接建立。DELETE 删除全部会话，返回 `{"revokedSessions": n}`。
 
+1.2 起 `DELETE /users/{username}/sessions/{sessionRef}` 只退出单个会话，成功 204，不存在 404 `SESSION_NOT_FOUND`。
+
+### `GET /users/{username}/login-lock` / `DELETE /users/{username}/login-lock` 登录锁定（1.2）
+
+同一用户名 15 分钟内登录失败 5 次即锁定。GET 返回 `{"locked": true, "recentFailures": 5, "retryAfterSeconds": 812}`；DELETE 清空该用户名的失败计数并返回解除后的状态。按来源地址的限流不属于单个用户，不在此显示，也不受影响。计数在内存中，服务重启即清零。
+
 ### `GET /users/{username}/portable-links` / `DELETE /users/{username}/portable-links/{linkId}` 便携登录链接
 
 GET 返回最近 20 条：
@@ -312,6 +340,16 @@ GET 返回最近 20 条：
 ```
 
 `status`：`PENDING` 未使用、`USED` 已用于登录（会话有效期内）、`EXPIRED`、`REVOKED`。DELETE 成功返回 204；链接不属于该用户返回 404 `PORTABLE_LINK_NOT_FOUND`；对已吊销的链接再次吊销仍返回 204。
+
+### `GET /users/{username}/events` 账号事件（1.2，只读）
+
+最近 50 条，新的在前，保留 180 天：
+
+```json
+[{ "occurredAtMs": 0, "actor": "manage:primary:ops-alice", "action": "MANAGE_USER_DISABLED", "detail": "revokedSessions=1" }]
+```
+
+`action`：`REGISTERED`、`LOGIN_SUCCEEDED`、`PASSWORD_CHANGED`、`PROFILE_UPDATED`、`SESSIONS_REVOKED`、`DEACTIVATED`（用户本人）；`ADMIN_*`（鱼搭内管理员，`actor` 为管理员用户名）；`MANAGE_*`（本接口的写操作，`actor` 为 `manage:{keyId}[:{X-Operator}]`）。不记录密码、邀请码、IP 与 UA。
 
 ### `GET /users/{username}/quota` / `PUT /users/{username}/quota` 每日额度
 
@@ -442,6 +480,7 @@ PUT 请求的两个字段都取 0–1000 或 `null`（`null` = 恢复默认）�
 | 401 | `MANAGEMENT_REPLAYED` | nonce 已用过 | 每个请求（包括重试）生成新 nonce |
 | 404 | `USER_NOT_FOUND` | 用户不存在 | — |
 | 404 | `PORTABLE_LINK_NOT_FOUND` | 链接不存在或不属于该用户 | — |
+| 404 | `INVITE_NOT_FOUND` | 邀请码不存在 | — |
 | 409 | `USER_ALREADY_EXISTS` | 用户名已存在 | — |
 | 409 | `LAST_ADMIN_PROTECTED` | 会禁用或降级最后一个启用的管理员 | 先启用或提升另一个管理员 |
 | 413 | `PAYLOAD_TOO_LARGE` | 请求体超过 `max-body-bytes` | — |
@@ -616,3 +655,56 @@ scripts/manage-curl.sh GET '/api/manage/v1/exports/events?cursor=MTc1OTI0ODAwMDA
 | `closet.management.ops.semantic-coverage-warn` | `0.9` | 语义索引覆盖率阈值 |
 
 全站统计按 SQL 聚合计算，适合千级用户、数十万条记录；大屏有 15 秒缓存，其余洞察有 `insights-cache-ttl`（60 秒）缓存。
+
+## 15. 注册与邀请码（1.2）
+
+鱼搭支持三种注册模式：`CLOSED` 不开放、`INVITE`（默认）凭邀请码、`OPEN` 任何人可注册。默认值来自部署配置 `CLOSET_REGISTRATION`，管理平台可覆盖。自助注册的账号直接可用，不要求改密码。
+
+### `GET /registration` / `PUT /registration`
+
+```json
+{ "mode": "CLOSED", "configuredMode": "INVITE", "overridden": true, "updatedBy": "manage:primary:ops-bob", "updatedAtMs": 0, "activeInviteCount": 3 }
+```
+
+`mode` 是当前生效模式，`configuredMode` 是部署配置。PUT `{"mode":"OPEN"}` 覆盖并立即生效（存数据库，重启后保留）；`{"mode":null}` 或 `{}` 删除覆盖、回到部署配置。写入操作日志 `REGISTRATION_MODE_CHANGED`。`activeInviteCount` 为未撤销、未过期、未用完的邀请码数。
+
+### `GET /invites` / `POST /invites` / `GET /invites/{id}` / `PATCH /invites/{id}` / `DELETE /invites/{id}`
+
+GET 分页（`status`、`page`、`size`），新的在前，不含明文：
+
+```json
+{ "items": [{ "id": "…", "note": "渠道 A", "maxUses": 3, "usedCount": 1, "createdBy": "manage:primary:ops-alice",
+   "createdAtMs": 0, "expiresAtMs": 0, "revokedAtMs": null, "status": "ACTIVE" }], "total": 1, "page": 1, "size": 20 }
+```
+
+`status`：`ACTIVE`、`USED_UP`、`EXPIRED`、`REVOKED`。
+
+`GET /invites/{id}` 返回 `{invite, registeredUsers:[{username, createdAtMs, enabled}]}`。
+
+`PATCH /invites/{id}` 修改 `note`（空串清除）、`maxUses`（不低于已用次数，≤100）、`expiresAtMs`（现在之后 90 天内），至少一个字段；已撤销返回 409 `INVITE_REVOKED`。写入操作日志 `INVITE_UPDATED`。
+
+POST `{"note":"渠道 A","maxUses":3,"expiresInDays":7}`（都可选；`maxUses` 1–100 默认 1，`expiresInDays` 1–90 默认 7）返回 `201` 与邀请对象加 `code`（形如 `K7QM-2XPA-9WDE`）。**`code` 只出现这一次**，鱼搭只保存其 SHA-256，接入方不得写入日志或审计。注册链接为 `https://鱼搭站点/register?invite=<code>`。
+
+DELETE 撤销，`204`；重复撤销仍为 `204`；不存在返回 404 `INVITE_NOT_FOUND`。创建与撤销写入操作日志（`INVITE_CREATED`、`INVITE_REVOKED`）。
+
+### `GET /account-events` 全站账号事件（1.2，只读）
+
+参数：`from`、`to`（同通用约定，默认近 30 天）、`username`、`action`、`actor`、`page`、`size`。返回 `{items:[{id, occurredAtMs, username, actor, action, detail}], total, page, size}`，口径与 `/users/{username}/events` 相同，可用于后台的账号审计页。
+
+### 1.2 管理写操作一览
+
+| 操作 | 接口 | 操作日志动作 |
+| --- | --- | --- |
+| 创建用户 | `POST /users` | `USER_CREATED` |
+| 启用 / 停用 | `PATCH /users/{u}/status` | `USER_ENABLED` / `USER_DISABLED` |
+| 改角色 | `PATCH /users/{u}/role` | `USER_ROLE_CHANGED` |
+| 改资料 | `PATCH /users/{u}/profile` | `USER_PROFILE_UPDATED` |
+| 重置密码 | `POST /users/{u}/password-reset` | `USER_PASSWORD_RESET` |
+| 退出全部 / 单个会话 | `DELETE /users/{u}/sessions[/{ref}]` | `USER_SESSIONS_REVOKED` / `USER_SESSION_REVOKED` |
+| 吊销便携链接 | `DELETE /users/{u}/portable-links/{id}` | `PORTABLE_LINK_REVOKED` |
+| 解除登录锁定 | `DELETE /users/{u}/login-lock` | `USER_LOGIN_UNLOCKED` |
+| 改额度 | `PUT /users/{u}/quota` | `USER_QUOTA_CHANGED` |
+| 改注册模式 | `PUT /registration` | `REGISTRATION_MODE_CHANGED` |
+| 邀请码增改撤 | `POST` / `PATCH` / `DELETE /invites…` | `INVITE_CREATED` / `INVITE_UPDATED` / `INVITE_REVOKED` |
+
+用户相关的写操作同时写入该用户的账号事件（`MANAGE_*`）。

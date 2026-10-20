@@ -1,11 +1,12 @@
 openapi: 3.1.0
 info:
   title: Smart Closet Management API
-  version: 1.1.0
+  version: 1.2.0
   description: |
     鱼搭中立管理接口。默认关闭（`closet.management.enabled=false`），开启后供任意宿主平台以服务身份调用。
     设计说明见 `docs/design/2026-10-07-管理平台接入与可插拔管理接口设计.md`；1.1（运维、KPI、大屏与数据出口、模板审核）见
-    `docs/design/2026-10-09-管理接口二期：运维、KPI与大屏数据设计.md`。
+    `docs/design/2026-10-09-管理接口二期：运维、KPI与大屏数据设计.md`；1.2（注册、邀请码、账号事件与资料字段）见
+    `docs/design/2026-10-19-用户账号：注册、资料与管理设计.md`。
 
     认证：每个请求都必须携带 HMAC 签名头（见 `components.securitySchemes.closetHmac`）。
     时间字段均为 Unix 毫秒，字段名以 `AtMs` 结尾；日期参数为 `YYYY-MM-DD`，按 Asia/Shanghai 解释，`to` 含当天。
@@ -18,6 +19,8 @@ security:
   - closetHmac: []
 tags:
   - name: users
+  - name: registration
+    description: 注册模式（只读，来自部署配置）与邀请码
   - name: insights
   - name: ops
     description: 运维状态、后台任务、管理操作日志（只读）
@@ -33,10 +36,12 @@ paths:
       tags: [users]
       operationId: listUsers
       parameters:
-        - { name: q, in: query, schema: { type: string, maxLength: 80 } }
+        - { name: q, in: query, description: 用户名或昵称包含（忽略大小写）, schema: { type: string, maxLength: 80 } }
         - { name: status, in: query, schema: { type: string, enum: [ENABLED, DISABLED] } }
         - { name: role, in: query, schema: { $ref: '#/components/schemas/Role' } }
-        - { name: sort, in: query, schema: { type: string, enum: [createdAt, username, lastActiveAt], default: createdAt } }
+        - { name: registeredVia, in: query, schema: { type: string, enum: [ADMIN, INVITE, OPEN] } }
+        - { name: deactivated, in: query, description: true 只看自助注销的账号，false 排除, schema: { type: boolean } }
+        - { name: sort, in: query, schema: { type: string, enum: [createdAt, username, lastActiveAt, lastLoginAt], default: createdAt } }
         - { name: order, in: query, schema: { type: string, enum: [asc, desc], default: desc } }
         - $ref: '#/components/parameters/Page'
         - $ref: '#/components/parameters/Size'
@@ -159,6 +164,7 @@ paths:
               additionalProperties: false
               properties:
                 password: { $ref: '#/components/schemas/OptionalPassword' }
+        displayName: { type: [string, 'null'], maxLength: 40 }
       responses:
         '200':
           description: 已重置
@@ -202,6 +208,89 @@ paths:
                 required: [revokedSessions]
                 properties:
                   revokedSessions: { type: integer }
+        '401': { $ref: '#/components/responses/Problem' }
+        '404': { $ref: '#/components/responses/Problem' }
+  /users/{username}/profile:
+    parameters: [ { $ref: '#/components/parameters/Username' } ]
+    patch:
+      tags: [users]
+      operationId: updateUserProfile
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [displayName]
+              properties:
+                displayName: { type: string, maxLength: 40, description: 空串清除昵称 }
+      responses:
+        '200':
+          description: 已更新
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [username]
+                properties:
+                  username: { type: string }
+                  displayName: { type: [string, 'null'] }
+        '400': { $ref: '#/components/responses/Problem' }
+        '401': { $ref: '#/components/responses/Problem' }
+        '404': { $ref: '#/components/responses/Problem' }
+  /users/{username}/sessions/{sessionRef}:
+    parameters:
+      - $ref: '#/components/parameters/Username'
+      - { name: sessionRef, in: path, required: true, schema: { type: string, pattern: '^[0-9a-f]{16}$' } }
+    delete:
+      tags: [users]
+      operationId: revokeUserSession
+      description: 退出单个会话，`sessionRef` 取自 GET /users/{username}/sessions。
+      responses:
+        '204': { description: 已退出 }
+        '401': { $ref: '#/components/responses/Problem' }
+        '404': { $ref: '#/components/responses/Problem' }
+  /users/{username}/login-lock:
+    parameters: [ { $ref: '#/components/parameters/Username' } ]
+    get:
+      tags: [users]
+      operationId: getUserLoginLock
+      description: 该用户名当前 15 分钟窗口内的登录失败与锁定情况（按来源地址的限制不属于单个用户，不在此显示）。
+      responses:
+        '200':
+          description: 登录锁定状态
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/LoginLock' }
+        '401': { $ref: '#/components/responses/Problem' }
+        '404': { $ref: '#/components/responses/Problem' }
+    delete:
+      tags: [users]
+      operationId: clearUserLoginLock
+      description: 解除锁定（清空该用户名的失败计数），返回解除后的状态。
+      responses:
+        '200':
+          description: 已解除
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/LoginLock' }
+        '401': { $ref: '#/components/responses/Problem' }
+        '404': { $ref: '#/components/responses/Problem' }
+  /users/{username}/events:
+    parameters: [ { $ref: '#/components/parameters/Username' } ]
+    get:
+      tags: [users]
+      operationId: listUserEvents
+      description: 最近 50 条账号事件（注册、登录成功、改密码、改资料、退出设备、注销，以及鱼搭管理员与管理接口的操作），新的在前；保留 180 天。
+      responses:
+        '200':
+          description: 账号事件
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/AccountEvent' }
         '401': { $ref: '#/components/responses/Problem' }
         '404': { $ref: '#/components/responses/Problem' }
   /users/{username}/portable-links:
@@ -267,6 +356,188 @@ paths:
         '400': { $ref: '#/components/responses/Problem' }
         '401': { $ref: '#/components/responses/Problem' }
         '404': { $ref: '#/components/responses/Problem' }
+  /registration:
+    get:
+      tags: [registration]
+      operationId: getRegistration
+      description: 生效模式 = 管理覆盖值（若有）否则部署配置 `CLOSET_REGISTRATION`。
+      responses:
+        '200':
+          description: 注册模式
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RegistrationState' }
+        '401': { $ref: '#/components/responses/Problem' }
+    put:
+      tags: [registration]
+      operationId: setRegistration
+      description: 覆盖注册模式，立即生效；`mode` 为 null 或缺省则删除覆盖，回到部署配置。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                mode: { type: [string, 'null'], enum: [CLOSED, INVITE, OPEN, null] }
+      responses:
+        '200':
+          description: 修改后的状态
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RegistrationState' }
+        '400': { $ref: '#/components/responses/Problem' }
+        '401': { $ref: '#/components/responses/Problem' }
+  /invites:
+    get:
+      tags: [registration]
+      operationId: listInvites
+      parameters:
+        - { name: status, in: query, schema: { type: string, enum: [ACTIVE, USED_UP, EXPIRED, REVOKED] } }
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Size'
+      responses:
+        '200':
+          description: 邀请码分页，新的在前（不含明文）
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, total, page, size]
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/Invite' } }
+                  total: { type: integer, format: int64 }
+                  page: { type: integer }
+                  size: { type: integer }
+        '400': { $ref: '#/components/responses/Problem' }
+        '401': { $ref: '#/components/responses/Problem' }
+    post:
+      tags: [registration]
+      operationId: createInvite
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                note: { type: [string, 'null'], maxLength: 100 }
+                maxUses: { type: [integer, 'null'], minimum: 1, maximum: 100, default: 1 }
+                expiresInDays: { type: [integer, 'null'], minimum: 1, maximum: 90, default: 7 }
+      responses:
+        '201':
+          description: 已创建；`code` 只在本响应出现一次，调用方不得记录到日志
+          headers:
+            Location: { schema: { type: string } }
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Invite'
+                  - type: object
+                    required: [code]
+                    properties:
+                      code: { type: string, example: 'K7QM-2XPA-9WDE' }
+        '400': { $ref: '#/components/responses/Problem' }
+        '401': { $ref: '#/components/responses/Problem' }
+  /invites/{id}:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string, maxLength: 36 } }
+    get:
+      tags: [registration]
+      operationId: getInvite
+      responses:
+        '200':
+          description: 邀请码及用它注册的账号
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [invite, registeredUsers]
+                properties:
+                  invite: { $ref: '#/components/schemas/Invite' }
+                  registeredUsers:
+                    type: array
+                    items:
+                      type: object
+                      required: [username, createdAtMs, enabled]
+                      properties:
+                        username: { type: string }
+                        createdAtMs: { type: integer, format: int64 }
+                        enabled: { type: boolean }
+        '401': { $ref: '#/components/responses/Problem' }
+        '404': { $ref: '#/components/responses/Problem' }
+    patch:
+      tags: [registration]
+      operationId: updateInvite
+      description: 至少一个字段；`note` 空串清除；`maxUses` 不能低于已用次数；`expiresAtMs` 需在现在之后 90 天以内。已撤销的邀请码不能修改（409 INVITE_REVOKED）。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                note: { type: [string, 'null'], maxLength: 100 }
+                maxUses: { type: [integer, 'null'], minimum: 1, maximum: 100 }
+                expiresAtMs: { type: [integer, 'null'], format: int64 }
+      responses:
+        '200':
+          description: 已更新
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Invite' }
+        '400': { $ref: '#/components/responses/Problem' }
+        '401': { $ref: '#/components/responses/Problem' }
+        '404': { $ref: '#/components/responses/Problem' }
+        '409': { $ref: '#/components/responses/Problem' }
+    delete:
+      tags: [registration]
+      operationId: revokeInvite
+      responses:
+        '204': { description: 已撤销（重复撤销仍为 204） }
+        '401': { $ref: '#/components/responses/Problem' }
+        '404': { $ref: '#/components/responses/Problem' }
+  /account-events:
+    get:
+      tags: [users]
+      operationId: listAccountEvents
+      description: 全站账号事件（注册、登录成功、改密码、改资料、退出设备、注销、鱼搭管理员与管理接口操作），新的在前，保留 180 天。
+      parameters:
+        - $ref: '#/components/parameters/From'
+        - $ref: '#/components/parameters/To'
+        - { name: username, in: query, schema: { type: string, pattern: '^[A-Za-z0-9_.-]{2,80}$' } }
+        - { name: action, in: query, schema: { type: string, pattern: '^[A-Z_]{1,48}$' } }
+        - { name: actor, in: query, schema: { type: string, maxLength: 200 } }
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Size'
+      responses:
+        '200':
+          description: 账号事件分页
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, total, page, size]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      allOf:
+                        - $ref: '#/components/schemas/AccountEvent'
+                        - type: object
+                          required: [id, username]
+                          properties:
+                            id: { type: string }
+                            username: { type: string }
+                  total: { type: integer, format: int64 }
+                  page: { type: integer }
+                  size: { type: integer }
+        '400': { $ref: '#/components/responses/Problem' }
+        '401': { $ref: '#/components/responses/Problem' }
   /insights/overview:
     get:
       tags: [insights]
@@ -605,7 +876,7 @@ components:
           type: string
           enum: [VALIDATION_FAILED, MALFORMED_JSON, MANAGEMENT_SIGNATURE_MISSING, MANAGEMENT_KEY_UNKNOWN,
                  MANAGEMENT_TIMESTAMP_SKEWED, MANAGEMENT_SIGNATURE_INVALID, MANAGEMENT_REPLAYED, USER_NOT_FOUND,
-                 PORTABLE_LINK_NOT_FOUND, USER_ALREADY_EXISTS, LAST_ADMIN_PROTECTED, PAYLOAD_TOO_LARGE,
+                 PORTABLE_LINK_NOT_FOUND, SESSION_NOT_FOUND, INVITE_NOT_FOUND, INVITE_REVOKED, USER_ALREADY_EXISTS, LAST_ADMIN_PROTECTED, PAYLOAD_TOO_LARGE,
                  MANAGEMENT_BUSY, INTERNAL_ERROR]
         requestId: { type: string }
         violations:
@@ -629,6 +900,10 @@ components:
         activeSessionCount: { type: integer }
         garmentCount: { type: integer, description: 仅 ACTIVE }
         outfitCount: { type: integer }
+        displayName: { type: [string, 'null'], description: 昵称，未设置为 null }
+        registeredVia: { type: string, enum: [ADMIN, INVITE, OPEN], description: 账号来源 }
+        lastLoginAtMs: { type: [integer, 'null'], format: int64, description: 最近一次密码登录或注册时间 }
+        deactivatedAtMs: { type: [integer, 'null'], format: int64, description: 用户自助注销时间；重新启用后清空 }
     UserPage:
       type: object
       required: [items, total, page, size]
@@ -659,6 +934,12 @@ components:
         hasWearerProfile: { type: boolean }
         activePortableLinkCount: { type: integer }
         quota: { $ref: '#/components/schemas/Quota' }
+        inviteId: { type: [string, 'null'], description: 注册时使用的邀请码 id }
+        loginLock: { $ref: '#/components/schemas/LoginLock' }
+        displayName: { type: [string, 'null'], description: 昵称，未设置为 null }
+        registeredVia: { type: string, enum: [ADMIN, INVITE, OPEN], description: 账号来源 }
+        lastLoginAtMs: { type: [integer, 'null'], format: int64, description: 最近一次密码登录或注册时间 }
+        deactivatedAtMs: { type: [integer, 'null'], format: int64, description: 用户自助注销时间；重新启用后清空 }
     CreateUserRequest:
       type: object
       additionalProperties: false
@@ -684,6 +965,46 @@ components:
         lastAccessAtMs: { type: integer, format: int64 }
         expiresAtMs: { type: integer, format: int64 }
         portable: { type: boolean }
+    LoginLock:
+      type: object
+      required: [locked, recentFailures, retryAfterSeconds]
+      properties:
+        locked: { type: boolean }
+        recentFailures: { type: integer, description: 15 分钟内失败次数 }
+        retryAfterSeconds: { type: integer, description: 锁定剩余秒数，未锁定为 0 }
+    RegistrationState:
+      type: object
+      required: [mode, configuredMode, overridden, activeInviteCount]
+      properties:
+        mode: { type: string, enum: [CLOSED, INVITE, OPEN], description: 当前生效模式 }
+        configuredMode: { type: string, enum: [CLOSED, INVITE, OPEN], description: 部署配置 CLOSET_REGISTRATION }
+        overridden: { type: boolean }
+        updatedBy: { type: [string, 'null'] }
+        updatedAtMs: { type: [integer, 'null'], format: int64 }
+        activeInviteCount: { type: integer }
+    AccountEvent:
+      type: object
+      required: [occurredAtMs, actor, action]
+      properties:
+        occurredAtMs: { type: integer, format: int64 }
+        actor: { type: string, description: '操作者：用户名本人、鱼搭管理员用户名或 manage:{keyId}[:{X-Operator}]' }
+        action:
+          type: string
+          description: REGISTERED、LOGIN_SUCCEEDED、PASSWORD_CHANGED、PROFILE_UPDATED、SESSIONS_REVOKED、DEACTIVATED、ADMIN_*（鱼搭内管理员）、MANAGE_*（管理接口）
+        detail: { type: [string, 'null'] }
+    Invite:
+      type: object
+      required: [id, maxUses, usedCount, createdBy, createdAtMs, expiresAtMs, status]
+      properties:
+        id: { type: string }
+        note: { type: [string, 'null'] }
+        maxUses: { type: integer }
+        usedCount: { type: integer }
+        createdBy: { type: string }
+        createdAtMs: { type: integer, format: int64 }
+        expiresAtMs: { type: integer, format: int64 }
+        revokedAtMs: { type: [integer, 'null'], format: int64 }
+        status: { type: string, enum: [ACTIVE, USED_UP, EXPIRED, REVOKED] }
     PortableLink:
       type: object
       required: [id, createdAtMs, expiresAtMs, status]

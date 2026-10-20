@@ -350,7 +350,7 @@ class AgentApiTest {
   String owner=login();var bytes=new java.io.ByteArrayOutputStream();javax.imageio.ImageIO.write(new java.awt.image.BufferedImage(32,48,java.awt.image.BufferedImage.TYPE_INT_RGB),"png",bytes);var image=privateMedia.put(owner,"PHOTO",bytes.toByteArray());var own=send("GET",image.url(),null);assertEquals(200,own.statusCode());assertTrue(own.headers().firstValue("Cache-Control").orElse("").contains("no-store"));
   String admin="admin-"+UUID.randomUUID().toString().substring(0,8);accounts.create(admin,"agent-test-password","ADMIN");db.update("UPDATE closet_user SET must_change_password=0 WHERE username=?",admin);assertEquals(200,send("POST","/api/auth/login",Map.of("username",admin,"password","agent-test-password")).statusCode());assertEquals(404,send("GET",image.url(),null).statusCode());
  }
- @Test void helpIsSharedAndUnknownRetrievalStaysUnknown(){assertEquals(4,help.articles().size());assertFalse(help.search("组合台保存草稿").isEmpty());assertFalse(help.search("为什么没推荐它").isEmpty());assertFalse(help.search("语义搜索严格度").isEmpty());assertTrue(help.search("宇宙量子飞船驾驶").isEmpty());}
+ @Test void helpIsSharedAndUnknownRetrievalStaysUnknown(){assertEquals(5,help.articles().size());assertFalse(help.search("邀请码注册").isEmpty());assertFalse(help.search("组合台保存草稿").isEmpty());assertFalse(help.search("为什么没推荐它").isEmpty());assertFalse(help.search("语义搜索严格度").isEmpty());assertTrue(help.search("宇宙量子飞船驾驶").isEmpty());}
  @Test void traceSnapshotsPersistArePaginatedRedactedAndAccountScoped()throws Exception {
   String owner=login();var session=repo.create(owner);String request=UUID.randomUUID().toString();
   repo.begin(owner,session.id(),request,"测试追踪");traces.start(session.id(),request,List.of("credential-fixture","身高170"));

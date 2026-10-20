@@ -1,6 +1,6 @@
 # 数字衣柜首版：运行、接口与交付
 
-本版提供受邀账号独立衣柜，覆盖单件照片录入、真实模型处理、人工核对入柜、信息编辑和回收站。Vue 工程位于同级 `smart-closet/`，正式构建由 Spring Boot 同源提供。默认使用真实 API；显式演示模式标记示例数据并禁止提交模型任务。
+本版提供独立账号衣柜（邀请码 / 开放 / 关闭三种注册模式），覆盖单件照片录入、真实模型处理、人工核对入柜、信息编辑和回收站。Vue 工程位于同级 `smart-closet/`，正式构建由 Spring Boot 同源提供。默认使用真实 API；显式演示模式标记示例数据并禁止提交模型任务。
 
 界面支持浅色和深色主题，可在登录页及应用顶栏切换；选择保存在当前浏览器。登录页左侧展示随主题切换配色的鱼搭专属 SVG 插画，窄屏会隐藏插画以保留表单空间。主题只影响界面配色，穿搭画板和导出的图片保持白色底板。
 
@@ -43,12 +43,19 @@ java -jar .local/runtime/smart-closet-workflow.jar
 | 接口 | 请求或返回 |
 | --- | --- |
 | `GET /api/auth/csrf` | `{token}`，登录前也可获取 |
-| `POST /api/auth/login` | `{username,password}` → `{username,role,mustChangePassword}` |
-| `GET /api/auth/me` | 当前用户及首次改密标记 |
-| `POST /api/auth/password` | `{currentPassword,newPassword}`；首次改密可留空当前密码，普通改密须提供当前密码 |
+| `POST /api/auth/login` | `{username,password}` → `{username,role,mustChangePassword,portableLogin,displayName}`；失败统一 401，过多失败 429 `LOGIN_THROTTLED` |
+| `GET /api/auth/registration` | 匿名：`{mode}`，`CLOSED` / `INVITE` / `OPEN` |
+| `POST /api/auth/register` | 匿名：`{username,password,displayName?,inviteCode?}` → 与登录相同，并建立会话 |
+| `GET /api/auth/me` | 当前用户、昵称及首次改密标记 |
+| `GET` / `PATCH /api/auth/profile` | 资料：昵称、注册时间、最近登录、来源；PATCH `{displayName}` |
+| `GET /api/auth/sessions` / `DELETE /api/auth/sessions/others` | 登录设备列表 / 退出其他设备（同时作废便携授权） |
+| `POST /api/auth/password` | `{currentPassword,newPassword,signOutOthers?}`；首次改密可留空当前密码，普通改密须提供当前密码；默认退出其他设备 |
+| `POST /api/auth/deactivate` | `{currentPassword}`：自助注销（停用、保留数据、全部设备退出） |
 | `POST /api/auth/logout` | 结束当前会话 |
 
-用户名支持 2–80 位英文字母、数字、点、下划线及短横线；密码长度为 12–200 个字符。账号由管理命令创建，不开放注册或邮件找回。
+管理员接口 `/api/admin/users`、`/api/admin/invites`、`/api/admin/registration` 见[账号设计](design/2026-10-19-用户账号：注册、资料与管理设计.md)第七节。
+
+用户名支持 2–80 位英文字母、数字、点、下划线及短横线；密码长度为 12–200 个字符。账号可由管理命令、鱼搭内“用户管理”、管理接口创建，或在开放注册时自助注册；暂不提供邮件找回，忘记密码由管理员重置。
 
 以下离线命令使用同一份 H2 文件库，先停止后端并备份数据，执行后再启动服务。命令中示例密码须自行替换：
 

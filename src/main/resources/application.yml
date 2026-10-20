@@ -37,6 +37,12 @@ spring:
       file-size-threshold: 0
 closet:
   quick-intake-enabled: ${CLOSET_QUICK_INTAKE_ENABLED:true}
+  account:
+    # Self registration: CLOSED / INVITE / OPEN (docs/design/2026-10-19-用户账号：注册、资料与管理设计.md).
+    registration: ${CLOSET_REGISTRATION:INVITE}
+    login-max-failures: 5
+    login-max-failures-per-address: 20
+    register-per-address-hourly: 5
   # Recommendation mechanisms of 2026-10-10 (design docs/design/2026-10-09-搭配审美…设计.md 第四十一节). Each switch
   # falls back to the P4 behaviour when false: aesthetic group of the judge, exposure balance, outer layers counting
   # for warmth. Rollback = set to false and restart; no data migration involved.

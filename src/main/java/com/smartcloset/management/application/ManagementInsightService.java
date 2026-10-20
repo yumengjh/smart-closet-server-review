@@ -36,8 +36,8 @@ public class ManagementInsightService {
     private static final int MAX_CACHE = 500;
 
     public record Range(LocalDate from, LocalDate to) {
-        long fromMs() { return from.atStartOfDay(QuotaPolicy.ZONE).toInstant().toEpochMilli(); }
-        long toMsExclusive() { return to.plusDays(1).atStartOfDay(QuotaPolicy.ZONE).toInstant().toEpochMilli(); }
+        public long fromMs() { return from.atStartOfDay(QuotaPolicy.ZONE).toInstant().toEpochMilli(); }
+        public long toMsExclusive() { return to.plusDays(1).atStartOfDay(QuotaPolicy.ZONE).toInstant().toEpochMilli(); }
     }
     public record Scope(String username, LocalDate from, LocalDate to) {}
     public record KeyCount(String key, long count) {}
