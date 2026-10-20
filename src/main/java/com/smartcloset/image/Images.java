@@ -26,6 +26,20 @@ public final class Images {
 
     /** Validate the original dimensions before reading pixels; large phone photos are subsampled. */
     public static Decoded sampled(byte[] bytes, int maxSide) {
+        return sampled(bytes, (w, h) -> Math.max(1, (int) Math.ceil((double) Math.max(w, h) / maxSide)));
+    }
+
+    /**
+     * For previews: subsampled while reading so the result is still at least twice {@code width} wide after EXIF
+     * orientation (the caller then scales down smoothly). Transparency is kept.
+     */
+    public static Decoded sampledForWidth(byte[] bytes, int width) {
+        int orientation = orientation(bytes);
+        boolean swap = orientation >= 5 && orientation <= 8;
+        return sampled(bytes, (w, h) -> Math.max(1, (swap ? h : w) / (2 * width)));
+    }
+
+    private static Decoded sampled(byte[] bytes, java.util.function.IntBinaryOperator sampling) {
         if (bytes.length == 0 || bytes.length > 50L * 1024 * 1024)
             throw ProcessingException.invalid("照片不能为空，且不能超过 50 MB。");
         try (var stream = ImageIO.createImageInputStream(new ByteArrayInputStream(bytes))) {
@@ -40,7 +54,7 @@ public final class Images {
                 if (w < 32 || h < 32 || w > 16384 || h > 16384 || (long) w * h > 64000000)
                     throw ProcessingException.invalid("照片至少 32 像素，总像素不能超过 6400 万。请降低相机分辨率或导出较小的照片。");
                 var param = reader.getDefaultReadParam();
-                int sample = Math.max(1, (int) Math.ceil((double) Math.max(w, h) / maxSide));
+                int sample = sampling.applyAsInt(w, h);
                 param.setSourceSubsampling(sample, sample, 0, 0);
                 return new Decoded(orient(reader.read(0, param), orientation(bytes), true), format, orientation(bytes));
             } finally { reader.dispose(); }

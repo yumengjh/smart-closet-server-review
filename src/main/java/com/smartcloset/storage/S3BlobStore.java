@@ -56,6 +56,12 @@ public class S3BlobStore implements BlobStore {
 
     @Override public boolean exists(String key) throws IOException { return head(key) != null; }
 
+    /** One HEAD: the content hash the upload recorded, else the size. */
+    @Override public String version(String key) throws IOException {
+        var head = head(key);
+        return head == null ? null : head.sha256() != null ? head.sha256() : String.valueOf(head.size());
+    }
+
     /** Null when the object does not exist. */
     public Head head(String key) throws IOException {
         var response = send("HEAD", objectPath(key), Map.of(), new TreeMap<>(), null, SigV4.EMPTY_SHA256);

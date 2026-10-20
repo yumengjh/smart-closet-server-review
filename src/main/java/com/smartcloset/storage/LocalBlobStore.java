@@ -37,6 +37,12 @@ public class LocalBlobStore implements BlobStore {
         try { return Files.readAllBytes(path); } catch (NoSuchFileException e) { return null; }
     }
     @Override public boolean exists(String key) { return Files.isRegularFile(path(key)); }
+    @Override public String version(String key) throws IOException {
+        try {
+            var attributes = Files.readAttributes(path(key), java.nio.file.attribute.BasicFileAttributes.class);
+            return attributes.isRegularFile() ? attributes.size() + "-" + attributes.lastModifiedTime().toMillis() : null;
+        } catch (NoSuchFileException e) { return null; }
+    }
     @Override public void delete(String key) throws IOException { Files.deleteIfExists(path(key)); }
     @Override public List<Entry> list(String prefix) throws IOException {
         var out = new ArrayList<Entry>();

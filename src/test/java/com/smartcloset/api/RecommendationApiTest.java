@@ -132,6 +132,9 @@ class RecommendationApiTest {
         var swapTarget = top.path("garments").get(0).path("id").asText();
         var swap = me.ok("GET", "/api/recommendations/" + runId + "/outfits/" + top.path("key").asText() + "/swap?garmentId=" + swapTarget, null);
         for (var alt : swap.path("alternatives")) assertNotEquals(swapTarget, alt.path("garment").path("id").asText());
+        // Cards show each garment from displayUrl, without fetching its details one by one.
+        for (var g : top.path("garments")) assertTrue(g.path("displayUrl").asText().matches("/api/workflows/[0-9a-f-]+/files/[a-z0-9.-]+"), g.toString());
+        for (var alt : swap.path("alternatives")) assertTrue(alt.path("garment").path("displayUrl").asText().startsWith("/api/workflows/"), alt.toString());
         if (!swap.path("alternatives").isEmpty()) {
             var adoptIds = new ArrayList<String>(); for (var g : swap.path("alternatives").get(0).path("outfit").path("garments")) adoptIds.add(g.path("id").asText());
             var adopted = me.ok("POST", "/api/recommendations/" + runId + "/outfits", Map.of("garmentIds", adoptIds));

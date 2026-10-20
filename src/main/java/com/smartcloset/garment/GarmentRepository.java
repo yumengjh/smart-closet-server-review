@@ -202,6 +202,19 @@ public class GarmentRepository {
         if (page < 1 || size < 1 || size > 50) throw ProcessingException.invalid("page 从 1 开始，size 为 1 到 50。");
         return jdbc.query("SELECT id FROM garment ORDER BY created_at_ms DESC,id DESC LIMIT ? OFFSET ?", (r, n) -> UUID.fromString(r.getString(1)), size, (long)(page - 1) * size);
     }
+    /**
+     * Display image paths of the garments among the ids, in one query; for cards that only need a picture. With an
+     * owner only that owner's garments answer; null is for ids already taken from the owner's own inventory.
+     */
+    public Map<String, String> displayUrls(String owner, Collection<String> ids) {
+        if (ids.isEmpty()) return Map.of();
+        var urls = new HashMap<String, String>();
+        var args = new ArrayList<Object>(ids); if (owner != null) args.add(owner);
+        jdbc.query("SELECT g.id,a.job_id,a.file_name FROM garment g JOIN image_asset a ON a.id=g.display_asset_id WHERE g.id IN ("
+                + String.join(",", Collections.nCopies(ids.size(), "?")) + ")" + (owner != null ? " AND g.owner_username=?" : ""),
+                rs -> { urls.put(rs.getString(1), "/api/workflows/" + rs.getString(2) + "/files/" + rs.getString(3)); }, args.toArray());
+        return urls;
+    }
     public String assetUrl(String id) {
         return jdbc.queryForObject("SELECT job_id,file_name FROM image_asset WHERE id=?", (r,n) -> "/api/workflows/" + r.getString(1) + "/files/" + r.getString(2), id);
     }

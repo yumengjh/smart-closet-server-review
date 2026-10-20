@@ -22,6 +22,11 @@ public interface BlobStore {
     void delete(String key) throws IOException;
     /** Every object whose key starts with the prefix. */
     List<Entry> list(String prefix) throws IOException;
+    /** Changes whenever the object's content may have changed; null when it does not exist. Derived files key on it. */
+    default String version(String key) throws IOException {
+        for (Entry entry : list(key)) if (entry.key().equals(key)) return entry.size() + "-" + entry.lastModifiedMs();
+        return null;
+    }
     /** A time-limited direct link the browser can fetch without the server, when the backend has one. */
     default Optional<Link> link(String key, Duration window) { return Optional.empty(); }
     /** "local" or "s3". */
@@ -34,6 +39,7 @@ public interface BlobStore {
         String k = key.toLowerCase();
         if (k.endsWith(".png")) return "image/png";
         if (k.endsWith(".jpg") || k.endsWith(".jpeg")) return "image/jpeg";
+        if (k.endsWith(".webp")) return "image/webp";
         if (k.endsWith(".json")) return "application/json";
         return "application/octet-stream";
     }

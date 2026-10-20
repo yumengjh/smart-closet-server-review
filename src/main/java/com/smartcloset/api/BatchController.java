@@ -27,7 +27,7 @@ public class BatchController {
     @PostMapping("/{id}/start") public ResponseEntity<Batch.View> start(@PathVariable UUID id,@RequestHeader("Idempotency-Key") UUID key,@RequestBody Batch.Start request) {return ResponseEntity.accepted().body(batches.start(id,key,request));}
     @PostMapping("/{id}/generate") public ResponseEntity<Batch.View> generate(@PathVariable UUID id,@RequestHeader("Idempotency-Key") UUID key,@RequestBody Batch.Generate request) {return ResponseEntity.accepted().body(batches.generate(id,key,request));}
     @PostMapping("/{id}/calls/{callId}/resume-local") public Batch.View resumeLocal(@PathVariable UUID id,@PathVariable UUID callId) throws IOException {return batches.resumeLocal(id,callId);}
-    @GetMapping("/{id}/files/{name}") public ResponseEntity<?> file(@PathVariable UUID id,@PathVariable String name) throws IOException {
-        return media.shared(batches.file(id,name));
+    @GetMapping("/{id}/files/{name}") public ResponseEntity<?> file(@PathVariable UUID id,@PathVariable String name,@RequestParam(required=false) Integer w) throws IOException {
+        return media.shared(batches.file(id,name),w);
     }
 }

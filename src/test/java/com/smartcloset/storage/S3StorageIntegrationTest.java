@@ -87,6 +87,15 @@ class S3StorageIntegrationTest {
         var proxied = served.shared(files.key(job, "step-1.png"));
         assertEquals(200, proxied.getStatusCode().value());
         assertArrayEquals(png, (byte[]) proxied.getBody());
+
+        // Thumbnails come from the server's local copy, made once from the bucket object.
+        var thumbRequest = new MockHttpServletRequest("GET", "/api/workflows/" + job + "/files/step-1.png");
+        thumbRequest.addHeader("Accept", "image/webp,*/*");
+        RequestContextHolder.setRequestAttributes(new ServletRequestAttributes(thumbRequest));
+        var thumb = served.shared(files.key(job, "step-1.png"), 160);
+        assertEquals(200, thumb.getStatusCode().value());
+        assertEquals("image/webp", thumb.getHeaders().getContentType().toString());
+        assertFalse(s3.objects.keySet().stream().anyMatch(k -> k.contains("image-variants")), "copies never go to the bucket");
     }
 
     @Test void personalPhotosAreNeverCachedAndDeletionRemovesTheObject() throws Exception {

@@ -185,6 +185,33 @@ class AgentApiTest {
    assertTrue(response.body().contains("event: done"),response.body());assertFalse(response.body().contains("event: canvas_operation"));
   }finally{runtime.removeContext("/run");}
  }
+ @Test void choiceAndListCardsCarryDisplayUrlsThatTheModelNeverReads()throws Exception {
+  String owner=login();var session=repo.create(owner);String first=clothing(owner,"ACTIVE","衬衫"),second=clothing(owner,"ACTIVE","衬衫");
+  var failure=new java.util.concurrent.atomic.AtomicReference<Throwable>();
+  runtime.createContext("/run",exchange->{
+   String frame;
+   try {
+    var input=json.readTree(exchange.getRequestBody().readAllBytes());String token=input.path("callbackToken").asText();
+    var search=json.valueToTree(service.tool(token,new AgentService.ToolRequest("search_wardrobe",json.readTree("{\"query\":\"衬衫\"}"))));
+    var choices=search.path("choiceCard").path("payload").path("candidates");
+    assertEquals(2,choices.size(),search.toString());
+    for(var c:choices)assertTrue(c.path("displayUrl").asText().matches("/api/workflows/[0-9a-f-]+/files/input\\.png"),c.toString());
+    var summary=json.valueToTree(service.tool(token,new AgentService.ToolRequest("closet_summary",json.readTree("{\"category\":\"衬衫\",\"show\":true}"))));
+    var listed=summary.path("listCard").path("payload").path("items");
+    assertEquals(Set.of(first,second),new HashSet<>(listed.findValuesAsString("id")),summary.toString());
+    for(var item:listed)assertTrue(item.path("displayUrl").asText().startsWith("/api/workflows/"),item.toString());
+    // The model-facing list stays as it was: pictures ride only on the card, which the runtime swaps for a note.
+    for(var item:summary.path("items"))assertFalse(item.has("displayUrl"),item.toString());
+    frame="{\"event\":\"done\",\"data\":{}}\n";
+   } catch(Throwable e) {failure.set(e);frame="{\"event\":\"error\",\"data\":{}}\n";}
+   byte[] bytes=frame.getBytes(StandardCharsets.UTF_8);exchange.sendResponseHeaders(200,bytes.length);exchange.getResponseBody().write(bytes);exchange.close();
+  });
+  try {
+   var response=send("POST","/api/agent/sessions/"+session.id()+"/messages",Map.of("requestId",UUID.randomUUID().toString(),"content","列出我的衬衫","context",Map.of("route","/wardrobe")));
+   if(failure.get()!=null)throw new AssertionError("Card callback checks failed",failure.get());
+   assertTrue(response.body().contains("event: done"),response.body());
+  }finally{runtime.removeContext("/run");}
+ }
  @Test void countsUseAuthoritativeActiveRecordsOverlappingSeasonsAndUnknowns()throws Exception {
   String owner=login();String dress=clothing(owner,"ACTIVE","连衣裙");clothing(owner,"ACTIVE","半身裙");clothing(owner,"ACTIVE","衬衫");String ambiguous=clothing(owner,"ACTIVE","裙装");clothing(owner,"DRAFT","衬衫");clothing(owner,"TRASHED","长裤");
   db.update("UPDATE garment SET overrides_json=? WHERE id=?",json.writeValueAsString(Map.of("category",List.of("连衣裙"),"seasons",List.of("春季","夏季"))),dress);

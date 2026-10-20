@@ -368,7 +368,10 @@ public class AgentService {
                 var summary=new LinkedHashMap<>(closetSummary.summary(owner,a.path("query").asText(""),a.path("category").asText(""),a.path("color").asText(""),a.path("season").asText(""),a.has("favorite")?a.path("favorite").asBoolean():null,a.path("imageStyle").asText("")));
                 // Issue #8: "列出来/哪几件" shows the exact matching garments as a card the user can open one by one.
                 if(a.path("show").asBoolean(false)&&!((List<?>)summary.get("items")).isEmpty()) {
-                    var payload=json.createObjectNode();payload.set("items",json.valueToTree(summary.get("items")));payload.put("total",((Number)summary.get("count")).intValue());
+                    var payload=json.createObjectNode();var listed=json.valueToTree(summary.get("items"));payload.set("items",listed);payload.put("total",((Number)summary.get("count")).intValue());
+                    // Pictures for the card only: the runtime replaces listCard with a note before the model reads the result.
+                    var ids=new ArrayList<String>();for(var item:listed)ids.add(item.path("id").asText());var urls=garments.displayUrls(owner,ids);
+                    for(var item:listed)if(item instanceof tools.jackson.databind.node.ObjectNode o&&urls.containsKey(o.path("id").asText()))o.put("displayUrl",urls.get(o.path("id").asText()));
                     payload.put("truncated",(Boolean)summary.get("itemsTruncated"));payload.set("filter",json.valueToTree(summary.get("filter")));
                     summary.put("listCard",repo.propose(owner,grant.session(),"GARMENT_LIST",payload,contextFor(grant)));
                 }
@@ -403,7 +406,8 @@ public class AgentService {
                     if(r.total()>1&&pageNo==1) {
                         // Choice card (design 8.2): 2–4 thumbnails; tapping one recommends around it with no further model call.
                         var payload=json.createObjectNode();payload.put("query",query);var cards=json.createArrayNode();
-                        for(var h:r.hits().subList(0,Math.min(4,r.hits().size()))){var c=json.createObjectNode();c.set("garmentIds",json.valueToTree(List.of(h.id())));c.put("name",AgentRepository.clean(garmentName(owner,h.id()),60));c.set("reasons",json.valueToTree(h.reasons()));cards.add(c);}
+                        var shownHits=r.hits().subList(0,Math.min(4,r.hits().size()));var urls=garments.displayUrls(owner,shownHits.stream().map(h->h.id()).toList());
+                        for(var h:shownHits){var c=json.createObjectNode();c.set("garmentIds",json.valueToTree(List.of(h.id())));c.put("name",AgentRepository.clean(garmentName(owner,h.id()),60));c.set("reasons",json.valueToTree(h.reasons()));if(urls.containsKey(h.id()))c.put("displayUrl",urls.get(h.id()));cards.add(c);}
                         payload.set("candidates",cards);payload.put("total",r.total());
                         out.put("choiceCard",repo.propose(owner,grant.session(),"GARMENT_CHOICE",payload,contextFor(grant)));
                         out.put("searchNote",out.get("searchNote")+" 已在聊天里展示前 "+cards.size()+" 件的选择卡，用户点一下就能围绕那件推荐；你只需简短说明请用户点选。");

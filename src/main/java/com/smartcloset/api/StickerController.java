@@ -29,8 +29,8 @@ public class StickerController {
     public StickerService.Result get(@PathVariable UUID id) throws IOException { ownership.segmentation(id); return stickers.get(id); }
 
     @GetMapping("/image")
-    public ResponseEntity<?> image(@PathVariable UUID id) throws IOException {
+    public ResponseEntity<?> image(@PathVariable UUID id, @RequestParam(required = false) Integer w) throws IOException {
         ownership.segmentation(id);
-        return media.shared(stickers.image(id));
+        return media.shared(stickers.image(id), w);
     }
 }

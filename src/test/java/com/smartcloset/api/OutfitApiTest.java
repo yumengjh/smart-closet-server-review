@@ -33,6 +33,26 @@ class OutfitApiTest {
     final JsonMapper json = JsonMapper.builder().build();
     String csrf;
 
+    @Autowired com.smartcloset.garment.GarmentThumbnailWarmer warmer;
+
+    @Test void displayImagesGetListThumbnailsBeforeTheFirstVisit() throws Exception {
+        String owner = "warm-" + UUID.randomUUID().toString().substring(0, 8);
+        signIn(owner);
+        UUID garment = activeGarment(owner);
+        String job = jdbc.queryForObject("SELECT a.job_id FROM garment g JOIN image_asset a ON a.id=g.display_asset_id WHERE g.id=?", String.class, garment.toString());
+        var image = new java.awt.image.BufferedImage(600, 800, java.awt.image.BufferedImage.TYPE_INT_ARGB);
+        var g = image.createGraphics(); g.setColor(java.awt.Color.RED); g.fillRect(100, 100, 400, 600); g.dispose();
+        javax.imageio.ImageIO.write(image, "png", storage.resolve("workflows").resolve(job).resolve("input.png").toFile());
+        Path cache = storage.resolve("cache/image-variants");
+        while (warmer.pass() > 0) { /* catch up with every garment the suite has made */ }
+        try (var files = Files.walk(cache)) {
+            var webp = files.filter(f -> f.toString().endsWith(".webp")).toList();
+            assertFalse(webp.isEmpty(), "WebP copies are made ahead of the wardrobe visit");
+            assertTrue(webp.stream().anyMatch(f -> f.getFileName().toString().contains("-w480.")), webp.toString());
+        }
+        assertEquals(0, warmer.pass(), "nothing changed, nothing to do");
+    }
+
     @Test void outfitHistoryLinksServeTheVueShell() throws Exception {
         for (String path : List.of("/ootd", "/ootd?outfit=" + UUID.randomUUID(), "/outfits", "/outfits/new", "/outfits/" + UUID.randomUUID())) {
             var response = get(path);

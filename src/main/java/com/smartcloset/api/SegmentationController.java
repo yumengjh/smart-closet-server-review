@@ -70,9 +70,9 @@ public class SegmentationController {
     public SegmentationResult result(@PathVariable UUID id) throws IOException { ownership.segmentation(id); return service.get(id); }
 
     @GetMapping("/segmentations/{id}/files/{name}")
-    public ResponseEntity<?> image(@PathVariable UUID id, @PathVariable String name) throws IOException {
+    public ResponseEntity<?> image(@PathVariable UUID id, @PathVariable String name, @RequestParam(required = false) Integer w) throws IOException {
         ownership.segmentation(id);
-        return media.shared(service.key(id, name));
+        return media.shared(service.key(id, name), w);
     }
 
     private ResponseEntity<SegmentationResult> created(SegmentationResult result) {

@@ -82,6 +82,16 @@ class WorkflowApiTest {
         assertEquals(202,post(body,id).statusCode());var job=await(id);assertEquals("SUCCEEDED",job.path("status").asText(),job.toString());assertTrue(job.path("requiresReview").asBoolean());
         assertEquals(3,job.path("steps").size());for(var step:job.path("steps")){assertEquals("SUCCEEDED",step.path("status").asText());assertEquals(200,get(step.path("outputUrl").asText()).statusCode());}
         assertNotNull(ImageIO.read(new ByteArrayInputStream(get(job.path("outputUrl").asText()).body())));
+        // List thumbnails: a WebP copy for browsers that take it, and a 304 once the browser holds it.
+        var thumbUri=URI.create("http://127.0.0.1:"+port+job.path("outputUrl").asText()+"?w=160");
+        var thumb=client.send(HttpRequest.newBuilder(thumbUri).header("Accept","image/webp,*/*").GET().build(),HttpResponse.BodyHandlers.ofByteArray());
+        assertEquals(200,thumb.statusCode());assertEquals("image/webp",thumb.headers().firstValue("Content-Type").orElse(""));
+        String etag=thumb.headers().firstValue("ETag").orElseThrow();
+        var revalidated=client.send(HttpRequest.newBuilder(thumbUri).header("Accept","image/webp,*/*").header("If-None-Match",etag).GET().build(),HttpResponse.BodyHandlers.ofByteArray());
+        assertEquals(304,revalidated.statusCode());assertEquals(0,revalidated.body().length);
+        var plain=client.send(HttpRequest.newBuilder(thumbUri).header("Accept","image/png").GET().build(),HttpResponse.BodyHandlers.ofByteArray());
+        assertEquals("image/png",plain.headers().firstValue("Content-Type").orElse(""));
+        assertEquals(400,get(job.path("outputUrl").asText()+"?w=0").statusCode());
         assertEquals(202,post(body,id).statusCode());assertEquals(before+1,calls.get());
         assertEquals(409,post(body.replace("Blue shirt","Red shirt"),id).statusCode());
         assertFalse(Files.exists(storage.resolve("workflows").resolve(id.toString()).resolve("job.json")));
@@ -211,7 +221,10 @@ class WorkflowApiTest {
         String html=new String(get("/").body());
         var script=java.util.regex.Pattern.compile("src=\"([^\"]+\\.js)\"").matcher(html);
         assertTrue(script.find(),html);
-        assertEquals(200,get(script.group(1)).statusCode());
+        var bundle=get(script.group(1));
+        assertEquals(200,bundle.statusCode());
+        assertEquals("max-age=31536000, public, immutable",bundle.headers().firstValue("Cache-Control").orElse(""),"hashed bundles are kept for a year");
+        assertFalse(get("/").headers().firstValue("Cache-Control").orElse("").contains("immutable"),"the entry page always revalidates");
     }
     @Test void failedPostprocessingCanContinueWithoutAnotherGenerationAndReviewPersists()throws Exception{
         int before=calls.get();UUID id=UUID.randomUUID();
