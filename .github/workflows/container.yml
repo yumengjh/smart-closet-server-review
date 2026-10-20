@@ -1,12 +1,11 @@
 name: Backend containers
 
+# Everyday checks run on CircleCI (.circleci/config.yml). GitHub Actions only builds and publishes images
+# for version tags or when started by hand, which then triggers deploy.yml.
 on:
   push:
-    branches:
-      - "**"
     tags:
       - "v*"
-  pull_request:
   workflow_dispatch:
 
 permissions:

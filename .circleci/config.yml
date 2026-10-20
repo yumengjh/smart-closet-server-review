@@ -1,0 +1,57 @@
+# Required checks on every push and pull request (replaces the test job of .github/workflows/container.yml).
+# Container images, GHCR publishing, deployment and portable packages stay on GitHub Actions (manual / tags only).
+version: 2.1
+
+jobs:
+  java:
+    docker:
+      - image: cimg/openjdk:21.0
+    resource_class: large
+    environment:
+      MAVEN_OPTS: -Xmx1g
+    steps:
+      - checkout
+      - restore_cache:
+          keys:
+            - maven-v1-{{ checksum "pom.xml" }}
+            - maven-v1-
+      - run:
+          name: Verify Java backend
+          command: mvn -B verify
+      - save_cache:
+          key: maven-v1-{{ checksum "pom.xml" }}
+          paths: [~/.m2/repository]
+      - run:
+          name: Verify backend-only packaging
+          command: |
+            jar=$(ls target/*.jar | head -1)
+            leaked=$(jar tf "$jar" | grep -E '^BOOT-INF/classes/(spa-test/|static/index\.html$|static/assets/)' || true)
+            if [ -n "$leaked" ]; then echo "Test fixtures or local SPA output leaked into backend package:"; echo "$leaked"; exit 1; fi
+            echo "Backend-only package verified; test fixtures and local SPA output are absent."
+      - store_test_results:
+          path: target/surefire-reports
+
+  agent:
+    docker:
+      - image: cimg/node:22.20
+    steps:
+      - checkout
+      - restore_cache:
+          keys:
+            - agent-npm-v1-{{ checksum "agent-runtime/package-lock.json" }}
+      - run:
+          name: Test and build TypeScript Agent
+          working_directory: agent-runtime
+          command: |
+            npm ci
+            npm test
+            npm run build
+      - save_cache:
+          key: agent-npm-v1-{{ checksum "agent-runtime/package-lock.json" }}
+          paths: [~/.npm]
+
+workflows:
+  checks:
+    jobs:
+      - java
+      - agent

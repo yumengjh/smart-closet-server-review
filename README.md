@@ -150,15 +150,17 @@ docker compose --env-file "$HOME/smart-closet-server.env" up -d
 
 下载均校验固定的 SHA-256。来源、许可证、输入输出约定与精度实测见 [models/README.md](models/README.md)。
 
-## CI/CD（GitHub Actions）
+## CI/CD
+
+日常检查在 CircleCI（`.circleci/config.yml`），每次推送与 PR 运行：`java` 任务跑 `mvn verify` 和后端包检查（不得混入测试夹具与本地前端产物），`agent` 任务跑 Agent 测试与构建。GitHub Actions 只在打 `v*` 标签或手动运行时使用：
 
 | 工作流 | 触发 | 内容 |
 | --- | --- | --- |
-| `container.yml` Backend containers | 每次推送、PR、`v*` 标签 | `mvn verify`、Agent 测试与构建、构建两个镜像；默认分支与 `v*` 标签推送到 GHCR |
+| `container.yml` Backend containers | `v*` 标签、手动 | `mvn verify`、Agent 测试与构建、构建两个镜像并推送到 GHCR |
 | `deploy.yml` Deploy | `v*` 标签的容器构建成功后；或手动 | 通过 SSH 部署到服务器：补齐模型、同步 compose、拉镜像、等健康、失败回滚 |
 | `portable.yml` Portable package | 改动便携相关文件、`v*` 标签、手动 | 构建五个平台的便携包，在各自平台解压后冒烟测试；`v*` 标签时附加到 Release |
 
-前端仓库有自己的检查与部署工作流（推送 `v*` 标签时发布静态站点）。便携版工作流用只读 deploy key（secret
+前端仓库的日常检查同样在 CircleCI，部署工作流在推送 `v*` 标签时发布静态站点。便携版工作流用只读 deploy key（secret
 `FRONTEND_DEPLOY_KEY`）检出前端。
 
 ## 测试
