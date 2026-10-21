@@ -62,7 +62,7 @@ class GenderFitBackfillTest {
     }
 
     @Test void oneBatchedCallFillsOnlyGenderFitAndKeepsUserValues() throws Exception {
-        var womens = garment("女式衬衫", Map.of(), 1_000, OLD, "{}");
+        var womens = garment("女式衬衫", Map.of(), 2_000, OLD, "{}"); // newest first: grid cell 1
         var plain = garment("白T恤", Map.of(), 1_000, OLD, "{}");
         var userSet = garment("我改过的", Map.of("genderFit", List.of("中性")), 1_000, OLD, "{}");
         var fresh = garment("新识别", Map.of(), 1_000, OLD.replace("\"issues\"", "\"_x\":0,\"issues\"").replace("\"attributes\":{", "\"attributes\":{\"genderFit\":{\"values\":[\"男款\"],\"status\":\"INFERRED\",\"evidence\":\"直身\"},"), "{}");
