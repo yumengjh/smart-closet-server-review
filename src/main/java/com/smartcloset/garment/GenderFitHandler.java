@@ -32,6 +32,8 @@ public class GenderFitHandler implements ProcessingHandler {
     public static final String VERSION = "gender-fit-v1";
     static final String DONE = "gender-fit-backfill-done";
     static final Duration SCAN_EVERY = Duration.ofSeconds(60);
+    /** After a failed call (e.g. the provider answers 503) the owner's backfill waits this long before trying again. */
+    static final Duration BACKOFF = Duration.ofMinutes(15);
     static final List<String> VALUES = List.of("女款", "男款", "中性", "UNKNOWN");
     static final String PROMPT = """
         你在判断衣物单品的剪裁面向，只看衣物本身，不看也不推断任何人。图片是编号网格，每格一件衣物的展示图，格子左上角的红色数字是编号。
@@ -79,6 +81,7 @@ public class GenderFitHandler implements ProcessingHandler {
         for (String owner : owners) {
             String business = UUID.nameUUIDFromBytes(("gender-fit:" + owner).getBytes(StandardCharsets.UTF_8)).toString();
             if (db.queryForObject("SELECT COUNT(*) FROM execution_task WHERE kind=? AND business_id=? AND status IN ('QUEUED','RUNNING','WAITING_QUOTA','CANCEL_REQUESTED')", Integer.class, KIND, business) > 0) continue;
+            if (db.queryForObject("SELECT COUNT(*) FROM execution_task WHERE kind=? AND business_id=? AND status='FAILED' AND updated_at_ms>?", Integer.class, KIND, business, now - BACKOFF.toMillis()) > 0) continue;
             out.add(new Candidate(KIND, business, (int) ((now / 1000) % Integer.MAX_VALUE), owner, "RECOGNITION", recognition.account(provider.id()), 10));
         }
         return out;
