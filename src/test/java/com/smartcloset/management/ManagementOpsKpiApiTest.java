@@ -196,6 +196,19 @@ class ManagementOpsKpiApiTest {
         assertEquals(30, s.path("daily").path("days").size());
         assertTrue(s.path("refreshAfterMs").asLong() >= 30_000);
         assertTrue(s.path("ops").has("status"));
+        // 1.2 big-screen sections: growth, weekday × hour heat, de-identified feed and extra distributions.
+        assertEquals(30, s.path("growth").path("newUsers").size());
+        assertTrue(s.path("growth").path("cumulative").get(29).asInt() >= 1);
+        assertEquals(7 * 24, s.path("heatmap").path("cells").size());
+        long heat = 0; for (var cell : s.path("heatmap").path("cells")) heat += cell.get(2).asLong();
+        assertTrue(heat >= 1);
+        var kinds = new java.util.HashSet<String>(); s.path("feed").forEach(x -> kinds.add(x.path("kind").asText()));
+        assertTrue(kinds.containsAll(List.of("GARMENT_ADDED", "USER_REGISTERED")), kinds.toString());
+        assertTrue(s.path("feed").size() <= 20);
+        var d = s.path("distributions");
+        assertEquals(5, d.path("closetSizes").size());
+        assertTrue(d.has("styles") && d.has("genderFits") && d.has("registeredVia"));
+        assertEquals("AGENT", d.path("aiFeatures30d").get(0).path("key").asText());
     }
 
     @Test void dailyExportJsonAndCsvAgree() throws Exception {

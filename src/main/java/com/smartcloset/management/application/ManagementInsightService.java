@@ -106,10 +106,13 @@ public class ManagementInsightService {
             requireUser(username);
             var active = activeGarments(username);
             var categories = new TreeMap<String, Long>(); var colors = new HashMap<String, Long>(); var seasons = new TreeMap<String, Long>();
+            var styles = new HashMap<String, Long>(); var genderFits = new HashMap<String, Long>();
             long unknownSeason = 0, favorites = 0, confirmed = 0;
             for (var g : active) {
                 categories.merge(g.family(), 1L, Long::sum);
                 for (String color : new LinkedHashSet<>(g.fields().getOrDefault("primaryColor", List.of()))) if (!color.isBlank()) colors.merge(color.strip(), 1L, Long::sum);
+                for (String style : new LinkedHashSet<>(g.fields().getOrDefault("styles", List.of()))) if (!style.isBlank()) styles.merge(style.strip(), 1L, Long::sum);
+                for (String fit : new LinkedHashSet<>(g.fields().getOrDefault("genderFit", List.of()))) if (!fit.isBlank()) genderFits.merge(fit.strip(), 1L, Long::sum);
                 var own = g.fields().getOrDefault("seasons", List.of());
                 for (String season : new HashSet<>(own)) if (SEASONS.contains(season)) seasons.merge(season, 1L, Long::sum);
                 if (own.isEmpty() || own.stream().anyMatch(s -> !SEASONS.contains(s))) unknownSeason++;
@@ -122,6 +125,8 @@ public class ManagementInsightService {
             result.put("categories", ranked(categories, Integer.MAX_VALUE));
             result.put("colors", ranked(colors, 20));
             result.put("seasons", List.of("春", "夏", "秋", "冬").stream().map(s -> new KeyCount(s, seasons.getOrDefault(s, 0L))).toList());
+            result.put("styles", ranked(styles, 12));
+            result.put("genderFits", ranked(genderFits, 5));
             result.put("unknownCategoryCount", categories.getOrDefault("UNKNOWN", 0L));
             result.put("unknownSeasonCount", unknownSeason);
             result.put("favoriteCount", favorites);
