@@ -672,6 +672,7 @@ public class AgentService {
     /** Shows recommendations as a confirmation card (default) or opens them on the temporary workspace. */
     /** limits and notes go to the card only; the model sees limits through the tool result and never sees notes (wearer sex). */
     private Object presentRecommendation(String owner,Grant grant,String runId,String intent,List<com.smartcloset.recommend.RecommendationService.OutfitView> outfits,Map<String,String> reasons,String open,List<String> limits,List<String> notes){
+        notes=com.smartcloset.recommend.RecommendationService.presetNotes(outfits,notes);
         var candidates=json.createArrayNode();
         for(var v:outfits){
             var c=json.createObjectNode();c.put("name",v.name());c.put("reason",reasons.getOrDefault(v.key(),String.join("；",v.highlights())));
