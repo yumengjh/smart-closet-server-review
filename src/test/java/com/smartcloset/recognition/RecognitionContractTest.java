@@ -37,7 +37,7 @@ class RecognitionContractTest {
         assertEquals("RECOGNITION_INVALID_OUTPUT",failure.code()); assertTrue(failure.getMessage().contains("没有给出衣物目标"));
     }
     @Test void oldAndNewTargetContractsRemainEnforced() {
-        for (String version : List.of("garment-v3","garment-v4","garment-v5","garment-v6")) assertTrue(RecognitionSchema.requiresTarget(version));
+        for (String version : List.of("garment-v3","garment-v4","garment-v5","garment-v6","garment-v7")) assertTrue(RecognitionSchema.requiresTarget(version));
         assertFalse(RecognitionSchema.requiresTarget("garment-v2")); assertFalse(RecognitionSchema.requiresTarget(null));
     }
     @Test void userTargetDescriptionIsFrozenVersionedDataAndCannotChangeSchema() throws Exception {
@@ -59,5 +59,22 @@ class RecognitionContractTest {
         blocked.put("imageStyle", "WATERCOLOR");
         assertEquals("OTHER", schema.validate(blocked, true).imageStyle(), "unknown values fall back to OTHER");
         assertTrue(json.writeValueAsString(schema.validate(ambiguous("NO_GARMENT").put("assessment", "NO_GARMENT"), true)).indexOf("imageStyle") < 0, "absent values are not serialised");
+    }
+    /** garment-v7: genderFit is a suggestion only (INFERRED), optional for older outputs, and tolerated when malformed. */
+    @Test void genderFitIsAnOptionalSuggestionForOlderOutputs() {
+        var blocked = ambiguous("NO_GARMENT"); blocked.put("assessment", "NO_GARMENT");
+        ((ObjectNode) blocked.path("attributes")).remove("genderFit");
+        var old = schema.validate(blocked, true);
+        assertEquals(Recognition.State.UNKNOWN, old.attributes().get("genderFit").status(), "outputs before garment-v7 still validate");
+        assertTrue(schema.schema().path("properties").path("attributes").path("required").toString().contains("genderFit"));
+        assertTrue(RecognitionSchema.field("genderFit").suggestion());
+    }
+    @Test void genderFitValuesAreCanonicalAndNeverObserved() {
+        assertEquals("女款", MetadataValues.canonical("genderFit", "女装"));
+        assertEquals("中性", MetadataValues.canonical("genderFit", "男女同款"));
+        assertEquals("男款", MetadataValues.canonical("genderFit", "男式"));
+        var raw = ambiguous("NO_GARMENT"); raw.put("assessment", "NO_GARMENT");
+        ((ObjectNode) raw.path("attributes")).set("genderFit", json.valueToTree(Map.of("values", List.of("女款"), "status", "OBSERVED", "evidence", "收腰。")));
+        assertEquals(Recognition.State.UNKNOWN, schema.validate(raw, true).attributes().get("genderFit").status(), "a claimed fact about the cut is dropped, not trusted");
     }
 }
