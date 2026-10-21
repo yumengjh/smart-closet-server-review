@@ -74,6 +74,17 @@ public class WorkflowService implements com.smartcloset.processing.ProcessingHan
         return submit(key, request, upload, null, fingerprint(request, upload, true));
     }
 
+    /**
+     * “换成我的照片” for a garment imported from the preset library (design 2026-10-21): a new upload attached to the
+     * caller's own preset copy. Every other existing garment still goes through reprocessing.
+     */
+    public synchronized Job submitPresetPhoto(UUID key, Request request, byte[] upload) throws IOException {
+        rejectUnreviewedPolicy(request);
+        if (request == null || request.garmentId() == null || !garments.presetCopyOfCaller(request.garmentId()))
+            throw ProcessingException.invalid("只有来自预设库的衣物可以直接换成自己的照片，其他衣物请使用重新处理。");
+        return submit(key, request, upload, null, fingerprint(request, upload, true));
+    }
+
     /** Batch calls already own billing and durable model receipts; only local steps remain here. */
     public synchronized Job importBatchResult(UUID jobId, UUID garmentId, byte[] source, byte[] generated,
             Recognition.Result metadata, GenerationService.Prepared prepared) throws IOException {

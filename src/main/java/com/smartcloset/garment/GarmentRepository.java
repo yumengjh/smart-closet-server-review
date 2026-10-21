@@ -228,6 +228,12 @@ public class GarmentRepository {
                 id.toString(), source.id, source.id, job.request().sourceOrigin().name(), "{}", job.createdAt().toEpochMilli(), job.createdAt().toEpochMilli(), com.smartcloset.security.ClosetIdentity.username());
         }
         row(id, true);
+        // A replacement upload belongs to the caller; future reruns must use that photo, never the shared source.
+        if (count > 0 && job.request().sourceOrigin() == Origin.USER_UPLOAD && job.parentJobId() == null
+                && jdbc.queryForObject("SELECT COUNT(*) FROM garment WHERE id=? AND preset_id IS NOT NULL", Integer.class, id.toString()) > 0) {
+            assets.stream().filter(a -> "INPUT".equals(a.kind)).findFirst().ifPresent(a ->
+                jdbc.update("UPDATE garment SET source_asset_id=? WHERE id=?", a.id, id.toString()));
+        }
         if (job.request().steps().stream().anyMatch(s -> s.type() == Type.RECOGNIZE))
             jdbc.update("UPDATE garment SET latest_recognition_job_id=?,revision=revision+1,updated_at_ms=? WHERE id=?", job.id().toString(), System.currentTimeMillis(), id.toString());
         if (job.request().steps().stream().anyMatch(s -> s.type() != Type.RECOGNIZE))
@@ -243,8 +249,13 @@ public class GarmentRepository {
                 json.writeValueAsString(s.recognition()), job.id().toString(), System.currentTimeMillis(), id.toString());
         }
         if (asset != null && !"INPUT".equals(asset.kind))
-            jdbc.update("UPDATE garment SET display_asset_id=?,revision=revision+1,updated_at_ms=? WHERE id=? AND latest_image_job_id=? AND display_user_selected=0 AND closet_status!='TRASHED'",
+            jdbc.update("UPDATE garment SET display_asset_id=?,source_origin=CASE WHEN source_origin='PRESET' THEN 'USER_UPLOAD' ELSE source_origin END,revision=revision+1,updated_at_ms=? WHERE id=? AND latest_image_job_id=? AND display_user_selected=0 AND closet_status!='TRASHED'",
                 asset.id, System.currentTimeMillis(), id.toString(), job.id().toString());
+    }
+    /** The garment belongs to the signed-in user and was imported from the preset library. */
+    public boolean presetCopyOfCaller(UUID id) {
+        return jdbc.queryForObject("SELECT COUNT(*) FROM garment WHERE id=? AND owner_username=? AND preset_id IS NOT NULL AND closet_status!='TRASHED'", Integer.class,
+            id.toString(), com.smartcloset.security.ClosetIdentity.username()) == 1;
     }
     public View edit(UUID id, Edit request) {
         if (request == null || request.revision() == null) throw ProcessingException.invalid("修改元信息需要当前 revision。");
@@ -268,7 +279,7 @@ public class GarmentRepository {
             var r = row(id, true); checkRevision(r, request.revision());
             int count = jdbc.queryForObject("SELECT COUNT(*) FROM image_asset a JOIN workflow_job j ON a.job_id=j.id WHERE a.id=? AND j.garment_id=?", Integer.class, request.assetId().toString(), id.toString());
             if (count != 1) throw ProcessingException.invalid("图片不属于此衣物。");
-            jdbc.update("UPDATE garment SET display_asset_id=?,display_user_selected=1,revision=revision+1,updated_at_ms=? WHERE id=?", request.assetId().toString(), System.currentTimeMillis(), id.toString());
+            jdbc.update("UPDATE garment SET display_asset_id=?,source_origin=CASE WHEN source_origin='PRESET' THEN 'USER_UPLOAD' ELSE source_origin END,display_user_selected=1,revision=revision+1,updated_at_ms=? WHERE id=?", request.assetId().toString(), System.currentTimeMillis(), id.toString());
             bumpQuickSelection(id);
         });
         return get(id);
@@ -311,7 +322,7 @@ public class GarmentRepository {
                         request.assetId().toString(), System.currentTimeMillis(), chosen.getValue());
             }
             long now = System.currentTimeMillis();
-            jdbc.update("UPDATE garment SET overrides_json=?,display_asset_id=?,display_user_selected=1,closet_status='ACTIVE',restore_status=NULL,revision=revision+1,updated_at_ms=? WHERE id=?",
+            jdbc.update("UPDATE garment SET overrides_json=?,display_asset_id=?,source_origin=CASE WHEN source_origin='PRESET' THEN 'USER_UPLOAD' ELSE source_origin END,display_user_selected=1,closet_status='ACTIVE',restore_status=NULL,revision=revision+1,updated_at_ms=? WHERE id=?",
                     json.writeValueAsString(values), request.assetId().toString(), now, id.toString());
             bumpQuickSelection(id);
         });
