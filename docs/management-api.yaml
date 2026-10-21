@@ -1103,6 +1103,8 @@ components:
         favoriteCount: { type: integer }
         wearingConfirmedCount: { type: integer }
         mappingVersion: { type: string }
+        styles: { type: array, items: { $ref: '#/components/schemas/KeyCount' }, description: 风格标签前 12 项（1.2） }
+        genderFits: { type: array, items: { $ref: '#/components/schemas/KeyCount' }, description: 男款 / 女款 / 中性（1.2） }
     GarmentRef:
       type: object
       required: [garmentId, owner, family, createdAtMs]
@@ -1273,7 +1275,7 @@ components:
         size: { type: integer }
     DashboardSnapshot:
       type: object
-      required: [generatedAtMs, refreshAfterMs, tiles, hourly, daily, distributions, ops]
+      required: [generatedAtMs, refreshAfterMs, tiles, hourly, daily, distributions, ops, growth, heatmap, feed]
       properties:
         generatedAtMs: { type: integer }
         refreshAfterMs: { type: integer }
@@ -1298,8 +1300,34 @@ components:
             modelTokensToday: { type: integer }
         hourly: { type: object, description: 近 24 个整点（含当前小时）, properties: { hours: { type: array, items: { type: string } }, series: { type: array, items: { type: object } } } }
         daily: { type: object, description: 近 30 天, properties: { days: { type: array, items: { type: string, format: date } }, series: { type: array, items: { type: object } } } }
-        distributions: { type: object }
+        distributions:
+          type: object
+          description: categories、colors、seasons、recommendationSources7d；1.2 增加 styles、genderFits、closetSizes（按已入柜衣物数分档的用户数，含 0 件）、registeredVia、aiFeatures30d（近 30 天按功能的模型调用次数与 Token）
+          additionalProperties: true
         ops: { type: object, properties: { status: { type: string }, issues: { type: integer }, queueBacklog: { type: integer }, failed24h: { type: integer } } }
+        growth:
+          type: object
+          description: 近 30 天每日新增用户与当日结束时的累计用户（1.2）
+          properties:
+            days: { type: array, items: { type: string, format: date } }
+            newUsers: { type: array, items: { type: integer } }
+            cumulative: { type: array, items: { type: integer } }
+        heatmap:
+          type: object
+          description: 近 28 天有记录的操作按星期（1=周一）× 小时（0–23，北京时间）计数（1.2）
+          properties:
+            days: { type: integer }
+            cells: { type: array, items: { type: array, items: { type: integer }, minItems: 3, maxItems: 3 }, description: '[weekday, hour, count]' }
+        feed:
+          type: array
+          description: 全站最新 20 条动态，去标识：只有类型、时间和衣物大类（或注册来源），不含用户名、衣物名称或图片（1.2）
+          items:
+            type: object
+            required: [atMs, kind]
+            properties:
+              atMs: { type: integer }
+              kind: { type: string, enum: [GARMENT_ADDED, OUTFIT_SAVED, WEAR_LOGGED, RECOMMENDATION_LIKED, USER_REGISTERED] }
+              label: { type: [string, 'null'], description: GARMENT_ADDED 为衣物大类键；USER_REGISTERED 为注册来源 }
     DailyExport:
       type: object
       required: [from, to, columns, rows]

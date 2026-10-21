@@ -583,7 +583,7 @@ PUT 请求的两个字段都取 0–1000 或 `null`（`null` = 恢复默认）�
 
 ## 11. 大屏快照（1.1）
 
-`GET /dashboard/snapshot`：一次拿全大屏需要的数据，服务端缓存 15 秒（`dashboard-cache-ttl`），建议按响应里的 `refreshAfterMs`（≥30 秒）轮询，多块屏幕同时轮询也只算一次。**只含汇总，不含用户名、衣物名称或图片。**
+`GET /dashboard/snapshot`：一次拿全大屏需要的数据（1.2 增加 `growth` 用户增长、`heatmap` 星期×小时活跃热力、`feed` 去标识的最新动态，以及 `distributions` 里的风格、版型、衣柜规模分档、注册来源、AI 功能用量），服务端缓存 15 秒（`dashboard-cache-ttl`），建议按响应里的 `refreshAfterMs`（≥30 秒）轮询，多块屏幕同时轮询也只算一次。**只含汇总，不含用户名、衣物名称或图片。**
 
 | 区块 | 内容 |
 |---|---|
