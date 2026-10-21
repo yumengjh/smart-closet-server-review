@@ -146,6 +146,20 @@ public class PresetGarmentsTest {
         current=garments.get(first); garments.edit(first,new GarmentRepository.Edit(current.revision(),Map.of("primaryColor",List.of("绿色")),null));
         assertEquals(approved,draft(first),"listed snapshots are frozen on reimport");
     }
+    /** The account a preset was made from (the demo account) never gets a duplicate of its own garment. */
+    @Test void theSourceAccountSeesItsOwnGarmentsAsOwnAndCannotDuplicateThem() throws Exception {
+        UUID source=source(fields()); var p=listed(source);
+        signIn("source");
+        var mine=presets.list(null,null,null).getFirst();
+        assertTrue(mine.ownSource()); assertTrue(mine.alreadyImported());
+        var result=presets.importIntoCloset(new PresetGarments.Import(List.of(p.id())));
+        assertTrue(result.garmentIds().isEmpty()); assertEquals(List.of(p.id()),result.skipped());
+        assertEquals(1,db.queryForObject("SELECT COUNT(*) FROM garment WHERE owner_username='source'",Integer.class));
+        signIn("alice"); var theirs=presets.list(null,null,null).getFirst();
+        assertFalse(theirs.ownSource()); assertFalse(theirs.alreadyImported());
+        garments.trash(source,garments.get(source).revision());
+        signIn("source"); assertFalse(presets.list(null,null,null).getFirst().ownSource(), "once the original is in the trash the preset can be added back");
+    }
     @Test void copiesAreIndependentAndAlreadyImportedIsSkippedIncludingTrash() throws Exception {
         var p=listed(source(fields())); UUID alice=importAs("alice",p.id()),bob=importAs("bob",p.id());
         assertNotEquals(alice,bob); assertEquals(garments.get(alice).displayAssetId(),garments.get(bob).displayAssetId());
