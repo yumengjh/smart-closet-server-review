@@ -9,8 +9,8 @@ import static com.smartcloset.recognition.Recognition.*;
 
 @Component
 public class RecognitionSchema {
-    public static final String VERSION = "garment-v6";
-    public static boolean requiresTarget(String version) { return Set.of("garment-v3", "garment-v4", "garment-v5", VERSION).contains(Objects.toString(version, "")); }
+    public static final String VERSION = "garment-v7";
+    public static boolean requiresTarget(String version) { return Set.of("garment-v3", "garment-v4", "garment-v5", "garment-v6", VERSION).contains(Objects.toString(version, "")); }
     /** Drawing style of the recognised image itself (D29): read in the same call, so no extra quota. */
     public static final List<String> IMAGE_STYLES = List.of("PHOTO", "ILLUSTRATION", "SKETCH", "OTHER");
     public record Field(String key, String label, List<String> options, boolean multiple, boolean suggestion) {}
@@ -29,12 +29,16 @@ public class RecognitionSchema {
         field("wearingModes", "穿着用途建议（需核对）", true, true, "可作内搭,可作外搭,适合单穿"),
         field("styles", "风格建议", true, true, "休闲,运动,通勤,正式,复古,甜美,户外"),
         field("seasons", "季节建议", true, true, "春,夏,秋,冬"),
+        // garment-v7: who the cut is made for, a suggestion only; never read from the person in the photo.
+        field("genderFit", "适穿性别（需核对）", false, true, "女款,男款,中性"),
         field("brand", "品牌（需标签）", false, false, ""),
         field("size", "尺码（需标签）", false, false, ""),
         field("materialComposition", "成分（需标签）", false, false, ""),
         field("careInstructions", "洗护（需标签）", false, false, ""),
         field("visibleText", "可见文字", true, false, "")
     );
+    /** Fields added after garment-v6 that older outputs lack. */
+    static final Set<String> OPTIONAL_LEGACY = Set.of("genderFit");
     private final ObjectMapper json;
     public RecognitionSchema(ObjectMapper json) { this.json = json; }
     private static Field field(String key, String label, boolean multiple, boolean suggestion, String options) {
@@ -77,12 +81,18 @@ public class RecognitionSchema {
             var assessment = Assessment.valueOf(text(node.get("assessment"), 40));
             String imageStyle = null;
             if (node.has("imageStyle")) { imageStyle = text(node.get("imageStyle"), 20); if (!IMAGE_STYLES.contains(imageStyle)) imageStyle = "OTHER"; }
-            var attrs = node.get("attributes"); keys(attrs, new HashSet<>(FIELDS.stream().map(Field::key).toList()));
+            var attrs = node.get("attributes");
+            var attrKeys = new HashSet<>(FIELDS.stream().map(Field::key).toList());
+            // Outputs before garment-v7 have no genderFit; stored and replayed results still validate.
+            if (attrs != null && attrs.isObject() && !attrs.has("genderFit")) attrKeys.removeAll(OPTIONAL_LEGACY);
+            keys(attrs, attrKeys);
             var result = new LinkedHashMap<String, Attribute>();
             for (var f : FIELDS) {
                 section=f.label();
                 try {
-                    var a = attrs.get(f.key()); keys(a, Set.of("values", "status", "evidence"));
+                    var a = attrs.get(f.key());
+                    if (a == null && OPTIONAL_LEGACY.contains(f.key())) { result.put(f.key(), new Attribute(List.of(), State.UNKNOWN, "旧版识别没有这一项。")); continue; }
+                    keys(a, Set.of("values", "status", "evidence"));
                     var state = State.valueOf(text(a.get("status"), 30));
                     var values = a.get("values");
                     if (!values.isArray() || values.size() > (f.multiple() ? 12 : 1)) throw new IllegalArgumentException();
@@ -97,7 +107,7 @@ public class RecognitionSchema {
                     if (!f.suggestion() && state == State.INFERRED) throw new IllegalArgumentException();
                     result.put(f.key(), new Attribute(List.copyOf(list), state, evidence));
                 } catch (IllegalArgumentException | NullPointerException | ProcessingException invalid) {
-                    if (!Set.of("fit", "thickness", "wearingModes").contains(f.key())) throw invalid;
+                    if (!Set.of("fit", "thickness", "wearingModes", "genderFit").contains(f.key())) throw invalid;
                     // Optional visual suggestions cannot invalidate otherwise usable recognition.
                     // Do not repair an unsupported inference into a claimed observed fact.
                     result.put(f.key(), new Attribute(List.of(), State.UNKNOWN, "建议格式或依据不可靠，已留空，请按实际衣物核对。"));

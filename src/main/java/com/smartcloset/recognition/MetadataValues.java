@@ -21,6 +21,11 @@ public final class MetadataValues {
             if (COLOR_FAMILIES.contains(clean + "色")) return clean + "色";
         }
         if (field.equals("seasons") && Set.of("春季", "夏季", "秋季", "冬季").contains(clean)) return clean.substring(0, 1);
+        if (field.equals("genderFit")) {
+            if (Set.of("女装", "女式", "女性", "女").contains(clean)) return "女款";
+            if (Set.of("男装", "男式", "男性", "男").contains(clean)) return "男款";
+            if (Set.of("男女同款", "通用", "男女通用", "不分男女", "中性款").contains(clean)) return "中性";
+        }
         return clean;
     }
     public static List<String> canonical(String field, List<String> values) {
