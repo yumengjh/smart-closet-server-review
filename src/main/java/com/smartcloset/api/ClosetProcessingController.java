@@ -33,6 +33,18 @@ public class ClosetProcessingController {
     @PostMapping(value = "/garments", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<Job> create(@RequestHeader("Idempotency-Key") UUID key,
             @RequestPart("file") MultipartFile file, @RequestPart("workflow") UploadOptions options) throws IOException {
+        return upload(key, file, options, null);
+    }
+
+    /** Replace a preset's picture using the same processing modes, retaining the garment and its editable fields. */
+    @PostMapping(value = "/garments/{id}/photo", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<Job> replacePhoto(@PathVariable UUID id, @RequestHeader("Idempotency-Key") UUID key,
+            @RequestPart("file") MultipartFile file, @RequestPart("workflow") UploadOptions options) throws IOException {
+        ownership.garment(id);
+        return upload(key, file, options, id);
+    }
+
+    private ResponseEntity<Job> upload(UUID key, MultipartFile file, UploadOptions options, UUID garmentId) throws IOException {
         ownership.workflowIfPresent(key);
         if (options == null || options.mode() == null) throw com.smartcloset.image.ProcessingException.invalid("请选择衣物处理模式。");
         var steps = new ArrayList<Step>();
@@ -62,8 +74,8 @@ public class ClosetProcessingController {
             }
             default -> throw com.smartcloset.image.ProcessingException.invalid("未知的处理模式。");
         }
-        var request = new Request(options.rotationDegrees() == null ? 0d : options.rotationDegrees(), null, null, steps, null, Origin.USER_UPLOAD);
-        Job job = workflows.submit(key, request, file.getBytes());
+        var request = new Request(options.rotationDegrees() == null ? 0d : options.rotationDegrees(), null, null, steps, garmentId, Origin.USER_UPLOAD);
+        Job job = garmentId == null ? workflows.submit(key, request, file.getBytes()) : workflows.submitPresetPhoto(key, request, file.getBytes());
         return ResponseEntity.accepted().location(URI.create("/api/workflows/" + job.id())).body(job);
     }
 

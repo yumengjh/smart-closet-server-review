@@ -59,6 +59,7 @@ public class SecurityConfiguration {
 
     @Bean AuthenticationProvider closetAuthenticationProvider(org.springframework.jdbc.core.JdbcTemplate jdbc, PasswordEncoder encoder) {
         var provider = new DaoAuthenticationProvider(name -> {
+            if (PresetOwner.reserved(name)) throw new org.springframework.security.core.userdetails.UsernameNotFoundException("账号或密码不正确。");
             var rows = jdbc.query("SELECT username,password_hash,role,enabled FROM closet_user WHERE username=?",
                     (r,n) -> User.withUsername(r.getString(1)).password(r.getString(2)).authorities("ROLE_" + r.getString(3)).disabled(r.getInt(4) == 0).build(), name);
             if (rows.isEmpty()) throw new org.springframework.security.core.userdetails.UsernameNotFoundException("账号或密码不正确。");

@@ -14,7 +14,7 @@ public final class Workflow {
     public enum Type { GENERATE, SEGMENT, ENSURE_TRANSPARENCY, STICKER, RECOGNIZE }
     public enum Mode { TEXT_TO_IMAGE, IMAGE_TO_IMAGE }
     public enum Source { ORIGINAL, CUTOUT }
-    public enum Origin { USER_UPLOAD, GENERATED, UNKNOWN }
+    public enum Origin { USER_UPLOAD, GENERATED, UNKNOWN, PRESET }
     public enum Status { QUEUED, RUNNING, SUCCEEDED, FAILED, NEEDS_REVIEW, INTERRUPTED, SKIPPED, PENDING, UNKNOWN, CANCEL_REQUESTED, CANCELLED }
     public record Step(Type type, Mode mode, GenerationService.Request generation, Method method,
                        @JsonInclude(JsonInclude.Include.NON_NULL) TransparencyService.Policy policy,

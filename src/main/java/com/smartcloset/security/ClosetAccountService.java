@@ -147,6 +147,7 @@ public class ClosetAccountService {
     }
     public void revokePortableLinks(String username) { jdbc.update("UPDATE portable_login_link SET revoked_at_ms=? WHERE owner_username=? AND revoked_at_ms IS NULL", System.currentTimeMillis(), username); }
     private void validate(String username, String password) {
+        if (PresetOwner.reserved(username)) throw new IllegalArgumentException("该用户名为系统保留名称。");
         if (username == null || !username.matches("[A-Za-z0-9_.-]{2,80}"))
             throw new IllegalArgumentException("用户名需为2到80位英文字母、数字、点、下划线或短横线。");
         if (password == null || password.length() < 12 || password.length() > 200)

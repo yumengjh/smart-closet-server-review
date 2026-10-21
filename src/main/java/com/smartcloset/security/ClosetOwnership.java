@@ -12,14 +12,25 @@ public class ClosetOwnership {
     public ClosetOwnership(JdbcTemplate jdbc) { this.jdbc = jdbc; }
     private static ProcessingException hidden() { return new ProcessingException(HttpStatus.NOT_FOUND, "RESOURCE_NOT_FOUND", "没有找到该内容。"); }
     public void workflow(UUID id) {
-        if (id == null || jdbc.queryForObject("SELECT COUNT(*) FROM workflow_job WHERE id=? AND owner_username=?", Integer.class, id.toString(), ClosetIdentity.username()) != 1) throw hidden();
+        if (PresetOwner.reserved(ClosetIdentity.username()) || id == null || jdbc.queryForObject("SELECT COUNT(*) FROM workflow_job WHERE id=? AND owner_username=?", Integer.class, id.toString(), ClosetIdentity.username()) != 1) throw hidden();
+    }
+    /** File GETs only. Mutation checks deliberately keep using workflow()/asset(). */
+    public void workflowRead(UUID id) {
+        String owner = ClosetIdentity.username();
+        if (owner == null || id == null || jdbc.queryForObject("SELECT COUNT(*) FROM workflow_job WHERE id=? AND owner_username IN (?,?)", Integer.class,
+                id.toString(), owner, PresetOwner.USERNAME) != 1) throw hidden();
+    }
+    public void assetRead(UUID id) {
+        String owner = ClosetIdentity.username();
+        if (owner == null || id == null || jdbc.queryForObject("SELECT COUNT(*) FROM image_asset a JOIN workflow_job j ON j.id=a.job_id WHERE a.id=? AND j.owner_username IN (?,?)", Integer.class,
+                id.toString(), owner, PresetOwner.USERNAME) != 1) throw hidden();
     }
     public void workflowIfPresent(UUID id) { if (id != null && Boolean.TRUE.equals(jdbc.queryForObject("SELECT EXISTS(SELECT 1 FROM workflow_job WHERE id=?)", Boolean.class, id.toString()))) workflow(id); }
     public void garment(UUID id) {
         if (id == null || jdbc.queryForObject("SELECT COUNT(*) FROM garment WHERE id=? AND owner_username=?", Integer.class, id.toString(), ClosetIdentity.username()) != 1) throw hidden();
     }
     public void asset(UUID id) {
-        if (id == null || jdbc.queryForObject("SELECT COUNT(*) FROM image_asset a JOIN workflow_job j ON j.id=a.job_id WHERE a.id=? AND j.owner_username=?", Integer.class, id.toString(), ClosetIdentity.username()) != 1) throw hidden();
+        if (PresetOwner.reserved(ClosetIdentity.username()) || id == null || jdbc.queryForObject("SELECT COUNT(*) FROM image_asset a JOIN workflow_job j ON j.id=a.job_id WHERE a.id=? AND j.owner_username=?", Integer.class, id.toString(), ClosetIdentity.username()) != 1) throw hidden();
     }
     public void segmentation(UUID id) {
         if (id == null || jdbc.queryForObject("SELECT COUNT(*) FROM standalone_segmentation_owner WHERE segmentation_id=? AND owner_username=?", Integer.class, id.toString(), ClosetIdentity.username()) != 1) throw hidden();

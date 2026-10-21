@@ -70,7 +70,7 @@ public class WorkflowController {
     }
     @GetMapping("/workflows/{id}/files/{name}")
     public ResponseEntity<?> file(@PathVariable UUID id, @PathVariable String name, @RequestParam(required = false) Integer w) throws IOException {
-        ownership.workflow(id);
+        ownership.workflowRead(id);
         return media.shared(workflows.file(id, name), w);
     }
 }
