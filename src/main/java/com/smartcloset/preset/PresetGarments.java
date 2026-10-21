@@ -38,7 +38,7 @@ public class PresetGarments {
                          String name, Map<String,List<String>> fields, String gender, List<String> styles,
                          List<String> seasons, String status, int sort, long createdAtMs, long updatedAtMs) {}
     public record Item(UUID id, UUID displayAssetId, String displayUrl, String name, Map<String,List<String>> fields,
-                       String gender, List<String> styles, List<String> seasons, boolean alreadyImported) {}
+                       String gender, List<String> styles, List<String> seasons, boolean alreadyImported, boolean ownSource) {}
     public record Coverage(String gender, String role, String style, long count, boolean missing) {}
     private final JdbcTemplate db;
     private final ObjectMapper json;
@@ -176,11 +176,12 @@ public class PresetGarments {
         String owner=owner();
         var selectedStyles=styles==null || styles.isEmpty()?List.<String>of():directions(styles);
         var imported=new HashSet<>(db.query("SELECT preset_id FROM garment WHERE owner_username=? AND preset_id IS NOT NULL",(r,n)->r.getString(1),owner));
+        var own=ownSources(owner);
         return db.query("SELECT * FROM preset_garment WHERE status='LISTED' ORDER BY sort_order,id",this::read).stream()
                 .filter(p -> gender==null || gender.isBlank() || p.gender().equals(gender))
                 .filter(p -> selectedStyles.isEmpty() || p.styles().stream().anyMatch(selectedStyles::contains))
                 .filter(p -> season==null || season.isBlank() || p.seasons().contains(season))
-                .map(p -> new Item(p.id(),p.displayAssetId(),p.displayUrl(),p.name(),p.fields(),p.gender(),p.styles(),p.seasons(),imported.contains(p.id().toString()))).toList();
+                .map(p -> new Item(p.id(),p.displayAssetId(),p.displayUrl(),p.name(),p.fields(),p.gender(),p.styles(),p.seasons(),imported.contains(p.id().toString()) || own.contains(p.sourceGarmentId().toString()),own.contains(p.sourceGarmentId().toString()))).toList();
     }
     public Imported importIntoCloset(Import request) {
         String owner=owner();
@@ -191,9 +192,12 @@ public class PresetGarments {
             if (db.query("SELECT username FROM closet_user WHERE username=? FOR UPDATE",(r,n)->r.getString(1),owner).isEmpty())
                 throw ProcessingException.invalid("账号不存在。");
             var created=new ArrayList<UUID>(); var skipped=new ArrayList<UUID>();
+            var own=ownSources(owner);
             for (UUID id:new LinkedHashSet<>(request.ids())) {
                 if (db.queryForObject("SELECT COUNT(*) FROM garment WHERE owner_username=? AND preset_id=?",Integer.class,owner,id.toString())>0) { skipped.add(id); continue; }
                 var p=get(id,true);
+                // The preset was made from this user's own garment that is still in the closet: a copy would be a duplicate.
+                if (own.contains(p.sourceGarmentId().toString())) { skipped.add(id); continue; }
                 if (!p.status().equals("LISTED")) throw ProcessingException.invalid("只能导入已上架的预设衣物。");
                 UUID garment=UUID.randomUUID(); long now=System.currentTimeMillis();
                 db.update("INSERT INTO garment(id,source_asset_id,display_asset_id,source_origin,preset_id,overrides_json,display_user_selected,revision,created_at_ms,updated_at_ms,owner_username,closet_status,name) VALUES(?,?,?,'PRESET',?,?,0,0,?,?,?,'ACTIVE',?)",
@@ -205,6 +209,11 @@ public class PresetGarments {
             }
             return new Imported(created,skipped);
         });
+    }
+    /** Garments of this user that presets were made from and that are still in the closet (not trashed). */
+    private Set<String> ownSources(String owner) {
+        return new HashSet<>(db.query("SELECT p.source_garment_id FROM preset_garment p JOIN garment g ON g.id=p.source_garment_id WHERE p.source_owner=? AND g.owner_username=? AND g.closet_status!='TRASHED'",
+            (r,n)->r.getString(1),owner,owner));
     }
     private Preset get(UUID id, boolean lock) {
         var rows=db.query("SELECT * FROM preset_garment WHERE id=?"+(lock?" FOR UPDATE":""),this::read,id.toString());
