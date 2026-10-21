@@ -251,6 +251,41 @@ class RecommendationApiTest {
         assertTrue(cleared.path("ageBand").isNull() && cleared.path("ageFeel").isNull() && cleared.path("dressExpression").isNull());
     }
 
+    @Test void preferredStylesAreOptionalValidatedPersistentAndClearable() throws Exception {
+        String owner = "rec-style-" + UUID.randomUUID().toString().substring(0, 8);
+        var me = signIn(owner); seed(owner);
+        assertEquals(0, me.ok("GET", "/api/style-profile", null).path("settings").path("preferredStyles").size());
+        var words = List.of("户外机能", "高智极简", "日系清新");
+        var saved = me.ok("PATCH", "/api/style-profile", Map.of("preferredStyles", words, "ageFeel", "MATURE"));
+        assertEquals(json.valueToTree(words), saved.path("preferredStyles"));
+        assertEquals("MATURE", saved.path("ageFeel").asText());
+        assertEquals(json.valueToTree(words), me.ok("PATCH", "/api/style-profile", Map.of("boldness", "BOLD")).path("preferredStyles"));
+        assertEquals(json.valueToTree(words), me.ok("GET", "/api/style-profile", null).path("settings").path("preferredStyles"));
+        for (Object invalid : List.of("工装风", 1, List.of("工装风", "巴恩风", "老钱风", "极简"), List.of("不存在的方向"), List.of(""), List.of(1), List.of("通勤" + "长".repeat(400)), Arrays.asList((Object) null))) {
+            var response = me.send("PATCH", "/api/style-profile", Map.of("preferredStyles", invalid), true);
+            assertEquals(400, response.statusCode(), invalid.toString());
+            assertTrue(response.body().contains("常穿风格"), response.body());
+        }
+        assertEquals(json.valueToTree(words), me.ok("GET", "/api/style-profile", null).path("settings").path("preferredStyles"), "failed validation keeps the saved values");
+        var allWords = List.of("都市通勤", "高智极简", "美式休闲", "户外机能", "老钱风", "潮流运动", "工装风", "日系清新", "巴恩风");
+        for (String word : allWords) assertEquals(word, me.ok("PATCH", "/api/style-profile", Map.of("preferredStyles", List.of(word))).path("preferredStyles").get(0).asText());
+        assertEquals(" gorpcore ", me.ok("PATCH", "/api/style-profile", Map.of("preferredStyles", List.of(" gorpcore "))).path("preferredStyles").get(0).asText(), "store the word exactly as supplied");
+        me.ok("PATCH", "/api/style-profile", Map.of("preferredStyles", List.of("极简")));
+        var view = me.ok("POST", "/api/recommendations", Map.of("occasion", "DAILY", "temperatureC", 18));
+        boolean hit = false;
+        for (var outfit : view.path("outfits")) {
+            var explain = me.ok("GET", "/api/recommendations/" + view.path("runId").asText() + "/explain?outfitKey=" + outfit.path("key").asText(), null);
+            for (var rule : explain.path("outfit").path("rules")) if (rule.path("id").asText().equals("preference.looks") && rule.path("hit").asBoolean()) hit = true;
+        }
+        assertTrue(hit, "stored preferences reach the scorer");
+        assertEquals(0, me.ok("PATCH", "/api/style-profile", Map.of("preferredStyles", List.of())).path("preferredStyles").size());
+        me.ok("PATCH", "/api/style-profile", Map.of("preferredStyles", List.of("巴恩风")));
+        var clear = new HashMap<String, Object>(); clear.put("preferredStyles", null);
+        assertEquals(0, me.ok("PATCH", "/api/style-profile", clear).path("preferredStyles").size());
+        assertEquals(0, me.ok("GET", "/api/style-profile", null).path("settings").path("preferredStyles").size());
+        assertEquals("MATURE", me.ok("GET", "/api/style-profile", null).path("settings").path("ageFeel").asText());
+    }
+
     /** The age term is shown to the user in the rule list, never in the summary the assistant reads (design 2026-10-20). */
     @Test void audienceAgeIsInTheRuleListButNotInTheSummary() throws Exception {
         String owner = "rec-aud-x-" + UUID.randomUUID().toString().substring(0, 8);
