@@ -233,6 +233,40 @@ class RecommendationApiTest {
         assertEquals("AUTO", me.ok("PATCH", "/api/style-profile", Map.of("styleMixing", "PENALTY")).path("styleMixing").asText(), "the pre-P3 name maps to AUTO");
     }
 
+    /** Design 2026-10-20 推荐对象: three optional settings, enum values only, null or "" clears. */
+    @Test void audienceSettingsAreOptionalValidatedAndClearable() throws Exception {
+        var me = signIn("rec-aud-" + UUID.randomUUID().toString().substring(0, 8));
+        var settings = me.ok("GET", "/api/style-profile", null).path("settings");
+        assertTrue(settings.path("ageBand").isNull() && settings.path("ageFeel").isNull() && settings.path("dressExpression").isNull());
+        var saved = me.ok("PATCH", "/api/style-profile", Map.of("ageBand", "45_54", "ageFeel", "MATURE", "dressExpression", "NEUTRAL"));
+        assertEquals("45_54", saved.path("ageBand").asText());
+        assertEquals("MATURE", saved.path("ageFeel").asText());
+        assertEquals("NEUTRAL", saved.path("dressExpression").asText());
+        assertEquals("MATURE", me.ok("PATCH", "/api/style-profile", Map.of("boldness", "BOLD")).path("ageFeel").asText(), "other patches keep it");
+        assertEquals(400, me.send("PATCH", "/api/style-profile", Map.of("ageBand", "40"), true).statusCode());
+        assertEquals(400, me.send("PATCH", "/api/style-profile", Map.of("ageFeel", "OLD"), true).statusCode());
+        assertEquals(400, me.send("PATCH", "/api/style-profile", Map.of("dressExpression", "MALE"), true).statusCode());
+        var clear = new HashMap<String, Object>(); clear.put("ageBand", null); clear.put("ageFeel", ""); clear.put("dressExpression", null);
+        var cleared = me.ok("PATCH", "/api/style-profile", clear);
+        assertTrue(cleared.path("ageBand").isNull() && cleared.path("ageFeel").isNull() && cleared.path("dressExpression").isNull());
+    }
+
+    /** The age term is shown to the user in the rule list, never in the summary the assistant reads (design 2026-10-20). */
+    @Test void audienceAgeIsInTheRuleListButNotInTheSummary() throws Exception {
+        String owner = "rec-aud-x-" + UUID.randomUUID().toString().substring(0, 8);
+        var me = signIn(owner); seed(owner);
+        me.ok("PATCH", "/api/style-profile", Map.of("ageBand", "55_PLUS"));
+        var view = me.ok("POST", "/api/recommendations", Map.of("occasion", "DAILY", "temperatureC", 18, "count", 5));
+        boolean seen = false;
+        for (var o : view.path("outfits")) {
+            var e = me.ok("GET", "/api/recommendations/" + view.path("runId").asText() + "/explain?outfitKey=" + o.path("key").asText(), null);
+            for (var r : e.path("outfit").path("rules")) if (r.path("id").asText().equals("audience.age") && r.path("hit").asBoolean()) seen = true;
+            for (var line : e.path("summary")) assertFalse(line.asText().contains("单品整体偏") || line.asText().contains("推荐给谁"), line.asText());
+            for (var h : o.path("highlights")) assertFalse(h.asText().contains("单品整体偏"), h.asText());
+        }
+        assertTrue(seen, "the user can see the age term in the rule list");
+    }
+
     @Test void wearSummaryCountsAndDatesPerGarment() throws Exception {
         String owner = "rec-wear-" + UUID.randomUUID().toString().substring(0, 8);
         var me = signIn(owner); var ids = seed(owner);
