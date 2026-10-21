@@ -106,6 +106,7 @@ public final class ClosetAccountCli {
         return jdbc.queryForObject("SELECT COUNT(*) FROM closet_user WHERE username=?", Integer.class, username);
     }
     private static void validate(String username, String password) {
+        if (PresetOwner.reserved(username)) throw new IllegalArgumentException("该用户名为系统保留名称。");
         if (!username.matches("[A-Za-z0-9_.-]{2,80}")) throw new IllegalArgumentException("用户名需为2到80位英文字母、数字、点、下划线或短横线。");
         if (password.length() < 12 || password.length() > 200) throw new IllegalArgumentException("密码长度需为12到200个字符。");
     }
