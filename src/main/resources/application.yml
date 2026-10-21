@@ -55,6 +55,9 @@ closet:
     # Style looks (docs/design/2026-10-10-风格画像设计.md): 甜、多巴胺、千金 … scored by colour/pattern/fabric cues instead of
     # the seven vocabulary styles; false = the previous vocabulary-only behaviour.
     looks-enabled: ${CLOSET_RECOMMEND_LOOKS:true}
+    # Who the recommendation is for (docs/design/2026-10-20-推荐对象：年龄感与着装取向设计.md): age feel / age band / dress
+    # expression weight templates and 今日灵感; false = settings are kept but ignored (behaviour before the change).
+    audience-enabled: ${CLOSET_RECOMMEND_AUDIENCE:true}
     # Shadow run: also compute the P4 behaviour in the background and log first-page differences ("recommend shadow ...").
     shadow-enabled: ${CLOSET_RECOMMEND_SHADOW:false}
   ootd:
