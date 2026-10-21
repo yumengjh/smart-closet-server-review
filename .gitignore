@@ -53,3 +53,4 @@ models/.download-*/
 /.planning/.active_plan
 /.planning/*/.attestation
 *.log
+!docs/readme/*.jpg

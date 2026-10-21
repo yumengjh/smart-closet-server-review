@@ -1,15 +1,67 @@
-# 鱼搭 · AI 数字衣柜后端
+<div align="center">
 
-鱼搭是一个个人数字衣柜：拍照录入衣物，自动抠图与识别，在衣柜里搜索、查重，按天气和风格推荐搭配，在画板上组合，并由助手
-对话完成查询与操作，还能用自己的基准人物生成 OOTD 全身图。
+# 鱼搭 · AI 数字衣柜
 
-本仓库是后端：Spring Boot 4.1 / Java 21 服务端，加上 `agent-runtime/` 里的 TypeScript（LangGraph）助手运行时。
-用户端界面在私有仓库 [smart-closet](https://github.com/yumengjh/smart-closet)（Vue 3 + Ant Design Vue）。
+**拍一张照片入柜，打开就知道今天穿什么。**<br>
+推荐由可解释的代码算出，大模型只负责听懂话、看懂图、画效果图。
 
-- 想直接运行、给别人演示：用[便携版](#便携版一键启动)，解压双击即可。
-- 想开发：看[源码运行](#源码运行开发)。
-- 想部署到服务器：看[容器部署](#容器部署)。
-- 所有设计、报告与接口文档：[文档索引](docs/README.md)。
+![Java](https://img.shields.io/badge/Java-21-ED8B00?logo=openjdk&logoColor=white)
+![Spring Boot](https://img.shields.io/badge/Spring_Boot-4.1-6DB33F?logo=springboot&logoColor=white)
+![Vue](https://img.shields.io/badge/Vue-3-4FC08D?logo=vuedotjs&logoColor=white)
+![TypeScript](https://img.shields.io/badge/TypeScript-LangGraph-3178C6?logo=typescript&logoColor=white)
+![ONNX](https://img.shields.io/badge/ONNX_Runtime-本地推理-005CED?logo=onnx&logoColor=white)
+![Tests](https://img.shields.io/badge/测试-后端_596_+_用户端_107-success)
+
+[便携版试用](#便携版一键启动) · [源码运行](#源码运行开发) · [容器部署](#容器部署) · [文档索引](docs/README.md) · [用户端仓库](https://github.com/yumengjh/smart-closet)
+
+<img src="docs/readme/today-outfits.jpg" alt="今天穿什么" width="88%">
+
+</div>
+
+---
+
+本仓库是**后端**：Spring Boot 4.1 / Java 21 服务端，加上 `agent-runtime/` 里的 TypeScript（LangGraph）助手运行时。
+用户端界面在 [smart-closet](https://github.com/yumengjh/smart-closet)（Vue 3 + Ant Design Vue），后台管理平台通过可插拔的管理接口接入。
+
+## 亮点
+
+| | | |
+|:--|:--|:--|
+| **推荐不靠猜**<br>召回、组合、打分、换一批、搜索、取色全部零模型调用；每套搭配可拆成 11 个维度分，并说明依据 | **本地优先**<br>抠图、语义搜索、以图搜图在本机用 ONNX 模型完成；衣物完整资料、性别、身材不发给模型 | **听得懂中文风格词**<br>18 个风格画像把“千金”“多巴胺”“新中式”拆成颜色、色调、图案、面料线索加权计算 |
+| **衣服越多越会选**<br>曝光均衡让被遗忘的衣物重新出场，28 天模拟里进入推荐的衣物翻了一倍 | **助手说完成才算完成**<br>后端发命令，浏览器执行后带版本号回执；用户可随时停止并接手 | **AI 功能不乱花钱**<br>持久任务、冻结输入、幂等键；结果未知不自动重发，由用户确认后重来 |
+
+## 界面一览
+
+<table>
+<tr>
+<td width="50%"><img src="docs/readme/quick-intake.jpg" alt="快速入柜"><br><sub><b>快速入柜</b>：连拍上传，后台抠图与识别，随时补齐</sub></td>
+<td width="50%"><img src="docs/readme/wardrobe.jpg" alt="我的衣柜"><br><sub><b>我的衣柜</b>：分页、颜色精确筛选、语义与以图搜图</sub></td>
+</tr>
+<tr>
+<td><img src="docs/readme/rec-explain.jpg" alt="推荐依据"><br><sub><b>推荐有依据</b>：每套搭配附带命中的规则与分项得分</sub></td>
+<td><img src="docs/readme/workspace.jpg" alt="多画板搭台"><br><sub><b>多画板搭台</b>：自由组合，助手的方案落在临时画板</sub></td>
+</tr>
+<tr>
+<td><img src="docs/readme/assistant.jpg" alt="全局助手"><br><sub><b>全局助手</b>：查询、检查穿搭、操作画板，操作可追溯</sub></td>
+<td><img src="docs/readme/style-profile.jpg" alt="穿搭画像"><br><sub><b>穿搭画像</b>：偏好可见、可恢复、可清空</sub></td>
+</tr>
+</table>
+
+## 快速开始
+
+| 我想…… | 怎么做 | 需要 |
+|:--|:--|:--|
+| 直接试用、给别人演示 | [便携版](#便携版一键启动)：解压，双击启动 | 什么都不用装 |
+| 开发或改代码 | [源码运行](#源码运行开发) | JDK 21、Maven 3.9+、Node 22+ |
+| 部署到服务器 | [容器部署](#容器部署) | Docker、反向代理 |
+
+```bash
+# 最短路径：源码运行（模型和前端的准备步骤见下文）
+CLOSET_BOOTSTRAP_USERNAME=admin CLOSET_BOOTSTRAP_PASSWORD='至少12位的初始密码' ./scripts/start-with-agent.sh
+# 打开 http://127.0.0.1:8080/login
+```
+
+不配置在线 AI 服务时，本地功能（入柜、抠图、搜索、推荐、画板）照常可用。
 
 ## 功能
 
@@ -32,12 +84,20 @@
 
 ## 架构
 
-```
-浏览器 ──HTTPS──▶ 前端静态站点（smart-closet，Vue）
-   │                    │ /api
-   └──────────────────▶ 服务端 :8080（Spring Boot，H2 文件库，本地 ONNX 模型）──▶ Agent 运行时 :8091（Node，仅内网）
-                              │                                                      │
-                              └──── 在线 AI 服务（识别、生图、OOTD）◀────────────────┘（对话模型）
+```mermaid
+flowchart LR
+    B[浏览器 / PWA] -->|HTTPS| F[前端静态站点<br/>smart-closet · Vue 3]
+    F -->|/api · 会话 Cookie · CSRF| S
+    subgraph S[服务端 :8080 · Spring Boot]
+      direction TB
+      API[业务 API] --> REC[推荐引擎<br/>纯 Java 计算]
+      API --> TASK[持久任务执行器]
+      API --> LOCAL[本地模型<br/>U²-Net · BGE · Chinese-CLIP]
+    end
+    S <-->|内网 · 共享密钥| A[Agent 运行时 :8091<br/>Node · LangGraph]
+    S --> DB[(H2 + Flyway<br/>图片: 本地 / COS)]
+    S -.->|识别 · 生图 · 对话| AI[在线 AI 服务]
+    M[后台管理平台<br/>Element Plus] -.->|HMAC · /api/manage/v1| S
 ```
 
 | 组件 | 技术 | 说明 |
@@ -52,7 +112,7 @@
 
 ## 便携版（一键启动）
 
-面向比赛演示与离线试用。每个平台一个压缩包（约 550–580 MB），自带裁剪后的 Java 21、Node 24、构建好的前端、服务端、Agent
+面向演示与离线试用。每个平台一个压缩包（约 550–580 MB），自带裁剪后的 Java 21、Node 24、构建好的前端、服务端、Agent
 和全部本地模型，不需要安装任何软件，也不需要联网下载。
 
 1. 从 Release（或 Actions → Portable package 的产物）下载对应平台的压缩包：`linux-x64`、`linux-arm64`、`macos-arm64`、
