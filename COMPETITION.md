@@ -86,6 +86,10 @@ flowchart LR
 
 后端 596 项、用户端 107 项自动化测试；推荐质量由“好坏搭配考试题”、审美规则完备性和曝光均衡等测试守护。命令见 [README.md 测试一节](README.md#测试)。
 
+## 许可与使用范围
+
+本项目是独立开发、计划商业化运营的 SaaS 产品，**不是开源软件**。仓库对评审开放，仅用于核验项目真实性与 AI 协同开发过程。评审人员可以阅读源码与提交历史，并在自己的设备上临时克隆、构建、运行和测试；不得复制传播、修改、二次开发、商业使用或用于训练 AI 模型。完整条款见 [LICENSE](LICENSE)。
+
 ## 原创性与第三方组件
 
 作品为团队原创。使用的开源技术包括 Spring Boot、MyBatis-Plus、Flyway、H2、ONNX Runtime、OpenCV、LangGraph.js、Vue 3、Ant Design Vue、Konva 等，以及公开的预训练模型 U²-Net、BGE、Chinese-CLIP；模型来源、许可证与校验见 [models/README.md](models/README.md)。项目的贡献在于领域规则与算法组合、反馈机制、人机协作执行和工程闭环，而不是训练新的基础模型。

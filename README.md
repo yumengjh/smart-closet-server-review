@@ -11,6 +11,7 @@
 ![TypeScript](https://img.shields.io/badge/TypeScript-LangGraph-3178C6?logo=typescript&logoColor=white)
 ![ONNX](https://img.shields.io/badge/ONNX_Runtime-本地推理-005CED?logo=onnx&logoColor=white)
 ![Tests](https://img.shields.io/badge/测试-后端_596_+_用户端_107-success)
+![License](https://img.shields.io/badge/license-源码仅供评审_·_非开源-red)
 
 [便携版试用](#便携版一键启动) · [源码运行](#源码运行开发) · [容器部署](#容器部署) · [文档索引](docs/README.md) · [用户端仓库](https://github.com/yumengjh/smart-closet)
 
@@ -19,6 +20,16 @@
 </div>
 
 ---
+
+> ### ⚠️ 许可声明：源码仅供评审查看，不是开源软件
+>
+> 鱼搭是独立开发、计划商业化运营的 SaaS 产品。仓库开放，**只是为了让竞赛评委核验项目的真实性与 AI 协同开发过程**。
+>
+> | 允许（仅限评审人员） | 禁止（未经书面授权） |
+> |:--|:--|
+> | 阅读源码、文档与提交历史；在自己的设备上临时克隆、构建、运行和测试，用于核验与评分 | **复制、转发、Fork、镜像、公开发布；修改或二次开发；商业或生产使用；用于训练 AI 模型；提取规则、数据与设计做相似产品** |
+>
+> 完整条款见 [LICENSE](LICENSE)。需要其他用途，请先取得权利人书面授权。
 
 本仓库是**后端**：Spring Boot 4.1 / Java 21 服务端，加上 `agent-runtime/` 里的 TypeScript（LangGraph）助手运行时。
 用户端界面在 [smart-closet](https://github.com/yumengjh/smart-closet)（Vue 3 + Ant Design Vue），后台管理平台通过可插拔的管理接口接入。
@@ -274,3 +285,7 @@ scripts/          模型下载与导出、部署、存储迁移、评估脚本
 
 仓库根目录的 [AGENTS.md](AGENTS.md) 记录了必须遵守的约定，包括前端改动流程、推荐引擎与审美规则的测试要求、管理接口契约同步、
 全身穿搭与 OOTD 的隐私边界、便携版的维护要求。
+
+## 许可
+
+本仓库采用[鱼搭源码可见评审许可](LICENSE)：**源码仅供竞赛评审人员核验之用，不是开源软件**。未经权利人书面授权，不得复制、转发、公开发布、Fork、修改、二次开发、商业使用，或将其用于训练 AI 模型。第三方组件与预训练模型遵循各自原有的许可证。
