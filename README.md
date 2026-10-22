@@ -31,6 +31,11 @@
 >
 > 完整条款见 [LICENSE](LICENSE)。需要其他用途，请先取得权利人书面授权。
 
+> ### 📦 这是供评审查看的裁剪副本，不能直接构建
+>
+> 本仓库由完整的私有仓库裁剪而来：**推荐引擎、规则与风格画像数据、识别与 OOTD 提示词、语义检索与相似衣物等核心代码，以及涉及它们的设计文档和实验报告，都已从当前文件和全部 Git 历史中移除**；大于 1 MB 的图片、模型与样本也已移除。因此它**无法编译运行**，只用于核验项目的真实性与 AI 协同开发过程：提交时间线、提交说明、设计与验收文档、测试、账号与安全、任务执行、助手与管理接口等代码都保留着。
+> 被移除内容的清单见 [REVIEW_COPY.md](REVIEW_COPY.md)。线上演示地址见 [COMPETITION.md](COMPETITION.md)。
+
 本仓库是**后端**：Spring Boot 4.1 / Java 21 服务端，加上 `agent-runtime/` 里的 TypeScript（LangGraph）助手运行时。
 用户端界面在 [smart-closet](https://github.com/yumengjh/smart-closet)（Vue 3 + Ant Design Vue），后台管理平台通过可插拔的管理接口接入。
 
