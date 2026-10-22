@@ -234,6 +234,19 @@ docker compose --env-file "$HOME/smart-closet-server.env" up -d
 前端仓库的日常检查同样在 CircleCI，部署工作流在推送 `v*` 标签时发布静态站点。便携版工作流用只读 deploy key（secret
 `FRONTEND_DEPLOY_KEY`）检出前端。
 
+GitHub Actions 额度不足时，同样的发布流程也可以在 CircleCI 上跑（`.circleci/config.yml`，GitHub 的工作流原样保留）：
+
+| CircleCI 工作流 | 触发 | 内容 |
+| --- | --- | --- |
+| `release` | `v*` 标签 | 测试 → 构建并推送 GHCR 镜像（`版本号`、`sha-<7位>`）→ SSH 部署；同时构建五个平台的便携包并附加到 Release |
+| `manual-deploy` | Trigger Pipeline，参数 `deploy_image_tag` | 部署已发布的镜像标签，不构建 |
+| `portable` | Trigger Pipeline，参数 `portable=true` | 构建便携包；可选 `portable_platforms`、`frontend_ref`、`portable_release` |
+
+环境变量在 CircleCI 项目设置里配置，名字与 GitHub secrets 相同，另加 `GHCR_USER`、`GHCR_TOKEN`（classic PAT，
+`write:packages`、`read:packages`，发布便携包还需 `repo`），完整清单见配置文件开头。**两边都响应 `v*` 标签**：Actions 额度
+恢复后若继续用 CircleCI，先在 GitHub 上禁用 `container.yml`、`deploy.yml`、`portable.yml`（Actions → 选中工作流 →
+Disable workflow），否则同一个标签会被部署、发布两次。
+
 ## 测试
 
 ```bash

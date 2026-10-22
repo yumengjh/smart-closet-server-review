@@ -1,6 +1,75 @@
-# Required checks on every push and pull request (replaces the test job of .github/workflows/container.yml).
-# Container images, GHCR publishing, deployment and portable packages stay on GitHub Actions (manual / tags only).
+# CircleCI: everyday checks on every push, plus the release paths of the GitHub Actions workflows
+# (.github/workflows/container.yml, deploy.yml and portable.yml stay as they are; either side can release).
+#
+#   push a branch            -> checks (java, agent)
+#   push a tag v*            -> release: java + agent -> publish GHCR images -> deploy (image tag sha-<7>)
+#                               and the portable packages of every platform -> attached to the GitHub release v*
+#   Trigger Pipeline with    -> manual-deploy: deploy an already published tag, no build
+#     parameter deploy_image_tag=latest | 1.4.0 | sha-abc1234 (optionally sync_compose=false)
+#   Trigger Pipeline with    -> portable: build and smoke-test the portable packages (docs/PORTABLE_PACKAGE.md);
+#     parameter portable=true   optional portable_platforms (all | linux-x64,macos-arm64,...), frontend_ref (main),
+#                               portable_release=true to publish them as the prerelease portable-latest
+#
+# Project Settings -> Environment Variables (same names as the GitHub secrets, plus GHCR_*):
+#   required  GHCR_USER, GHCR_TOKEN (classic PAT: write:packages, read:packages; add repo for portable releases),
+#             DEPLOY_SSH_HOST, DEPLOY_SSH_USER, DEPLOY_SSH_KEY or DEPLOY_SSH_PASSWORD,
+#             FRONTEND_DEPLOY_KEY (read-only deploy key of yumengjh/smart-closet, for the portable packages)
+#   optional  DEPLOY_SSH_PORT, DEPLOY_SSH_KNOWN_HOSTS, DEPLOY_DIR, DEPLOY_ENV_FILE, DEPLOY_SYNC_COMPOSE,
+#             GITHUB_RELEASE_TOKEN (classic PAT with repo, when GHCR_TOKEN lacks it)
+#   Multi-line values (keys, known_hosts) may be pasted as they are or base64-encoded on one line.
+# Server side is unchanged: scripts/deploy/remote-deploy.sh plan|apply.
 version: 2.1
+
+parameters:
+  deploy_image_tag:
+    type: string
+    default: ""
+  sync_compose:
+    type: boolean
+    default: true
+  portable:
+    type: boolean
+    default: false
+  portable_platforms:
+    type: string
+    default: all
+  frontend_ref:
+    type: string
+    default: main
+  portable_release:
+    type: boolean
+    default: false
+
+# The package of each platform is built and smoke-tested on that platform (assemble.mjs bundles the running Node and
+# jlinks the running JDK). There is no Intel macOS on CircleCI: macos-x64 runs x64 tools under Rosetta.
+executors:
+  linux-x64:
+    machine:
+      image: ubuntu-2404:current
+    resource_class: medium
+  linux-arm64:
+    machine:
+      image: ubuntu-2404:current
+    resource_class: arm.medium
+  macos:
+    macos:
+      xcode: 27.0.0
+    resource_class: m4pro.medium
+  windows:
+    machine:
+      image: windows-server-2022-gui:current
+      shell: bash.exe
+    resource_class: windows.medium
+
+commands:
+  portable-vars:
+    steps:
+      - run:
+          name: Package version
+          command: |
+            if [ -n "${CIRCLE_TAG:-}" ]; then v="${CIRCLE_TAG#v}"; else v="0.0.0-dev.${CIRCLE_SHA1:0:7}"; fi
+            echo "export VERSION='$v'" > "$HOME/portable-vars.sh"
+            echo "便携包版本：$v"
 
 jobs:
   java:
@@ -50,8 +119,534 @@ jobs:
           key: agent-npm-v1-{{ checksum "agent-runtime/package-lock.json" }}
           paths: [~/.npm]
 
+  publish-images:
+    docker:
+      - image: cimg/base:current
+    steps:
+      - checkout
+      - setup_remote_docker
+      - run:
+          name: Check registry credentials
+          command: |
+            missing=()
+            [ -n "${GHCR_USER:-}" ] || missing+=(GHCR_USER)
+            [ -n "${GHCR_TOKEN:-}" ] || missing+=(GHCR_TOKEN)
+            [ ${#missing[@]} -eq 0 ] || { echo "缺少环境变量：${missing[*]}"; exit 1; }
+      - run:
+          name: Build and push GHCR images
+          command: |
+            set -euo pipefail
+            version=${CIRCLE_TAG#v}
+            sha=sha-${CIRCLE_SHA1:0:7}
+            created=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+            printf '%s' "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USER" --password-stdin
+            build() {
+              local repo=$1 context=$2; shift 2
+              docker build "$@" \
+                --label org.opencontainers.image.source=https://github.com/yumengjh/smart-closet-server \
+                --label org.opencontainers.image.revision="$CIRCLE_SHA1" \
+                --label org.opencontainers.image.version="$version" \
+                --label org.opencontainers.image.created="$created" \
+                -t "$repo:$version" -t "$repo:$sha" "$context"
+              docker push "$repo:$version"
+              docker push "$repo:$sha"
+              echo "已推送 ${repo}:${version}、${repo}:${sha}"
+            }
+            build ghcr.io/yumengjh/smart-closet-server . -f Dockerfile \
+              --build-arg CLOSET_VERSION="$version" --build-arg CLOSET_COMMIT="$CIRCLE_SHA1"
+            build ghcr.io/yumengjh/smart-closet-server-agent ./agent-runtime -f agent-runtime/Dockerfile
+      - run:
+          name: Log out
+          when: always
+          command: docker logout ghcr.io || true
+
+  deploy:
+    parameters:
+      image_tag:
+        type: string
+        default: ""
+      sync_compose:
+        type: boolean
+        default: true
+    docker:
+      - image: cimg/base:current
+    # The image-text export (PyTorch, fp32 + int8) needs more than the 4 GB of medium.
+    resource_class: large
+    steps:
+      - checkout
+      - run:
+          name: Resolve what to deploy
+          command: |
+            set -euo pipefail
+            tag="<< parameters.image_tag >>"
+            if [ -z "$tag" ]; then
+              [ -n "${CIRCLE_TAG:-}" ] || { echo "既没有 deploy_image_tag 参数，也不是 tag 构建"; exit 1; }
+              tag="sha-${CIRCLE_SHA1:0:7}"
+              sync="${DEPLOY_SYNC_COMPOSE:-true}"
+            else
+              [[ "$tag" =~ ^[A-Za-z0-9_.-]+$ ]] || { echo "镜像标签只能包含字母、数字、. _ -"; exit 1; }
+              sync="<< parameters.sync_compose >>"
+            fi
+            echo "export IMAGE_TAG='$tag' SYNC_COMPOSE='$sync'" >> "$BASH_ENV"
+            echo "部署镜像标签：$tag；同步 compose：$sync"
+      - run:
+          name: Check deployment variables
+          command: |
+            missing=()
+            [ -n "${DEPLOY_SSH_HOST:-}" ] || missing+=(DEPLOY_SSH_HOST)
+            [ -n "${DEPLOY_SSH_USER:-}" ] || missing+=(DEPLOY_SSH_USER)
+            [ -n "${DEPLOY_SSH_KEY:-}${DEPLOY_SSH_PASSWORD:-}" ] || missing+=("DEPLOY_SSH_KEY 或 DEPLOY_SSH_PASSWORD")
+            [ -n "${GHCR_USER:-}" ] || missing+=(GHCR_USER)
+            [ -n "${GHCR_TOKEN:-}" ] || missing+=(GHCR_TOKEN)
+            [ ${#missing[@]} -eq 0 ] || { echo "缺少环境变量：${missing[*]}"; exit 1; }
+
+      # Image-text model (Chinese-CLIP): exported from the official PyTorch weights; cached until the export code changes.
+      - restore_cache:
+          keys:
+            - image-model-v1-{{ checksum "scripts/export_image_model.py" }}-{{ checksum "scripts/export-image-model.sh" }}
+      - run:
+          name: Export image-text model (about 6 minutes when not cached)
+          no_output_timeout: 30m
+          command: |
+            set -euo pipefail
+            if [ -s .image-model/image-model-manifest.json ]; then echo "使用缓存的图文模型"; exit 0; fi
+            command -v uv >/dev/null || curl -LsSf https://astral.sh/uv/install.sh | sh
+            export PATH="$HOME/.local/bin:$PATH"
+            bash scripts/export-image-model.sh huggingface
+            mkdir -p .image-model
+            cp models/image-model-int8.onnx models/image-model-fp32.onnx models/image-text-model-int8.onnx \
+               models/image-text-model-fp32.onnx models/image-text-vocab.txt models/image-model-manifest.json .image-model/
+      - save_cache:
+          key: image-model-v1-{{ checksum "scripts/export_image_model.py" }}-{{ checksum "scripts/export-image-model.sh" }}
+          paths: [.image-model]
+
+      - run:
+          name: Prepare deployment bundle
+          command: |
+            set -euo pipefail
+            mkdir -p bundle/image
+            cp scripts/deploy/remote-deploy.sh scripts/download-model.sh scripts/download-embedding-model.sh compose.yaml bundle/
+            (cd .image-model && sha256sum ./* | sed 's#  \./#  #') > bundle/image-models.sha256
+            cat bundle/image-models.sha256
+      - run:
+          name: Set up SSH
+          command: |
+            set -euo pipefail
+            mkdir -p ~/.ssh && chmod 700 ~/.ssh
+            port=${DEPLOY_SSH_PORT:-22}
+            # Multi-line values may also be stored base64-encoded on one line.
+            text() { case "$1" in *BEGIN*|*ssh-*|*ecdsa-*) printf '%s\n' "$1" ;; *) printf '%s' "$1" | base64 -d ;; esac; }
+            if [ -n "${DEPLOY_SSH_KNOWN_HOSTS:-}" ]; then text "$DEPLOY_SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+            else ssh-keyscan -p "$port" -T 15 "$DEPLOY_SSH_HOST" > ~/.ssh/known_hosts 2>/dev/null; echo "警告：未设置 DEPLOY_SSH_KNOWN_HOSTS，本次信任扫描到的主机指纹"; fi
+            opts=(-p "$port" -o BatchMode=no -o ServerAliveInterval=30 -o ConnectTimeout=20 -o StrictHostKeyChecking=yes)
+            if [ -n "${DEPLOY_SSH_KEY:-}" ]; then
+              text "$DEPLOY_SSH_KEY" > ~/.ssh/deploy_key && chmod 600 ~/.ssh/deploy_key
+              opts+=(-i ~/.ssh/deploy_key -o IdentitiesOnly=yes); pre=""
+            else
+              sudo apt-get update -qq >/dev/null && sudo apt-get install -y -qq sshpass >/dev/null
+              pre="sshpass -e"
+              opts+=(-o PubkeyAuthentication=no)
+            fi
+            # sshpass -e reads SSHPASS.
+            printf '#!/usr/bin/env bash\nexport SSHPASS="${DEPLOY_SSH_PASSWORD:-}"\nexec %s ssh %s "%s@%s" "$@"\n' "$pre" "${opts[*]}" "$DEPLOY_SSH_USER" "$DEPLOY_SSH_HOST" > ~/remote && chmod +x ~/remote
+            printf '#!/usr/bin/env bash\nexport SSHPASS="${DEPLOY_SSH_PASSWORD:-}"\nexec %s scp %s "$@"\n' "$pre" "${opts[*]/-p/-P}" > ~/upload && chmod +x ~/upload
+            echo "export DEST=/tmp/smart-closet-deploy-circle-${CIRCLE_BUILD_NUM}" >> "$BASH_ENV"
+            ~/remote 'echo "已连接 $(hostname)"'
+      - run:
+          name: Upload bundle and plan
+          command: |
+            set -euo pipefail
+            ~/remote "rm -rf '$DEST' && mkdir -p '$DEST/image' && chmod 700 '$DEST'"
+            ~/upload bundle/remote-deploy.sh bundle/download-model.sh bundle/download-embedding-model.sh bundle/compose.yaml bundle/image-models.sha256 "$DEPLOY_SSH_USER@$DEPLOY_SSH_HOST:$DEST/"
+            ~/remote "DEPLOY_DIR=$(printf %q "${DEPLOY_DIR:-}") DEPLOY_ENV_FILE=$(printf %q "${DEPLOY_ENV_FILE:-}") bash '$DEST/remote-deploy.sh' plan" | tee plan.txt
+      - run:
+          name: Upload image-text model files
+          command: |
+            set -euo pipefail
+            files=$(awk '$1=="UPLOAD"{print $2}' plan.txt)
+            [ -n "$files" ] || { echo "服务器上的图文模型已是本次版本"; exit 0; }
+            paths=(); for f in $files; do paths+=(".image-model/$f"); done
+            ~/upload "${paths[@]}" "$DEPLOY_SSH_USER@$DEPLOY_SSH_HOST:$DEST/image/"
+      - run:
+          name: Deploy
+          no_output_timeout: 20m
+          command: |
+            set -euo pipefail
+            printf '%s' "$GHCR_TOKEN" | ~/remote "IMAGE_TAG=$(printf %q "$IMAGE_TAG") SYNC_COMPOSE=$(printf %q "$SYNC_COMPOSE") GHCR_USER=$(printf %q "$GHCR_USER") bash '$DEST/remote-deploy.sh' apply"
+      - run:
+          name: Clean up
+          when: always
+          command: |
+            [ -x ~/remote ] && [ -n "${DEST:-}" ] && ~/remote "rm -rf '$DEST'" || true
+            rm -f ~/.ssh/deploy_key
+
+  portable-frontend:
+    docker:
+      - image: cimg/node:24.10
+    steps:
+      - checkout
+      - portable-vars
+      - run:
+          name: Check out the frontend
+          command: |
+            set -euo pipefail
+            [ -n "${FRONTEND_DEPLOY_KEY:-}" ] || { echo "缺少环境变量 FRONTEND_DEPLOY_KEY（私有前端仓库 yumengjh/smart-closet 的只读 deploy key）"; exit 1; }
+            mkdir -p ~/.ssh && chmod 700 ~/.ssh
+            case "$FRONTEND_DEPLOY_KEY" in *BEGIN*) printf '%s\n' "$FRONTEND_DEPLOY_KEY" ;; *) printf '%s' "$FRONTEND_DEPLOY_KEY" | base64 -d ;; esac > ~/.ssh/frontend_key
+            chmod 600 ~/.ssh/frontend_key
+            curl -fsSL https://api.github.com/meta | jq -r '.ssh_keys[]' | sed 's/^/github.com /' >> ~/.ssh/known_hosts
+            export GIT_SSH_COMMAND="ssh -i ~/.ssh/frontend_key -o IdentitiesOnly=yes"
+            git clone -q --no-checkout git@github.com:yumengjh/smart-closet.git ~/web
+            git -C ~/web checkout -q "<< pipeline.parameters.frontend_ref >>"
+            echo "前端提交：$(git -C ~/web rev-parse --short HEAD)"
+            rm -f ~/.ssh/frontend_key
+      - restore_cache:
+          keys:
+            - portable-web-npm-v1-{{ checksum "/home/circleci/web/package-lock.json" }}
+      - run:
+          name: Test and build into the server's static resources
+          working_directory: ~/web
+          command: |
+            set -euo pipefail
+            source "$HOME/portable-vars.sh"
+            npm ci
+            npm test
+            CLOSET_SERVER_DIR=$HOME/project CLOSET_APP_VERSION="$VERSION" npm run build:server
+      - save_cache:
+          key: portable-web-npm-v1-{{ checksum "/home/circleci/web/package-lock.json" }}
+          paths: [~/.npm]
+      - persist_to_workspace:
+          root: .
+          paths:
+            - src/main/resources/static
+            - src/main/resources/person-stickers
+
+  portable-agent:
+    docker:
+      - image: cimg/node:24.10
+    steps:
+      - checkout
+      - run:
+          name: Test, build and keep production dependencies only
+          working_directory: agent-runtime
+          command: |
+            set -euo pipefail
+            npm ci && npm test && npm run build
+            # Production dependencies are plain JavaScript, so one build serves every platform.
+            mkdir -p ../agent-bundle ../.build && cp -r dist package.json package-lock.json ../agent-bundle/
+            (cd ../agent-bundle && npm ci --omit=dev --ignore-scripts && rm package-lock.json)
+            tar -czf ../.build/agent-bundle.tgz -C ../agent-bundle .
+      - persist_to_workspace:
+          root: .
+          paths: [.build/agent-bundle.tgz]
+
+  portable-models:
+    docker:
+      - image: cimg/base:current
+    resource_class: large
+    steps:
+      - checkout
+      - restore_cache:
+          keys:
+            - portable-models-v1-{{ checksum "scripts/download-model.sh" }}-{{ checksum "scripts/download-embedding-model.sh" }}-{{ checksum "scripts/export_image_model.py" }}-{{ checksum "scripts/export-image-model.sh" }}
+      # Same key as the deploy job, so an export already made for deployment is reused.
+      - restore_cache:
+          keys:
+            - image-model-v1-{{ checksum "scripts/export_image_model.py" }}-{{ checksum "scripts/export-image-model.sh" }}
+      - run:
+          name: Prepare models
+          no_output_timeout: 30m
+          command: |
+            set -euo pipefail
+            if [ -s .portable-models/image-model-manifest.json ]; then ls -l .portable-models; exit 0; fi
+            bash scripts/download-model.sh && bash scripts/download-embedding-model.sh
+            if [ ! -s .image-model/image-model-manifest.json ]; then
+              command -v uv >/dev/null || curl -LsSf https://astral.sh/uv/install.sh | sh
+              export PATH="$HOME/.local/bin:$PATH"
+              bash scripts/export-image-model.sh huggingface
+              mkdir -p .image-model
+              cp models/image-model-int8.onnx models/image-model-fp32.onnx models/image-text-model-int8.onnx \
+                 models/image-text-model-fp32.onnx models/image-text-vocab.txt models/image-model-manifest.json .image-model/
+            fi
+            mkdir -p .portable-models
+            cp models/u2net.onnx models/embedding-fp32.onnx models/embedding-int8.onnx models/embedding-vocab.txt .portable-models/
+            cp .image-model/image-model-int8.onnx .image-model/image-text-model-int8.onnx .image-model/image-text-vocab.txt \
+               .image-model/image-model-manifest.json .portable-models/
+            ls -l .portable-models
+      - save_cache:
+          key: image-model-v1-{{ checksum "scripts/export_image_model.py" }}-{{ checksum "scripts/export-image-model.sh" }}
+          paths: [.image-model]
+      - save_cache:
+          key: portable-models-v1-{{ checksum "scripts/download-model.sh" }}-{{ checksum "scripts/download-embedding-model.sh" }}-{{ checksum "scripts/export_image_model.py" }}-{{ checksum "scripts/export-image-model.sh" }}
+          paths: [.portable-models]
+      - persist_to_workspace:
+          root: .
+          paths: [.portable-models]
+
+  portable-package:
+    parameters:
+      os:
+        type: executor
+      platform:
+        type: string
+      native:
+        type: string
+      archive:
+        type: string
+      maven:
+        type: string
+        default: ""
+    executor: << parameters.os >>
+    steps:
+      - run:
+          name: Selected platform?
+          command: |
+            want="<< pipeline.parameters.portable_platforms >>"
+            if [ -n "${CIRCLE_TAG:-}" ] || [ "$want" = all ] || [[ ",${want// /}," == *",<< parameters.platform >>,"* ]]; then exit 0; fi
+            echo "本次没有选择 << parameters.platform >>，跳过"
+            circleci-agent step halt
+      - checkout
+      - attach_workspace:
+          at: .
+      - portable-vars
+      - run:
+          name: Install Node, JDK and Maven for << parameters.platform >>
+          command: bash portable/ci/circleci-tools.sh << parameters.platform >>
+      - restore_cache:
+          keys:
+            - portable-m2-v1-<< parameters.platform >>-{{ checksum "pom.xml" }}
+            - portable-m2-v1-<< parameters.platform >>-
+      - run:
+          name: Build server jar for << parameters.native >>
+          command: |
+            set -euo pipefail
+            source "$HOME/portable-tools/env.sh"
+            test -f src/main/resources/static/index.html || { echo "静态资源里没有前端"; exit 1; }
+            mvn -B -q -DskipTests -Dnative.platform=<< parameters.native >> << parameters.maven >> package
+            ls -l target/*.jar
+      - save_cache:
+          key: portable-m2-v1-<< parameters.platform >>-{{ checksum "pom.xml" }}
+          paths: [~/.m2/repository]
+      - run:
+          name: Assemble and archive
+          command: |
+            set -euo pipefail
+            source "$HOME/portable-tools/env.sh"; source "$HOME/portable-vars.sh"
+            pkg="yuda-portable-$VERSION-<< parameters.platform >>"
+            mkdir -p .build/agent && tar -xzf .build/agent-bundle.tgz -C .build/agent
+            node portable/ci/assemble.mjs --platform << parameters.platform >> --version "$VERSION" \
+              --commit "$CIRCLE_SHA1" --jar "$(ls target/*.jar | head -1)" --agent .build/agent --models .portable-models \
+              --out "dist/$pkg"
+            cd dist
+            case "<< parameters.archive >>-<< parameters.platform >>" in
+              tar.gz-*) tar -czf "$pkg.tar.gz" "$pkg" ;;
+              zip-macos-*) ditto -c -k --sequesterRsrc --keepParent "$pkg" "$pkg.zip" ;;
+              zip-windows-*)
+                if command -v 7z >/dev/null; then 7z a -tzip -mx=5 -bso0 "$pkg.zip" "$pkg"
+                else powershell.exe -NoProfile -Command "Compress-Archive -Path '$pkg' -DestinationPath '$pkg.zip'"; fi ;;
+            esac
+            rm -rf "$pkg"
+            ls -l
+      # The test runs on what a user downloads: the archive extracted afresh, with the package's own Node.
+      - run:
+          name: Extract and smoke test
+          command: |
+            set -euo pipefail
+            source "$HOME/portable-vars.sh"
+            pkg="yuda-portable-$VERSION-<< parameters.platform >>"
+            mkdir -p smoke && cd smoke
+            case "<< parameters.archive >>-<< parameters.platform >>" in
+              tar.gz-*) tar -xzf "../dist/$pkg.tar.gz" ;;
+              zip-macos-*) ditto -x -k "../dist/$pkg.zip" . ;;
+              zip-windows-*)
+                if command -v 7z >/dev/null; then 7z x -bso0 "../dist/$pkg.zip"
+                else powershell.exe -NoProfile -Command "Expand-Archive -Path '../dist/$pkg.zip' -DestinationPath ."; fi ;;
+            esac
+            node_bin="$pkg/runtime/node/bin/node"
+            case "<< parameters.platform >>" in windows-*) node_bin="$pkg/runtime/node/node.exe" ;; esac
+            "$node_bin" ../portable/ci/smoke.mjs "$pkg" 2>&1 | tee ../smoke.log
+      - run:
+          name: Collect logs on failure
+          when: on_fail
+          command: |
+            mkdir -p failure-logs
+            cp smoke.log failure-logs/ 2>/dev/null || true
+            for d in smoke/*/logs smoke/*/config; do [ -d "$d" ] && cp -r "$d" "failure-logs/$(basename "$d")"; done; true
+      - store_artifacts:
+          path: failure-logs
+          destination: logs-<< parameters.platform >>
+      - store_artifacts:
+          path: dist
+          destination: packages
+      - persist_to_workspace:
+          root: .
+          paths: [dist]
+
+  portable-release:
+    docker:
+      - image: cimg/base:current
+    steps:
+      - attach_workspace:
+          at: .
+      - portable-vars
+      - run:
+          name: Upload to the GitHub release
+          command: |
+            set -euo pipefail
+            if [ -n "${CIRCLE_TAG:-}" ]; then tag="$CIRCLE_TAG"; flags=()
+            elif [ "<< pipeline.parameters.portable_release >>" = true ]; then tag=portable-latest; flags=(--prerelease)
+            else echo "没有选择发布（portable_release=false），压缩包见各打包任务的 Artifacts"; exit 0; fi
+            export GH_TOKEN="${GITHUB_RELEASE_TOKEN:-${GHCR_TOKEN:-}}"
+            [ -n "$GH_TOKEN" ] || { echo "缺少 GITHUB_RELEASE_TOKEN 或 GHCR_TOKEN（需要 repo 权限）"; exit 1; }
+            if ! command -v gh >/dev/null; then
+              v=$(curl -fsSL https://api.github.com/repos/cli/cli/releases/latest | jq -r .tag_name | sed 's/^v//')
+              curl -fsSL "https://github.com/cli/cli/releases/download/v$v/gh_${v}_linux_amd64.tar.gz" | tar -xz -C /tmp
+              export PATH="/tmp/gh_${v}_linux_amd64/bin:$PATH"
+            fi
+            source "$HOME/portable-vars.sh"
+            repo=yumengjh/smart-closet-server
+            cd dist && sha256sum yuda-portable-* > SHA256SUMS.txt && cat SHA256SUMS.txt
+            notes="鱼搭便携版 $VERSION（提交 ${CIRCLE_SHA1:0:7}）。解压后运行 start.bat / start.command / start.sh，说明见包内 README.txt。"
+            # portable-latest always holds exactly one build: recreated (with its tag) on this commit.
+            if [ "$tag" = portable-latest ]; then gh release delete "$tag" -R "$repo" --cleanup-tag -y 2>/dev/null || true; fi
+            if ! gh release view "$tag" -R "$repo" >/dev/null 2>&1; then
+              gh release create "$tag" -R "$repo" --target "$CIRCLE_SHA1" --title "鱼搭便携版 $VERSION" --notes "$notes" "${flags[@]}"
+            fi
+            gh release upload "$tag" -R "$repo" --clobber yuda-portable-* SHA256SUMS.txt
+            echo "已发布到 release $tag"
+
 workflows:
   checks:
+    when:
+      and:
+        - equal: ["", << pipeline.parameters.deploy_image_tag >>]
+        - not: << pipeline.parameters.portable >>
     jobs:
       - java
       - agent
+
+  release:
+    when:
+      and:
+        - equal: ["", << pipeline.parameters.deploy_image_tag >>]
+        - not: << pipeline.parameters.portable >>
+    jobs:
+      - java:
+          filters: &release_filters
+            tags:
+              only: /^v.*/
+            branches:
+              ignore: /.*/
+      - agent:
+          filters: *release_filters
+      - publish-images:
+          filters: *release_filters
+          requires: [java, agent]
+      - deploy:
+          filters: *release_filters
+          requires: [publish-images]
+      - portable-frontend:
+          filters: *release_filters
+      - portable-agent:
+          filters: *release_filters
+      - portable-models:
+          filters: *release_filters
+      - portable-package:
+          name: portable-linux-x64
+          os: linux-x64
+          platform: linux-x64
+          native: linux-x86_64
+          archive: tar.gz
+          filters: *release_filters
+          requires: [portable-frontend, portable-agent, portable-models]
+      - portable-package:
+          name: portable-linux-arm64
+          os: linux-arm64
+          platform: linux-arm64
+          native: linux-arm64
+          archive: tar.gz
+          filters: *release_filters
+          requires: [portable-frontend, portable-agent, portable-models]
+      - portable-package:
+          name: portable-macos-arm64
+          os: macos
+          platform: macos-arm64
+          native: macosx-arm64
+          archive: zip
+          filters: *release_filters
+          requires: [portable-frontend, portable-agent, portable-models]
+      - portable-package:
+          name: portable-macos-x64
+          os: macos
+          platform: macos-x64
+          native: macosx-x86_64
+          archive: zip
+          maven: -Donnxruntime.version=1.23.2
+          filters: *release_filters
+          requires: [portable-frontend, portable-agent, portable-models]
+      - portable-package:
+          name: portable-windows-x64
+          os: windows
+          platform: windows-x64
+          native: windows-x86_64
+          archive: zip
+          filters: *release_filters
+          requires: [portable-frontend, portable-agent, portable-models]
+      - portable-release:
+          filters: *release_filters
+          requires: [java, portable-linux-x64, portable-linux-arm64, portable-macos-arm64, portable-macos-x64, portable-windows-x64]
+
+  manual-deploy:
+    when:
+      not:
+        equal: ["", << pipeline.parameters.deploy_image_tag >>]
+    jobs:
+      - deploy:
+          image_tag: << pipeline.parameters.deploy_image_tag >>
+          sync_compose: << pipeline.parameters.sync_compose >>
+
+  portable:
+    when: << pipeline.parameters.portable >>
+    jobs:
+      - java
+      - portable-frontend
+      - portable-agent
+      - portable-models
+      - portable-package:
+          name: portable-linux-x64
+          os: linux-x64
+          platform: linux-x64
+          native: linux-x86_64
+          archive: tar.gz
+          requires: [portable-frontend, portable-agent, portable-models]
+      - portable-package:
+          name: portable-linux-arm64
+          os: linux-arm64
+          platform: linux-arm64
+          native: linux-arm64
+          archive: tar.gz
+          requires: [portable-frontend, portable-agent, portable-models]
+      - portable-package:
+          name: portable-macos-arm64
+          os: macos
+          platform: macos-arm64
+          native: macosx-arm64
+          archive: zip
+          requires: [portable-frontend, portable-agent, portable-models]
+      - portable-package:
+          name: portable-macos-x64
+          os: macos
+          platform: macos-x64
+          native: macosx-x86_64
+          archive: zip
+          maven: -Donnxruntime.version=1.23.2
+          requires: [portable-frontend, portable-agent, portable-models]
+      - portable-package:
+          name: portable-windows-x64
+          os: windows
+          platform: windows-x64
+          native: windows-x86_64
+          archive: zip
+          requires: [portable-frontend, portable-agent, portable-models]
+      - portable-release:
+          requires: [java, portable-linux-x64, portable-linux-arm64, portable-macos-arm64, portable-macos-x64, portable-windows-x64]

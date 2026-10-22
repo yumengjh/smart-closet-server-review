@@ -1,7 +1,8 @@
 # 便携版（一键启动压缩包）
 
 面向比赛演示与离线试用：每个平台一个压缩包（约 500 MB，大部分是模型），解压后双击启动文件即可，不需要安装 Java、
-Node、数据库，也不联网下载模型。所有构建、测试与发布都在 GitHub Actions（`.github/workflows/portable.yml`）里完成。
+Node、数据库，也不联网下载模型。所有构建、测试与发布都在 CI 里完成：GitHub Actions（`.github/workflows/portable.yml`），或 Actions 额度不足时的 CircleCI
+（`.circleci/config.yml` 的 `portable-*` 任务，步骤相同）。
 
 本文是使用与运维说明；方案选型、各环节的设计理由、测试设计与实测数据见
 [便携版一键启动设计](design/2026-10-18-便携版一键启动设计.md)。
@@ -108,6 +109,12 @@ prepare ─┬─ frontend（私有前端仓库，npm test + build:server）─�
 **触发**：修改 `portable/**`、本工作流或 `com.smartcloset.portable` 时自动运行；推送 `v*` 标签时构建并把压缩包与
 `SHA256SUMS.txt` 附加到该标签的 Release；手动运行（Actions → Portable package → Run workflow）可选平台、前端分支、
 是否跑服务端测试、是否发布到预发布版本 `portable-latest`（每次重建，只保留最新一份）。
+
+**CircleCI**：推送 `v*` 标签时随 `release` 工作流一起构建并发布；手动在 CircleCI 项目页 Trigger Pipeline，加参数
+`portable=true`（可选 `portable_platforms`、`frontend_ref`、`portable_release=true`）。压缩包在各 `portable-<平台>` 任务的
+Artifacts 里下载，失败日志在 `logs-<平台>`。CircleCI 没有 Intel Mac，`macos-x64` 包在 Apple Silicon 上用 Rosetta 运行
+x64 的 Node 与 JDK 构建和冒烟测试；工具链由 `portable/ci/circleci-tools.sh` 按目标平台下载。环境变量（`FRONTEND_DEPLOY_KEY`，
+发布还需带 `repo` 权限的 `GHCR_TOKEN` 或 `GITHUB_RELEASE_TOKEN`）在 CircleCI 项目设置里配置。
 
 **依赖的 secret**：`FRONTEND_DEPLOY_KEY`，前端私有仓库 `yumengjh/smart-closet` 的只读 deploy key（2026-10-18 已配置；
 轮换时在前端仓库 Settings → Deploy keys 新建只读 key，并更新本仓库 secret）。
