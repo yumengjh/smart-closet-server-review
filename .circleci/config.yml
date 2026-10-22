@@ -236,11 +236,29 @@ jobs:
             port=${DEPLOY_SSH_PORT:-22}
             # Multi-line values may also be stored base64-encoded on one line.
             text() { case "$1" in *BEGIN*|*ssh-*|*ecdsa-*) printf '%s\n' "$1" ;; *) printf '%s' "$1" | base64 -d ;; esac; }
-            if [ -n "${DEPLOY_SSH_KNOWN_HOSTS:-}" ]; then text "$DEPLOY_SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+            # A private key whose line breaks were lost on pasting: rebuild header, body and footer.
+            pem() {
+              local v h f b; v=$(text "$1" | tr -d '\r'); h=$(printf '%s' "$v" | grep -o -- '-----BEGIN [A-Z ]*-----' | head -1)
+              [ -n "$h" ] || { echo "私钥格式不对（没有 -----BEGIN ... -----）" >&2; return 1; }
+              f=${h/BEGIN/END}; b=${v#*"$h"}; b=${b%%"$f"*}
+              printf '%s\n' "$h"; printf '%s' "$b" | tr -d ' \t\n' | fold -w 64; printf '\n%s\n' "$f"
+            }
+            if [ -n "${DEPLOY_SSH_KNOWN_HOSTS:-}" ]; then
+              # One "host type key" entry per line, even when the pasted lines (and ssh-keyscan's # comments) were joined.
+              text "$DEPLOY_SSH_KNOWN_HOSTS" | tr -s ' \t\r\n' ' ' | awk '{for (i = 2; i < NF; i++) if ($i ~ /^(ssh-|ecdsa-|sk-)/ && $(i-1) != "#") print $(i-1), $i, $(i+1)}' > ~/.ssh/known_hosts
+              echo "DEPLOY_SSH_KNOWN_HOSTS：$(wc -l < ~/.ssh/known_hosts | tr -d ' ') 条，类型 $(awk '{print $2}' ~/.ssh/known_hosts | sort -u | tr '\n' ' ')"
+              name=$DEPLOY_SSH_HOST; [ "$port" = 22 ] || name="[$DEPLOY_SSH_HOST]:$port"
+              # The host keys do not depend on the port: entries scanned without -p also serve [host]:port.
+              if [ "$port" != 22 ] && ! ssh-keygen -F "$name" -f ~/.ssh/known_hosts >/dev/null && ssh-keygen -F "$DEPLOY_SSH_HOST" -f ~/.ssh/known_hosts >/dev/null; then
+                ssh-keygen -F "$DEPLOY_SSH_HOST" -f ~/.ssh/known_hosts | grep -v '^#' | awk -v n="$name" '{$1 = n; print}' >> ~/.ssh/known_hosts
+                echo "DEPLOY_SSH_KNOWN_HOSTS 的记录不带端口，已按端口 $port 补上"
+              fi
+              ssh-keygen -F "$name" -f ~/.ssh/known_hosts >/dev/null || { echo "DEPLOY_SSH_KNOWN_HOSTS 里没有与 DEPLOY_SSH_HOST（端口 $port）对应的记录：请用 ssh-keyscan -p $port <与 DEPLOY_SSH_HOST 完全相同的地址> 重新生成"; exit 1; }
             else ssh-keyscan -p "$port" -T 15 "$DEPLOY_SSH_HOST" > ~/.ssh/known_hosts 2>/dev/null; echo "警告：未设置 DEPLOY_SSH_KNOWN_HOSTS，本次信任扫描到的主机指纹"; fi
             opts=(-p "$port" -o BatchMode=no -o ServerAliveInterval=30 -o ConnectTimeout=20 -o StrictHostKeyChecking=yes)
             if [ -n "${DEPLOY_SSH_KEY:-}" ]; then
-              text "$DEPLOY_SSH_KEY" > ~/.ssh/deploy_key && chmod 600 ~/.ssh/deploy_key
+              pem "$DEPLOY_SSH_KEY" > ~/.ssh/deploy_key && chmod 600 ~/.ssh/deploy_key
+              ssh-keygen -y -f ~/.ssh/deploy_key >/dev/null || { echo "DEPLOY_SSH_KEY 无法读取（格式不对或带了密码）"; exit 1; }
               opts+=(-i ~/.ssh/deploy_key -o IdentitiesOnly=yes); pre=""
             else
               sudo apt-get update -qq >/dev/null && sudo apt-get install -y -qq sshpass >/dev/null
@@ -292,8 +310,14 @@ jobs:
             set -euo pipefail
             [ -n "${FRONTEND_DEPLOY_KEY:-}" ] || { echo "缺少环境变量 FRONTEND_DEPLOY_KEY（私有前端仓库 yumengjh/smart-closet 的只读 deploy key）"; exit 1; }
             mkdir -p ~/.ssh && chmod 700 ~/.ssh
-            case "$FRONTEND_DEPLOY_KEY" in *BEGIN*) printf '%s\n' "$FRONTEND_DEPLOY_KEY" ;; *) printf '%s' "$FRONTEND_DEPLOY_KEY" | base64 -d ;; esac > ~/.ssh/frontend_key
+            # Pasted as is, joined into one line, or base64: rebuilt into a well-formed key.
+            v=$(case "$FRONTEND_DEPLOY_KEY" in *BEGIN*) printf '%s' "$FRONTEND_DEPLOY_KEY" ;; *) printf '%s' "$FRONTEND_DEPLOY_KEY" | base64 -d ;; esac | tr -d '\r')
+            h=$(printf '%s' "$v" | grep -o -- '-----BEGIN [A-Z ]*-----' | head -1)
+            [ -n "$h" ] || { echo "FRONTEND_DEPLOY_KEY 不是私钥（没有 -----BEGIN ... -----）"; exit 1; }
+            f=${h/BEGIN/END}; b=${v#*"$h"}; b=${b%%"$f"*}
+            { printf '%s\n' "$h"; printf '%s' "$b" | tr -d ' \t\n' | fold -w 64; printf '\n%s\n' "$f"; } > ~/.ssh/frontend_key
             chmod 600 ~/.ssh/frontend_key
+            ssh-keygen -y -f ~/.ssh/frontend_key >/dev/null || { echo "FRONTEND_DEPLOY_KEY 无法读取（格式不对或带了密码）"; exit 1; }
             curl -fsSL https://api.github.com/meta | jq -r '.ssh_keys[]' | sed 's/^/github.com /' >> ~/.ssh/known_hosts
             export GIT_SSH_COMMAND="ssh -i ~/.ssh/frontend_key -o IdentitiesOnly=yes"
             git clone -q --no-checkout git@github.com:yumengjh/smart-closet.git ~/web
