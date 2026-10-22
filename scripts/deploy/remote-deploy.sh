@@ -175,13 +175,19 @@ check_models_running() {
   compose exec -T server sh -c "for f in u2net.onnx $EMBEDDING_MODEL embedding-vocab.txt $IMAGE_MODEL $TEXT_MODEL image-text-vocab.txt; do test -r /models/\$f || { echo \"容器内读不到 /models/\$f\"; exit 1; }; done" \
     || die "容器内的模型文件不可读（挂载目录或权限有问题）"
   # The text embedding model loads in the background after start; the image-text towers load on first use.
-  local deadline=$((SECONDS + 180)) logs=""
+  # Logs since this container started: a redeploy of the running tag keeps the container, started long ago.
+  local deadline=$((SECONDS + 180)) logs="" started
+  started=$(dk inspect -f '{{.State.StartedAt}}' "$id")
   while [ $SECONDS -lt $deadline ]; do
-    logs=$(dk logs --since 15m "$id" 2>&1 || true)
+    logs=$(dk logs --since "$started" "$id" 2>&1 || true)
     grep -q "本地向量模型已加载" <<< "$logs" && break
     sleep 10
   done
-  grep -q "本地向量模型已加载" <<< "$logs" && log "文字向量模型：已加载" || { log "文字向量模型 3 分钟内没有加载，最近日志："; grep -E "向量|模型|onnx" <<< "$logs" | tail -20 >&2; exit 1; }
+  if grep -q "本地向量模型已加载" <<< "$logs"; then log "文字向量模型：已加载"
+  elif [ "$(date -d "$started" +%s 2>/dev/null || echo 0)" -lt "$APPLY_STARTED" ]; then
+    # Not restarted by this deployment and the start-up lines already rotated out: nothing new to check.
+    log "server 容器未重建（镜像未变），启动日志已轮转，跳过向量模型加载检查"
+  else log "文字向量模型 3 分钟内没有加载，最近日志："; grep -E "向量|模型|onnx" <<< "$logs" | tail -20 >&2; exit 1; fi
   local bad loaded
   bad=$(grep -E "无法加载|降级为字段与关键词|回退为颜色轮廓比对" <<< "$logs" | tail -5 || true)
   [ -z "$bad" ] || { printf '%s\n' "$bad" >&2; die "有模型加载失败，见上面的日志"; }
@@ -190,6 +196,7 @@ check_models_running() {
 }
 
 apply() {
+  APPLY_STARTED=$(date +%s)
   # shellcheck disable=SC1090
   source "$STATE"
   local token=""; [ -n "${GHCR_USER:-}" ] && token=$(cat)

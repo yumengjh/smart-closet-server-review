@@ -31,7 +31,7 @@ unpack() {
 }
 
 # Node: the newest release of the major line.
-node_file=$(curl -fsSL "https://nodejs.org/dist/latest-v${NODE_MAJOR}.x/SHASUMS256.txt" | awk -v s="-$node_os." '$2 ~ s && $2 ~ /(tar\.gz|zip)$/ {print $2}' | head -1)
+node_file=$(curl -fsSL "https://nodejs.org/dist/latest-v${NODE_MAJOR}.x/SHASUMS256.txt" | awk -v s="-$node_os." 'index($2, s) && $2 ~ /(tar\.gz|zip)$/ {print $2}' | head -1)
 [ -n "$node_file" ] || { echo "找不到 Node $NODE_MAJOR 的 $node_os 包"; exit 1; }
 curl -fsSL -o "$node_file" "https://nodejs.org/dist/latest-v${NODE_MAJOR}.x/$node_file"
 unpack "$node_file"
