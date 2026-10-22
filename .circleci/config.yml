@@ -311,7 +311,7 @@ jobs:
             [ -n "${FRONTEND_DEPLOY_KEY:-}" ] || { echo "缺少环境变量 FRONTEND_DEPLOY_KEY（私有前端仓库 yumengjh/smart-closet 的只读 deploy key）"; exit 1; }
             mkdir -p ~/.ssh && chmod 700 ~/.ssh
             # Pasted as is, joined into one line, or base64: rebuilt into a well-formed key.
-            v=$(case "$FRONTEND_DEPLOY_KEY" in *BEGIN*) printf '%s' "$FRONTEND_DEPLOY_KEY" ;; *) printf '%s' "$FRONTEND_DEPLOY_KEY" | base64 -d ;; esac | tr -d '\r')
+            v=$(case "$FRONTEND_DEPLOY_KEY" in (*BEGIN*) printf '%s' "$FRONTEND_DEPLOY_KEY" ;; (*) printf '%s' "$FRONTEND_DEPLOY_KEY" | base64 -d ;; esac | tr -d '\r')
             h=$(printf '%s' "$v" | grep -o -- '-----BEGIN [A-Z ]*-----' | head -1)
             [ -n "$h" ] || { echo "FRONTEND_DEPLOY_KEY 不是私钥（没有 -----BEGIN ... -----）"; exit 1; }
             f=${h/BEGIN/END}; b=${v#*"$h"}; b=${b%%"$f"*}
