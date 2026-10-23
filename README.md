@@ -87,7 +87,7 @@ CLOSET_BOOTSTRAP_USERNAME=admin CLOSET_BOOTSTRAP_PASSWORD='至少12位的初始�
 | 录入 | 快速入柜（默认开启）、单件与合图批量录入、识别品类/颜色/图案/结构/材质线索、本地抠图（U²-Net / GrabCut）与抠图质量本地检查、可选的生成式 AI 整理图片；处理中心统一显示任务、提醒与重试 | [识别](docs/RECOGNITION.md) · [图片工作流](docs/IMAGE_WORKFLOWS.md) · [快速入柜设计](docs/design/2026-10-05-快速入柜与统一任务执行架构.md) |
 | 衣柜 | 分页与排序、人工编辑字段、回收站、本地 CIELAB 精确取色 | [产品接口](docs/CLOSET_PRODUCT.md) |
 | 搜索与查重 | 本地文本向量（bge-small-zh）与字段混合的语义搜索；本地图文模型（Chinese-CLIP）支持文字找图、以图搜图与超级搜索；相似衣物提示与入柜重复提醒；未识别衣物按图片判断品类与主色 | [图像搜索测试](docs/IMAGE_SEARCH_TESTING.md) · [相似衣物设计](docs/design/2026-10-09-相似衣物提示与以图搜图设计.md) |
-| 智能搭配 | 零模型调用的推荐引擎：召回、组合、打分、多样化；审美组与避坑规则、风格搭法、风格画像（甜、多巴胺、千金……）、曝光均衡、今日灵感、常住城市天气、换一批 / 换一件、反馈与冷却；每条推荐附依据 | [推荐总设计](docs/design/2026-10-08-智能搭配推荐引擎与语义召回设计.md) · [搭配审美](docs/design/2026-10-10-搭配审美实现设计.md) · [风格画像](docs/design/2026-10-10-风格画像设计.md) |
+| 智能搭配 | 零模型调用的推荐引擎：召回、组合、打分、多样化；审美组与避坑规则、风格搭法、风格画像（甜、多巴胺、千金……）、曝光均衡、今日灵感、常住城市天气、换一批 / 换一件、反馈与冷却；每条推荐附依据 | 推荐总设计 · 搭配审美 · 风格画像 |
 | 全身穿搭 | 一体裙与内搭、配件建议（不改总分）、整套穿搭样本采集与审核 | [全身穿搭设计](docs/design/2026-10-09-全身穿搭与呈现增强设计.md) · [样本采集规范](docs/OOTD_SAMPLE_COLLECTION.md) |
 | 画板 | 多画板组合台（最多 12 块）、助手临时搭台 | [组合台](docs/OUTFIT_WORKSPACE.md) |
 | 助手 | 全局个人助手：平台事实查询、经确认的操作、穿搭检查、双记忆文档、帮助文章 | [助手](docs/AGENT.md) · [平台级鱼搭](docs/PLATFORM_AGENT_OOTD.md) |
@@ -186,7 +186,7 @@ docker compose --env-file "$HOME/smart-closet-server.env" up -d
 ```
 
 - 数据库、会话与图片保存在命名卷 `closet-data`；服务端只绑定宿主机 `127.0.0.1:${CLOSET_HOST_PORT:-8080}`，由反向代理对外提供 HTTPS。
-- 向量模型放好 5 秒后自动加载，后台为全部衣物补算向量，期间搜索与推荐降级为字段加关键词。详见 [models/README.md](models/README.md)。
+- 向量模型放好 5 秒后自动加载，后台为全部衣物补算向量，期间搜索与推荐降级为字段加关键词。详见 models/README.md。
 - 图片可改存 S3 兼容存储桶：设置 `CLOSET_STORAGE_TYPE=s3` 与 `CLOSET_STORAGE_S3_*`，已有数据用
   `scripts/storage/migrate-to-s3.sh --host 用户@服务器` 一键迁移（失败自动切回，`--rollback` 回滚）。
 - 开启管理接口：`CLOSET_MANAGEMENT_ENABLED=true` 并配置 `CLOSET_MANAGEMENT_SECRET`，见[管理接口接入指南](docs/MANAGEMENT_API.md)。
@@ -224,7 +224,7 @@ docker compose --env-file "$HOME/smart-closet-server.env" up -d
 | `embedding-fp32.onnx` / `embedding-int8.onnx` | 文本向量（语义搜索、推荐召回） | `scripts/download-embedding-model.sh` |
 | `image-model-int8.onnx`、`image-text-model-int8.onnx` | 图文模型（文字找图、以图搜图、查重） | `scripts/export-image-model.sh`（从官方 PyTorch 权重导出并对拍） |
 
-下载均校验固定的 SHA-256。来源、许可证、输入输出约定与精度实测见 [models/README.md](models/README.md)。
+下载均校验固定的 SHA-256。来源、许可证、输入输出约定与精度实测见 models/README.md。
 
 ## CI/CD
 
@@ -262,7 +262,7 @@ mvn verify                     # 同上，加打包检查（CI 运行这个）
 
 推荐引擎的守护测试：`GoldenOutfitsTest`（好坏搭配考试题）、`AestheticRulesTest`、`AestheticSpreadTest`、`ExposureBalanceTest`、
 `StyleLooksTest`、`SemanticSearchTest`；改规则后用 `RecommendationSnapshotTest` 生成快照对比页。真实模型相关的测试
-（对拍、基准、评估）在模型文件存在时启用，命令见 [models/README.md](models/README.md) 与
+（对拍、基准、评估）在模型文件存在时启用，命令见 models/README.md 与
 [图像搜索测试](docs/IMAGE_SEARCH_TESTING.md)。抠图样本对比与贴纸预览见[本地抠图与贴纸接口](docs/SEGMENTATION_API.md#测试与图片对比)。
 
 ## 代码结构

@@ -94,7 +94,7 @@ flowchart LR
 
 ## 原创性与第三方组件
 
-作品为团队原创。使用的开源技术包括 Spring Boot、MyBatis-Plus、Flyway、H2、ONNX Runtime、OpenCV、LangGraph.js、Vue 3、Ant Design Vue、Konva 等，以及公开的预训练模型 U²-Net、BGE、Chinese-CLIP；模型来源、许可证与校验见 [models/README.md](models/README.md)。项目的贡献在于领域规则与算法组合、反馈机制、人机协作执行和工程闭环，而不是训练新的基础模型。
+作品为团队原创。使用的开源技术包括 Spring Boot、MyBatis-Plus、Flyway、H2、ONNX Runtime、OpenCV、LangGraph.js、Vue 3、Ant Design Vue、Konva 等，以及公开的预训练模型 U²-Net、BGE、Chinese-CLIP；模型来源、许可证与校验见 models/README.md。项目的贡献在于领域规则与算法组合、反馈机制、人机协作执行和工程闭环，而不是训练新的基础模型。
 
 ## 团队
 
