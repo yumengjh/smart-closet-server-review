@@ -121,10 +121,20 @@ flowchart LR
 | 服务端 | Spring Boot 4.1、Java 21、MyBatis-Plus、Flyway、H2 文件库、Spring Session JDBC | 数据库、会话、任务队列都在 `CLOSET_STORAGE_DIR`，不需要外部数据库或 Redis |
 | 本地推理 | ONNX Runtime 1.30、JavaCPP / OpenCV 4.14 | U²-Net 抠图、bge 文本向量、Chinese-CLIP 图文模型；闲置自动卸载，内存不足时降级 |
 | Agent 运行时 | Node 22+、TypeScript、LangGraph.js | 只接受服务端带密钥的调用，通过服务端回调工具读写数据 |
-| 前端 | Vue 3、Ant Design Vue（私有仓库 smart-closet） | 生产环境单独部署为静态站点；本地开发可发布进服务端 `static` 同源访问 |
+| 前端 | Vue 3、Ant Design Vue（仓库 smart-closet） | 生产环境单独部署为静态站点；本地开发可发布进服务端 `static` 同源访问 |
 
-相关仓库：[smart-closet](https://github.com/yumengjh/smart-closet)（用户端前端）；管理平台 `smart-closet-admin-server` 与
-`smart-closet-admin`（Element Plus），通过管理接口接入，见[部署拓扑](docs/DEPLOYMENT_TOPOLOGY.md)。
+相关仓库（管理平台通过管理接口接入，见[部署拓扑](docs/DEPLOYMENT_TOPOLOGY.md)）：
+
+| 仓库 | 内容 | 可见性 |
+|---|---|---|
+| [smart-closet](https://github.com/yumengjh/smart-closet) | 用户端前端（Vue 3 + Ant Design Vue） | 公开（评审许可） |
+| [smart-closet-server-review](https://github.com/yumengjh/smart-closet-server-review) | 后端评审裁剪副本（本仓库） | 公开（评审许可） |
+| smart-closet-server | 完整后端 | 私有 |
+| [smart-closet-mp](https://github.com/yumengjh/smart-closet-mp) | 微信小程序（uni-app） | 公开（评审许可） |
+| [smart-closet-admin](https://github.com/yumengjh/smart-closet-admin) | 管理平台前端（Vue 3 + Element Plus） | 公开 |
+| [smart-closet-admin-server](https://github.com/yumengjh/smart-closet-admin-server) | 管理平台后端（Spring Boot） | 公开 |
+| [yuda-website](https://github.com/yumengjh/yuda-website) | 产品官网 | 公开 |
+| [smart-closet-promo](https://github.com/yumengjh/smart-closet-promo) | 演示视频（Remotion） | 公开 |
 
 ## 便携版（一键启动）
 
