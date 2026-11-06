@@ -58,7 +58,7 @@
   },
   "serverPid": 66042,
   "assistantPid": 66036,
-  "backupDirectory": "/Users/yaopinxin/project/smart-closet-server/.local/backups/unified-processing-20261005-212812",
+  "backupDirectory": ".local/backups/unified-processing-20261005-212812",
   "jar": ".local/runtime/smart-closet-unified-20261005.jar",
   "launcher": ".local/runtime/start-ui-runtime.sh",
   "backedUpImageFilesVerified": 564

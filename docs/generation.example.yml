@@ -4,7 +4,7 @@ generation:
   providers:
     yumg:
       protocol: OPENAI_IMAGES
-      base-url: https://api.yumg.cn/v1
+      base-url: （上游网关地址，见部署环境变量）v1
       api-key: ${YUMG_API_KEY:}
       default-model: gpt-image-2.5-flare
       timeout-seconds: 180

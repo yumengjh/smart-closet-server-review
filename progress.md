@@ -120,11 +120,11 @@
 - 隔离账号实际调用 gpt-5.6-luna（约 27 秒）和 gpt-image-2.5-flare（约 39 秒）。透明检查 NEEDS_REVIEW，贴纸 SKIPPED，如实显示并保留生成图。未将接口成功描述为图像保真通过。
 - 内置浏览器验证相册选择、重复选图、预览和真实本地上传；生成候选采纳、人工信息原子入柜、回收站删除/恢复、组合筛选、刷新保留、409 冲突核对保存均通过。Chrome 自动选文件被扩展文件访问权限阻止，未改用户权限，未宣称其 native dialog 验收完成。
 - 前端 10 项关键测试、实际 vue-tsc -b 类型检查与真实模式构建通过；后端 WorkflowApiTest 12 + RecognitionWorkflowTest 8 项回归通过。390 / 768 / 1440 布局验证，核心手机页面无横向溢出。截图与隔离报告位于 .local/flow-check/。
-- 备份旧运行文件与数据库；管理员 yaopinxin 已创建，初始密码保存于权限 600 的 .local/yaopinxin-initial-password.txt，未改用户密码。23 个旧任务、1 件衣物、29 个独立分割结果已显式认领，旧衣物保持待确认。
+- 备份旧运行文件与数据库；管理员 demo 已创建，初始密码保存于权限 600 的 .local/admin-initial-password.txt，未改用户密码。23 个旧任务、1 件衣物、29 个独立分割结果已显式认领，旧衣物保持待确认。
 - 最终源码构建已发布至 .local/runtime/smart-closet-workflow.jar，8080 页面及入口资源字节与源码构建一致。隔离测试服务关闭，测试浏览器标签关闭，临时视口覆盖已复原。
 
 ## 2026-09-30 修复首次登录全业务接口 403
-- 复现用户截图：yaopinxin 仍为 mustChangePassword=true，衣柜/草稿/任务/schema 被后端拒绝；Shell 在路由跳转前查询计数，且缺少全局路由守卫，允许继续进入业务页。
+- 复现用户截图：demo 仍为 mustChangePassword=true，衣柜/草稿/任务/schema 被后端拒绝；Shell 在路由跳转前查询计数，且缺少全局路由守卫，允许继续进入业务页。
 - 改为全局 beforeEach 在会话恢复后决定路由，首次改密前只允许设置页；计数同样检查改密状态。首次登录页面隐藏业务导航、任务入口、额度及回收站，不显示虚假的可用额度。
 - API 权限响应明确区分登录失效 401、PASSWORD_CHANGE_REQUIRED 403、CSRF_INVALID 403 与普通拒绝；前端收到改密要求会退回设置页。保留认证、CSRF 和首次改密限制。
 - 新增 3 项真实 HTTP 认证回归测试，覆盖匿名、初始密码、密码变更后截图中各接口 200、CSRF 及退出；连同原 WorkflowApiTest 共 15 项全部通过。前端 13 项关键测试和类型检查、构建通过。

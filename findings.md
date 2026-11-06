@@ -38,7 +38,7 @@
 - 任意角度需扩展画布，继续检查扩展后的像素限制；直角按像素映射。重做始终读取已校正 original.png 并只应用本次增量角度。
 - 测试页只做角度预览并提交原文件+角度，避免前后端重复旋转。真实 180° 测试确认后端保存的贴纸衣领朝上。
 # 2026-09-28 生图接入
-- api.yumg.cn 首页为鱼站 AI API Gateway；GET /v1/models 返回 20 个模型，图像候选 gpt-image-1、gpt-image-1.5、gpt-image-2。列表本身不证明请求可成功。
+- 上游网关首页为 AI API Gateway；GET /v1/models 返回 20 个模型，图像候选 gpt-image-1、gpt-image-1.5、gpt-image-2。列表本身不证明请求可成功。
 - 密钥仅在 Git 忽略的 .local/ 中保存，未输出到报告。
 - 对照规范：https://developers.openai.com/api/docs/guides/image-generation 与 https://ai.google.dev/gemini-api/docs/generate-content/image-generation 。
 - 3 个生图候选均返回 502；gpt-image-1.5 最小参数请求返回 503 No available compatible accounts。用户正在检查上游；本轮 0 张远程图片成功，不将模型列表当成已验证能力。

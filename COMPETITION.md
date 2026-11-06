@@ -1,11 +1,11 @@
-> 本文是**第九届传智杯 · AI WEB 网页开发挑战赛**的参赛说明，只服务于评审。项目本身的介绍、运行与开发文档见 [README.md](README.md)，用户端见 [smart-closet](https://github.com/yumengjh/smart-closet)。
+> 本文是**一带一路暨金砖国家技能大赛 · AI+应用创新与安全设计国际赛**的参赛说明，只服务于评审。项目本身的介绍、运行与开发文档见 [README.md](README.md)，用户端见 [smart-closet](https://github.com/yumengjh/smart-closet)。
 
 <div align="center">
 # 鱼搭 · AI 数字衣柜
 
-**第九届传智杯全国大学生数智创新与 AI 应用大赛 · AI WEB 网页开发挑战赛 参赛作品**
+**一带一路暨金砖国家技能大赛 · AI+应用创新与安全设计国际赛 参赛作品**
 
-团队：鱼力无限
+参赛编号：（提交前填写）
 
 </div>
 
@@ -96,9 +96,6 @@ flowchart LR
 
 作品为团队原创。使用的开源技术包括 Spring Boot、MyBatis-Plus、Flyway、H2、ONNX Runtime、OpenCV、LangGraph.js、Vue 3、Ant Design Vue、Konva 等，以及公开的预训练模型 U²-Net、BGE、Chinese-CLIP；模型来源、许可证与校验见 models/README.md。项目的贡献在于领域规则与算法组合、反馈机制、人机协作执行和工程闭环，而不是训练新的基础模型。
 
-## 团队
+## 署名
 
-| 角色 | 姓名 | 学校 / 组别 |
-|:--|:--|:--|
-| 团队成员 | 姚品鑫、张榆晓 | 广东科贸职业学院（参赛组别以报名为准） |
-| 指导教师 | 凡飞飞、李观金 | 广东科贸职业学院 |
+按赛事规程，本作品只以参赛编号署名，文中不出现学校、队名、成员或指导教师姓名。参赛编号：（提交前填写）
