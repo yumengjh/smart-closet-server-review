@@ -1,8 +1,8 @@
 鱼搭（Yuda）源码可见评审许可 v1.0
 Yuda Source-Available Evaluation License v1.0
 
-Copyright (c) 2026 鱼力无限（姚品鑫、张榆晓）。保留所有权利。
-Copyright (c) 2026 Team YuLiWuXian (Yao Pinxin, Zhang Yuxiao). All rights reserved.
+Copyright (c) 2026 鱼搭（Yuda）参赛团队（以参赛编号署名）。保留所有权利。
+Copyright (c) 2026 The Yuda contest team (identified by its contest entry number). All rights reserved.
 
 ================================================================
 一、重要声明（中文版，具有优先效力）
@@ -29,7 +29,7 @@ Copyright (c) 2026 Team YuLiWuXian (Yao Pinxin, Zhang Yuxiao). All rights reserv
     临时克隆、构建、运行本软件，并运行其自带的测试；
 (c) 撰写评审意见、评分记录和评审报告。
 
-“评审人员”指：第九届传智杯全国大学生数智创新与 AI 应用大赛的组委会成员和
+“评审人员”指：本作品所参加赛事的组委会成员和
 受组委会委托的评审专家，以及仅为核验之目的而被权利人书面（含电子邮件、
 站内信或仓库协作者邀请）许可访问的其他人员。“评审期间”指自参赛作品提交之
 日起至该届赛事评审与公示结束之日，或权利人书面通知终止之日，以先到者为准。
@@ -55,7 +55,7 @@ Copyright (c) 2026 Team YuLiWuXian (Yao Pinxin, Zhang Yuxiao). All rights reserv
     搭法模板、评分参数、数据库结构与接口设计等实质性内容，用于其他项目；
 (g) 规避或移除本软件中的版权声明、许可声明、署名或技术保护措施；
 (h) 利用本软件对权利人的服务发起测试之外的攻击、抓取、压力测试或滥用；
-(i) 使用“鱼搭”“Yuda”“鱼力无限”等名称、标识或商标，暗示与权利人存在关联、
+(i) 使用“鱼搭”“Yuda”等名称、标识或商标，暗示与权利人存在关联、
     认可或背书。
 
 ----------------------------------------------------------------
@@ -126,7 +126,7 @@ English summary (the Chinese text above prevails in case of conflict)
 ================================================================
 
 THIS IS NOT OPEN-SOURCE SOFTWARE. This repository is made visible solely so that
-judges of the 9th Chuanzhi Cup contest can verify the authenticity of the project
+judges of the contest this work is entered in can verify the authenticity of the project
 and the AI-assisted development process. Visibility is not permission to copy,
 share, modify or reuse.
 
